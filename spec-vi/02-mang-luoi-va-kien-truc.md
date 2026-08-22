@@ -127,9 +127,10 @@ Quy tắc kiến trúc cốt lõi [CLARIF]: mũi tên từ `RLx` đến `Lx` ch�
 ### 8.1 Central Controller (`C1`)
 
 - **Input:** báo cáo trạng thái từ cả 9 local controller (trạng thái đèn, hàng đợi người đi bộ, trạng thái sensor, mode, lỗi), heartbeat.
-- **Output/lệnh:** `SET_MODE(PEAK_FIXED | OFF_PEAK_SENSOR)`, `SET_TIMING_PROFILE(tham số trong giới hạn đã validate)`, `REQUEST_OVERRIDE(loại, mục tiêu, thời lượng)`.
+- **Output/lệnh:** tới `Lx`: `SET_MODE(PEAK_FIXED | OFF_PEAK_SENSOR)`, `SET_TIMING_PROFILE(tham số trong giới hạn đã validate)`, `REQUEST_OVERRIDE(loại, mục tiêu, thời lượng)`; tới `RLx`: chỉ những yêu cầu cấp cao đã được xác thực (ví dụ xác nhận/xoá 1 lỗi đã báo cáo sau khi sửa vật lý xong — xem ghi chú đối chiếu bên dưới).
 - **Trách nhiệm giám sát:** tổng hợp và hiển thị trạng thái đèn/người đi bộ/đường sắt toàn mạng lưới, duy trì log lỗi, phát hiện controller không phản hồi/mất kết nối qua heartbeat timeout.
-- **Giới hạn rõ ràng [REQ][CLARIF]:** không thể đặt 1 đèn về 1 màu cụ thể; không thể actuate bất kỳ thiết bị đường sắt nào; không thể ép 1 lệnh vượt qua safety invariant mà local controller đã từ chối; không thể mở sớm 1 pedestrian clearance đang latch.
+- **Giới hạn rõ ràng [REQ][CLARIF]:** không thể đặt 1 đèn về 1 màu cụ thể; không thể trực tiếp actuate bất kỳ thiết bị đường sắt nào (boom gate, đèn nhấp nháy, train signal); không thể ép 1 lệnh vượt qua safety invariant mà local controller đã từ chối; không thể mở sớm 1 pedestrian clearance đang latch.
+- **Đối chiếu câu chữ trong đề bài về đường sắt [REQ][CLARIF]:** đề bài viết operator "will occasionally send commands to the intersections, boom gate control and train approach signals system", trong khi cũng nói rõ Central không bao giờ trực tiếp điều khiển đèn tại 1 giao lộ, và lecture clarification nói chỉ `RLx` được actuate thiết bị đường sắt. 2 câu này **không mâu thuẫn** nếu đọc đúng: "lệnh tới boom gate control" của `C1` nghĩa là 1 lệnh cấp cao, đã xác thực, gửi tới `RLx` — controller sở hữu thiết bị đó — đúng theo command abstraction đã dùng cho `Lx` (không bao giờ là lệnh actuate thô gửi thẳng xuống phần cứng). `RLx` tự validate và quyết định có thực hiện hay không, có quyền từ chối/NACK (Mục 18).
 
 ### 8.2 Local controller giao lộ (`Lx`, điều khiển giao lộ `Ix`)
 

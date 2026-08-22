@@ -21,6 +21,7 @@
 | 13 | Lối qua người đi bộ chỉ tồn tại ở giao lộ, không tồn tại tại chỗ giao đường sắt | Đề bài chỉ đặt lối qua người đi bộ "at each intersection" | Đơn giản hoá phân tích tương tác pre-emption/người đi bộ | Không |
 | 14 | Topology demo được tham số hoá kiểu "thực tế tổng quát" (lấy cảm hứng từ giao lộ Quận 2) thay vì map vào 1 giao lộ thật có tên cụ thể | Thoả ý định đề bài (căn timing theo nguyên tắc thực tế) mà không đổi topology đã cho | Né hoàn toàn điều kiện cần duyệt khi đổi topology | Không, theo thiết kế |
 | 15 | Triển khai demo dùng 2 máy vật lý (Mục 27) | Ít điểm hỏng hơn về phần cứng/mạng khi demo trực tiếp, được đánh giá; QNX node mang tính logic và không phụ thuộc vị trí, nên 2 máy vẫn chạy được mọi process riêng biệt cần thiết | Diagram triển khai nhắm 2 máy; có thể mở rộng lên 3 sau này mà không cần đổi code | Không |
+| 16 | Sensor tiếp cận tàu im lặng hoàn toàn ("chết") **không phát hiện được** bằng thiết kế Core — chỉ sensor kẹt *active* mới phát hiện được (Mục 17) | Thiết kế sensor Core không có tín hiệu heartbeat/self-test độc lập với đường tín hiệu phát hiện, nên sensor chết giống hệt "hiện không có tàu"; nói khác đi sẽ phóng đại khả năng của 1 sensor đơn giản | Sensor chết âm thầm làm crossing mất khả năng cảnh báo chủ động (fail-open, không phải fail-safe) — rủi ro tồn dư được chấp nhận công khai, không phải thứ hệ thống tuyên bố giải quyết được; hướng khắc phục (thêm tín hiệu self-test/heartbeat định kỳ) nằm ngoài Core | Không — làm rõ phạm vi nội bộ |
 
 ---
 

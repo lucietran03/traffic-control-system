@@ -14,11 +14,11 @@
 
 | Mode | Mục đích | Điều kiện vào | Hành vi | Lệnh Central được phép | Điều kiện thoát | Độ ưu tiên |
 |---|---|---|---|---|---|---|
-| `PEAK_FIXED` | Timing dễ dự đoán, dễ phối hợp khi nhu cầu cao | Theo giờ trong ngày hoặc `SET_MODE` | Chu kỳ 2 pha cố định, chia theo ưu tiên arterial; sensor chỉ được theo dõi cho mục đích ùn tắc/lỗi, không dùng để gia hạn | `SET_TIMING_PROFILE`, `SET_MODE`, override | `SET_MODE` hoặc đổi theo giờ trong ngày | Bình thường (7) |
+| `PEAK_FIXED` | Timing dễ dự đoán, dễ phối hợp khi nhu cầu cao | Theo giờ trong ngày hoặc `SET_MODE` | Chu kỳ 2 pha cố định, chia theo ưu tiên arterial; sensor phát hiện xe thông thường chỉ được theo dõi cho mục đích trạng thái/lỗi, không dùng để gia hạn; advance/queue sensor (Mục 9, mục 2) vẫn theo dõi ùn tắc độc lập, không phụ thuộc mode | `SET_TIMING_PROFILE`, `SET_MODE`, override | `SET_MODE` hoặc đổi theo giờ trong ngày | Bình thường (7) |
 | `OFF_PEAK_SENSOR` | Phản ứng theo nhu cầu khi lưu lượng thấp | Theo giờ trong ngày hoặc `SET_MODE` | Chọn/gia hạn pha dựa trên sensor phát hiện xe + yêu cầu người đi bộ đã latch, có giới hạn min/max green | `SET_TIMING_PROFILE`, `SET_MODE`, override | `SET_MODE` hoặc đổi theo giờ trong ngày | Bình thường (7) |
 | `RAILWAY_PREEMPTION` | Bảo vệ chỗ giao đường sắt | `RLx` báo `WARNING`/`CLOSING`/`CLOSED` cho crossing liền kề | Chồng lên mode hiện tại của `Lx`: ép hướng đi về phía crossing chuyển đỏ qua clearance an toàn, tạm ngưng chọn pha bình thường cho approach đó, ưu tiên các hướng "drain" (thoát hàng chờ) sau khi mở lại | Không lệnh nào được chấp nhận nếu làm hướng về crossing xanh trở lại | Crossing báo `OPEN` và pha drain hoàn tất | 2 |
 | `CENTRAL_OVERRIDE` | Tình huống đặc biệt (ví dụ dọn đường cho đoàn xe VIP) [REQ] | `REQUEST_OVERRIDE` được chấp nhận | Ép 1 hướng đi chỉ định thành xanh trong thời lượng giới hạn | (chính nó là lệnh) | Hết thời lượng hoặc bị huỷ tường minh | 4 |
-| `DEGRADED_LOCAL` | Tiếp tục an toàn khi không có Central | Heartbeat từ `C1` timeout | Tiếp tục mode/profile đã biết gần nhất, tự chủ hoàn toàn; tự chọn Peak/Off-Peak theo đồng hồ local | Không (link đang mất) | Kết nối phục hồi + local đẩy toàn bộ trạng thái hiện tại lên `C1` | Song song (không nằm trong hierarchy nguy hiểm — đây là trạng thái sẵn sàng, không phải hazard) |
+| `DEGRADED_LOCAL` | Tiếp tục an toàn khi không có Central | Heartbeat từ `C1` timeout | Giữ nguyên **tham số timing** đã biết hợp lệ gần nhất; **mode (Peak/Off-Peak) không bị đóng băng** — vẫn tiếp tục tự chọn theo đồng hồ local y hệt như khi có `C1` | Không (link đang mất) | Kết nối phục hồi + local đẩy toàn bộ trạng thái hiện tại lên `C1` | Song song (không nằm trong hierarchy nguy hiểm — đây là trạng thái sẵn sàng, không phải hazard) |
 | `FAULT_SAFE` | Ngăn chặn 1 hazard đã phát hiện | Xung đột phần cứng local, watchdog trip, hoặc (với `RLx`) trạng thái gate chưa xác nhận khi có rủi ro tàu | Ép output về trạng thái an toàn (Mục 10), ngừng phản ứng với lệnh không liên quan an toàn | Không lệnh nào được chấp nhận trừ lệnh xoá lỗi (có thể cần thao tác của operator) | Xoá tường minh, không bao giờ tự động | 1 (cao nhất) |
 
 ---
@@ -75,7 +75,7 @@ Toàn bộ vòng đời bình thường, thuộc quyền sở hữu hoàn toàn 
 
 Cả 2 giá trị đều được trình bày rõ trong báo cáo như tham số suy ra, có thể điều chỉnh, không phải sự thật bịa đặt.
 
-**Đánh đổi được chấp nhận:** dùng timer cố định thay vì sensor xác nhận thoát nghĩa là thiết kế hiện tại chưa phát hiện được trường hợp đặc biệt 1 đoàn tàu chạy chậm bất thường hoặc bị kẹt trên crossing. Đây là 1 sự đơn giản hoá có chủ đích, có ghi chép rõ ràng cho thiết kế Core — không phải 1 thiếu sót — và exit sensor được giữ lại (Mục 9, mục 5) chính là hướng đã xác định để lấp lỗ hổng này sau này nếu còn thời gian.
+**Đánh đổi được chấp nhận:** dùng timer cố định thay vì sensor xác nhận thoát nghĩa là thiết kế hiện tại chưa phát hiện được trường hợp đặc biệt 1 đoàn tàu chạy chậm bất thường hoặc bị kẹt trên crossing. Đây là 1 sự đơn giản hoá có chủ đích, có ghi chép rõ ràng cho thiết kế Core — không phải 1 thiếu sót — và exit sensor được giữ lại (Mục 9, mục 5) chính là hướng đã xác định để lấp lỗ hổng này sau này nếu còn thời gian. Đánh đổi này đã được xem xét lại lần 2 và team **chủ động giữ nguyên** (không nâng lên Core/HD) để bảo vệ lịch trình cho phạm vi đã cam kết ở chỗ khác (Mục 23). Chữ "fail-safe" dùng xuyên suốt tài liệu này chỉ nói riêng về interlock gate-confirmed-closed-before-`PROCEED` (Invariant #5/#6) và hành vi fail-to-red ở mọi lỗi khác đã mô tả — **không** phải tuyên bố mọi kịch bản lỗi đường sắt có thể tưởng tượng ra, kể cả tàu bị kẹt vượt quá cửa sổ chiếm dụng giả định, đều đã được bao phủ.
 
 ---
 
@@ -95,7 +95,7 @@ Theo giải thích của giảng viên, mục tiêu là ngừng *đẩy* giao th
 
 1. **Ngừng cấp nhu cầu về phía crossing.** Ngay khi pre-emption bắt đầu, hướng đi về crossing ngừng nhận xanh cho tới khi crossing mở lại (Mục 15) — đây là đòn bẩy chính.
 2. **Ưu tiên các hướng đi ra khỏi crossing và giao thông cắt ngang** tại giao lộ liền kề trong lúc đóng, để các xe đã xếp hàng giữa giao lộ và crossing có cơ hội rẽ đi hướng khác thay vì tích tụ — chỉ khi hình học làn/rẽ hiện có cho phép; đặc tả không tuyên bố hệ thống có thể tạo ra 1 tuyến đường vật lý mới.
-3. **Chạy 1 pha drain có giới hạn sau khi mở lại** — gia hạn xanh vượt trần max-green bình thường trên đường connector, cụ thể để giải phóng hàng xe tích luỹ trong lúc đóng, trước khi quay lại chu kỳ chuẩn.
+3. **Chạy 1 pha drain có giới hạn sau khi mở lại** — gia hạn xanh trên đường connector theo đúng bước 4 giây như `OFF_PEAK_SENSOR` bình thường, **miễn là advance/queue sensor vẫn còn báo `QUEUE_WARNING`**, tới 1 trần riêng **60 giây** (cao hơn trần 40 giây bình thường, chỉ áp dụng cho đúng pha phục hồi này). Pha drain dừng ngay khi `QUEUE_WARNING` hết **hoặc** chạm trần 60 giây, tuỳ cái nào tới trước. Quy tắc này hoàn toàn xác định được từ 1 sensor nhị phân (không cần biết hàng dài bao nhiêu xe/mét) — nếu giám khảo hỏi "tính thời lượng drain từ sensor Boolean kiểu gì", đây là câu trả lời cụ thể.
 
 Advance/queue sensor (Mục 9, mục 2) tồn tại cụ thể để phát hiện khi hàng xe trên approach hướng về crossing đang dài dần về phía crossing, nuôi cả logic ngừng cấp nhu cầu lúc pre-emption lẫn việc tính kích thước pha drain khi phục hồi.
 
