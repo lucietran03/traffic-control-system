@@ -44,7 +44,15 @@ Mất link peer-to-peer giữa 2 local controller (chỉ dùng cho phối hợp 
 
 **Phương pháp, không phải số bịa đặt [ASSUM]:** chu kỳ, tỷ lệ chia pha, và offset được suy ra từ giả định khoảng cách/tốc độ ở Mục 5, theo cách tiếp cận chuẩn mà chính đề bài gợi ý (đo khoảng cách giữa các giao lộ, giả định tốc độ di chuyển, suy ra thời gian 1 tốp xe tới đèn tiếp theo, dịch thời điểm bắt đầu xanh của đèn đó theo thời gian di chuyển đó — tức là 1 green wave). Giá trị cuối cùng là **tham số có thể điều chỉnh**, không tuyên bố là số liệu thực tế đã được kiểm chứng.
 
+**Ví dụ tính cụ thể [ASSUM]** (đề bài nhắc 2 lần — cả brief gốc lẫn lecture clarification — rằng khoảng cách phải được đo/ước lượng để suy ra timing, nên mình tính hẳn ra số thay vì chỉ nêu công thức): giả định khoảng cách `I1–I3 = 350m`, `I3–I5 = 400m` trên `R1`; `I2–I4 = 320m`, `I4–I6 = 380m` trên `R2`; tốc độ arterial 60 km/h = 16.67 m/s.
+- Offset `L1→L3` = 350 / 16.67 ≈ **21 giây**
+- Offset `L3→L5` = 400 / 16.67 ≈ **24 giây** (cách `L1` tổng cộng 45 giây)
+- Offset `L2→L4` = 320 / 16.67 ≈ **19 giây**
+- Offset `L4→L6` = 380 / 16.67 ≈ **23 giây**
+
 **Phạm vi phối hợp [TEAM]:** offset chỉ được tính cho các chuỗi arterial (`I1–I3–I5` trên `R1`, `I2–I4–I6` trên `R2`) — việc phối hợp các connector (`R3/R4/R5`) qua hành lang đường sắt đã được cân nhắc và loại bỏ, vì những con đường này ngắn, tính liên tục thấp, và yếu tố chi phối timing của chúng là railway pre-emption, không phải sự tiến triển của tốp xe (Mục 23).
+
+**Lưu ý quan trọng — đây là 2 khái niệm "phối hợp" KHÁC NHAU, không liên quan:** `TC` ở trên là phối hợp giữa các **giao lộ đường bộ** trên cùng 1 trục arterial (`Lx`). Còn `RL1`, `RL2`, `RL3` (3 chỗ giao đường sắt) thì **hoàn toàn độc lập với nhau** — không chia sẻ trạng thái, không có mô hình "1 tàu chạy chéo kích hoạt tuần tự cả 3 crossing" nào cả. Mỗi `RLx` chỉ biết và phản ứng với tàu tại crossing của chính nó (xem Mục 8.3).
 
 **Ai tính toán [TEAM]:** `C1` tính toán và phân phối profile offset (nó có cái nhìn toàn mạng lưới cần thiết cho phép tính), nhưng mỗi `Lx` tự áp offset vào sequencer local của mình — vậy nên phối hợp chỉ là 1 *tham số timing* được gửi qua cùng nhóm lệnh `SET_TIMING_PROFILE` như mọi thứ khác, không phải 1 loại lệnh mới hay 1 quyền mới cho `C1`.
 

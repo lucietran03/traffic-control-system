@@ -32,7 +32,9 @@ Mỗi giao lộ được mô hình hoá như 1 giao lộ 4 nhánh, 2 pha chuẩn
 - **Pha B** — connector (`R3`/`R4`/`R5`) đi thẳng+trái xanh, arterial đỏ; WALK người đi bộ tương thích chạy đồng thời.
 - Vàng → All-red clearance → lặp lại.
 
-`PEAK_FIXED`: tổng chu kỳ ≈ 90 giây **[ASSUM]**, chia ưu tiên nghiêng về arterial (ví dụ ~55 giây Pha A / ~35 giây Pha B trước khi trừ vàng/clearance), khớp với ưu tiên cao hơn đã gán cho arterial (Mục 5). Sensor vẫn được theo dõi nhưng không làm thay đổi timing ở mode này, giữ nguyên tính xác định (deterministic) mà phối hợp/green-wave cần.
+`PEAK_FIXED`: tổng chu kỳ **đúng 90 giây [ASSUM]**, chia rõ: Pha A (arterial) = 48 giây xanh + 4 giây vàng + 2 giây all-red = 54 giây; Pha B (connector) = 30 giây xanh + 4 giây vàng + 2 giây all-red = 36 giây; 54 + 36 = 90 giây, khớp với ưu tiên cao hơn đã gán cho arterial (tỷ lệ xanh 48:30 ≈ 3:2, Mục 5). Sensor vẫn được theo dõi nhưng không làm thay đổi timing ở mode này, giữ nguyên tính xác định (deterministic) mà phối hợp/green-wave cần.
+
+**Vì sao 90 giây, không cần chia hết cho khoảng cách tàu (2 phút = 120 giây):** khác với 1 số thiết kế trước đó gắn chu kỳ đèn với khoảng cách tàu, chu kỳ 90 giây ở đây **không** được chọn để chia hết cho 120 giây, vì `RAILWAY_PREEMPTION` (Mục 14, 15) là event-driven — nó ngắt ngay pha đang chạy (qua clearance an toàn bình thường) bất kể đang ở đâu trong chu kỳ, không đợi tới ranh giới chu kỳ. Cách này chắc chắn hơn việc giả định tàu luôn đến đúng bội số của chu kỳ đèn, vì tàu thật ngoài đời không chạy theo lịch đó.
 
 `OFF_PEAK_SENSOR`: 1 pha chỉ nhận xanh khi (các) approach của nó báo có nhu cầu hoặc đang giữ 1 yêu cầu người đi bộ đã latch; xanh được gia hạn theo bước 4 giây **[ASSUM]** tới trần 40 giây **[ASSUM]** khi nhu cầu còn tồn tại; khi không có nhu cầu ở bất kỳ đâu, giao lộ nghỉ ở pha arterial (mặc định ưu tiên đường chính) [REQ — "differ between R1-R5, teams must state and justify"]. 1 đường phụ không bao giờ phải chờ lâu hơn 1 lần gia hạn tối đa của pha đối diện cộng min green của chính nó — đây là 1 giới hạn chống đói (anti-starvation) mang tính cấu trúc, không phải 1 thuật toán trọng số.
 
