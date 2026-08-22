@@ -173,77 +173,79 @@ và hiện tại spec chưa trả lời được.
 
 Đây là chỗ đáng chú ý nhất khi compare với lecturer clarification.
 
-Project spec hiện đặt hard rule:
+Ừ, **m nhớ gần đúng nhưng có 2 ý khác nhau đang bị trộn lại**.
 
-> C1 cannot actuate any railway equipment.
+Trong đề chính thức có một câu rất rõ:
 
-Cái này **đúng**.
+> “Operators in the central control room will occasionally send commands to the intersections, boom gate control and train approach signals system.” 
 
-Nhưng brief/teacher cũng nói operator Central có thể occasionally send commands to:
-
-- intersections;
-- boom-gate control;
+Nên **đề thật sự có mention Central có thể send commands tới**:
+- intersections,
+- boom gate control,
 - train approach signals system.
 
-Cái distinction phải là:
+Nhưng đồng thời đề cũng nói rất rõ boundary:
+
+> Central **does not directly control the individual lights at an intersection**; việc đó luôn do local controller làm. 
+
+Và lecturer clarification m ghi lại cũng nói tương tự cho railway:
+- intersection local controller chỉ **sense railway state**
+- chỉ **railway local controller** mới control boom gates, flashing lights, train signal.
+
+Vậy cách hiểu an toàn nhất là:
 
 ```text
-NOT ALLOWED:
-
-C1 → "set boom gate DOWN NOW"
-C1 → physical boom gate
-
-
-ALLOWED conceptually:
-
-C1 → high-level request → RLx
-                         ↓
-                 RLx validates
-                         ↓
-                    RLx actuates
+Central
+   ↓ high-level command/request
+Local controller / railway controller
+   ↓ validates + executes
+Physical light / boom gate / train signal
 ```
 
-Hiện system architecture của m đã cực rõ ở chỗ **RLx exclusively owns actuators**, rất tốt. 
-
-Nhưng C1 command set hiện gần như:
+Chứ **không phải**:
 
 ```text
-SET_MODE
-SET_TIMING_PROFILE
-REQUEST_OVERRIDE
+Central
+   ↓
+directly actuates boom gate / train light
 ```
 
-và mainly oriented toward `Lx`. 
-
-T nghĩ project cần decide rõ một câu:
-
-### Option A — simplest
-
-Railway controller receives **monitoring only from Central**, no operational commands.
-
-→ Nhưng phải justify against wording “commands to boom gate control and train approach signals system”.
-
-### Option B — t recommend
-
-Central can send **bounded high-level railway requests** to `RLx`, but never raw actuator commands.
-
-Ví dụ conceptually:
+Còn flow m nhớ về boom-gate fault thì lecturer clarification support kiểu này:
 
 ```text
-REQUEST_CROSSING_HOLD_CLOSED
-REQUEST_TEST
-REQUEST_RESET_FAULT
+Boom gate / gate sensor detects issue
+          ↓
+Railway local controller (RLx)
+          ↓
+sets train signal = RED / STOP
+          ↓
+reports fault to Central control room
 ```
 
-RLx retains final authority + may NACK unsafe request.
+Ở đây điểm quan trọng là: **Central không cần gửi lệnh STOP xuống train sau khi nhận fault**. Theo lời thầy, railway local controller có quyền control train signal và phải tự fail-safe locally. Error thì report lên Central. Lecturer clarification của m là “if there any issue here, then the light for the train will be red” và error “should be reported to the control room”, chứ không nói Central phải round-trip rồi mới command train dừng.
 
-**Không nhất thiết implement tất cả.**
+Nên flow tốt hơn là:
 
-Nhưng architecture sẽ match teacher wording đẹp hơn:
+```text
+Gate fault
+   ↓
+RLx detects fault
+   ├──> Train signal = RED immediately
+   └──> Report fault to C1
+```
 
-> Central may command the railway *controller*, but may never directly actuate railway *equipment*.
+chứ không nên là:
 
-Đây là distinction rất mạnh cho project của m luôn.
+```text
+Gate fault
+→ RLx
+→ C1
+→ C1 tells train to stop
+```
+
+vì cái flow sau tạo dependency vào Central/comms cho một safety-critical action, trái với local-autonomy principle.
+
+Tóm lại: **có câu Central sends commands to boom gate control/train approach signal system thật**, nhưng nên interpret là **high-level command tới railway controller**, không phải direct actuation. Còn **boom-gate fault → train red** thì RLx nên xử lý locally rồi report lên Central, không đợi Central phản hồi.
 
 ---
 
