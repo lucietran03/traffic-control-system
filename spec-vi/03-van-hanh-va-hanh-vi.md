@@ -51,7 +51,7 @@ Việc đổi mode (`PEAK_FIXED ↔ OFF_PEAK_SENSOR`, dù do đồng hồ local 
 - Được phục vụ ở cả `PEAK_FIXED` (đảm bảo mỗi chu kỳ, vì cả 2 pha đều chạy mỗi chu kỳ) và `OFF_PEAK_SENSOR` (1 yêu cầu đã latch được xử lý y như nhu cầu của xe khi lên lịch).
 - Khi WALK đã bắt đầu, nó phải chạy hết chu trình clearance trước khi lối qua đó có thể bị gián đoạn bởi bất kỳ thứ gì, kể cả 1 override từ Central (Safety Invariant, Mục 22).
 - 1 yêu cầu người đi bộ đến trong lúc railway pre-emption đang diễn ra sẽ được **latch, không bị bỏ**. Vì pre-emption chỉ ép *hướng đi về phía crossing* thành đỏ (Mục 15) và lối qua đường cho người đi bộ chỉ tồn tại ở giao lộ, không tồn tại tại chỗ giao đường sắt **[TEAM — ghi chú phạm vi: lối qua người đi bộ nằm ngoài phạm vi tại `RCx`, vì đề bài chỉ đặt chúng "at each intersection"]**, yêu cầu này thường vẫn được phục vụ bình thường ở pha không xung đột.
-- 1 nút bấm không bao giờ nhả (kẹt) hoặc không phản hồi được xử lý fail-safe như **1 yêu cầu đang chờ thường trực** (giả định luôn có nhu cầu thật) thay vì bị bỏ qua, và 1 lỗi được báo về `C1` **[ASSUM]**.
+- Đầu vào nút bấm bị kẹt active được gộp thành 1 yêu cầu đang chờ và báo lỗi. Nút im lặng vĩnh viễn không thể được phát hiện nếu không có tín hiệu health độc lập, vì nó không thể phân biệt với trạng thái "không được nhấn" **[ASSUM]**.
 
 ---
 

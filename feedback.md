@@ -109,9 +109,9 @@ Không phải bắt buộc sửa bây giờ. Nhưng safety story của railway s
 T sẽ sửa trước 5 việc:
 
 1. **Delete Revision Note.**
-2. Fix **PA-08**: retain timing/profile config nhưng mode được local clock tự select khi C1 down.
+2. Fix **PA-07**: retain timing/profile config nhưng mode được local clock tự select khi C1 down.
 3. Fix **CC-03**: binary queue sensor → define bounded drain rule, không nói mơ hồ “size duration”.
-4. Fix **PA-05**: normal presence sensor ≠ queue/congestion sensor.
+4. Fix **PA-04**: normal presence sensor ≠ queue/congestion sensor.
 5. Remove/update cross-references như `Safety Invariant #7`, `Section 5b` nếu report chưa có exact corresponding sections.
 
 Còn `PROJECT_SPECIFICATION.md` thì t sẽ xem nó là **finalized baseline từ đây**, nhưng t đánh dấu 3 issue cần nhớ: **“C1 monitors all 10” typo**, **Central→railway high-level command ambiguity**, và **silent train-sensor failure detection**.
