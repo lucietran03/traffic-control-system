@@ -1,119 +1,21 @@
-# 9. Appendix-ish wording trong assumptions hơi internal quá
+Điểm 1 & 3 (actor cho lỗi nội bộ): Ý là — khi 1 con sensor báo lỗi hay 1 process bị crash, không có "ai" bên ngoài bấm nút hay tạo ra sự kiện đó cả (khác với người đi bộ bấm nút, hay tài xế lái xe tới). Nhưng CLAUDE.md bắt buộc mỗi use case phải có 1 Primary Actor. Nên mình đề xuất coi chính cái sensor/thiết bị đó là actor (vì nó là "input source" từ bên ngoài phần mềm, dù nó là phần cứng của hệ thống vật lý) — giống như cách "Vehicle" hay "Train" cũng không phải người, mà là nguồn sự kiện. Ví dụ: UC-04 (gate lỗi) → actor = "Boom-Gate Position Sensor" (chính con sensor đó là bên phát ra sự kiện lỗi). Bạn đồng ý hướng này, hay muốn để trống Primary Actor luôn?
 
-Một vài chỗ viết kiểu:
-
-> “consistent with project's duplicate by configuration principle”
-
-> “Safety Invariant #7”
-
-> “see Section 5b”
-
-> “Core decision logic”
-
-Những cái này **okay trong project spec**, nhưng khi đưa vào Initial Design Report phải chắc chắn report thực sự có corresponding:
-
-```text
-Safety Invariant #7
-Section 5b
-Core design definition
-HD-target feature definition
-```
-
-Nếu report không có exact section numbering đó → dangling reference.
-
-Ví dụ RC-01 hiện refer:
-
-> `(Safety Invariant #7)` 
-
-Trong project spec thì invariant #7 tồn tại. 
-
-Nhưng **Initial Design Report outline hiện tại của m chưa có “Section 22 Safety Invariants”**.
-
-Cho nên khi copy sang report:
-
-either:
-
-> bỏ `(Safety Invariant #7)`
-
-hoặc sau này tạo subsection System Safety Rules và cross-reference đúng report numbering.
+Điểm 2 (UC-05 actor sai): Bản cũ ghi actor là "Local Hardware Clock" — cái này SAI vì đồng hồ đó nằm bên trong Lx, tức là 1 phần của chính hệ thống, không phải "bên ngoài". Mình đề xuất đổi actor thành Central Control Room Operator — không phải vì operator "gây ra" việc mất kết nối, mà vì họ là bên duy nhất liên quan bên ngoài (họ sẽ thấy giao lộ "biến mất" khỏi màn hình giám sát, và sau này họ là người mà hệ thống báo cáo lại khi kết nối lại).
 
 ---
+Điểm 4 — giải thích lại từ đầu, dễ hiểu hơn:
 
-# 11. One project-spec concern nữa: train sensor failure
+Ý tưởng chính: mỗi "Business Rule" trong use case phải trỏ về 1 nguồn cụ thể để chứng minh không phải tự mình bịa ra luật đó. Hiện tại, cách mình đang làm là trỏ về 1 mã ID trong file system_assumptions_tables.md, ví dụ:
 
-Spec nói:
+▎ BR-1: Train signal chỉ được PROCEED khi gate đã xác nhận đóng (RC-06)
 
-> Train sensor failure (no signal / stuck) → assume train may be present, gate stays down.
+Người đọc report thấy RC-06 thì lật qua bảng assumption, tìm đúng dòng RC-06, đọc được lý do đầy đủ.
 
+Vấn đề với UC-07 (Central override): khi mình đi tìm trong bảng system_assumptions_tables.md xem có dòng nào mô tả đúng luật "override tối đa 5 phút, tự hết hạn, bị từ chối nếu có tàu sắp tới" — thì không tìm thấy dòng nào cả. Luật này chỉ được viết trong file khác (PROJECT_SPECIFICATION.md, Mục 18), không có trong bảng assumption.
 
+Vậy giờ có 2 đường đi:
 
-“stuck active” detect được.
+- Cách A — thêm 1 dòng mới vào bảng assumption trước (ví dụ đặt tên PA-11), viết rõ luật override vào đó, rồi UC-07 trỏ về PA-11 — giống y hệt cách mọi use case khác đang làm. Sạch sẽ, đồng bộ, nhưng phải sửa thêm 1 file.
+- Cách B — không thêm gì, cứ để UC-07 ghi thẳng "xem Mục 18 của PROJECT_SPECIFICATION.md" thay vì trỏ về 1 mã ID. Nhanh hơn, nhưng riêng UC-07 sẽ trace kiểu khác với 6 use case còn lại (những cái kia trỏ về mã ID, cái này trỏ về số mục) — nhìn không đồng nhất khi giám khảo đọc cả report.
 
-Nhưng **“no signal” / failed-silent sensor** khá khó detect từ một sensor duy nhất:
-
-```text
-sensor says nothing
-```
-
-có thể là:
-
-- sensor broken;
-- hoặc đơn giản 20 phút không có train.
-
-System không biết.
-
-Nếu lecturer hỏi, m phải có một health-monitoring mechanism hoặc simply scope failure to:
-
-> **sensor reports diagnostic fault / stuck state**
-
-chứ đừng claim controller magically detects a silent failed train detector.
-
-Không nhất thiết đưa cái này vào assumptions ngay, nhưng **t recommend chỉnh project spec**.
-
----
-
-# 12. Có một choice t muốn m aware nhưng không bắt sửa
-
-Railway reopening hiện dùng:
-
-```text
-45s estimated arrival
-+
-20s fixed crossing occupancy
-→ reopen based on timer
-```
-
-và exit sensor chỉ future enhancement. 
-
-M đã document limitation rất rõ nên logically okay.
-
-Nhưng đây là **một trong những chỗ lecturer có khả năng attack nhất trong Q&A**, bởi vì project tự gọi railway system là “fail-safe”, trong khi:
-
-> train stalls on crossing → timer expires → gates can reopen.
-
-Spec cũng tự acknowledge limitation này. 
-
-Nếu mục tiêu HD và implementation không quá khó, **exit sensor confirmation thật ra là feature t sẽ cân nhắc promote từ Optional → Core/HD** sau này.
-
-Không phải bắt buộc sửa bây giờ. Nhưng safety story của railway sẽ mạnh hơn **rất nhiều** nếu reopening cũng sensor-confirmed giống gate-closing.
-
----
-
-# Verdict cho `system_assumptions_tables.md`
-
-**Structure:** ✅  
-**Coverage against assignment:** ✅  
-**Consistency with finalized project:** ~**90–95%**  
-**Can copy straight into report right now:** **chưa**.
-
-T sẽ sửa trước 5 việc:
-
-1. **Delete Revision Note.**
-2. Fix **PA-07**: retain timing/profile config nhưng mode được local clock tự select khi C1 down.
-3. Fix **CC-03**: binary queue sensor → define bounded drain rule, không nói mơ hồ “size duration”.
-4. Fix **PA-04**: normal presence sensor ≠ queue/congestion sensor.
-5. Remove/update cross-references như `Safety Invariant #7`, `Section 5b` nếu report chưa có exact corresponding sections.
-
-Còn `PROJECT_SPECIFICATION.md` thì t sẽ xem nó là **finalized baseline từ đây**, nhưng t đánh dấu 3 issue cần nhớ: **“C1 monitors all 10” typo**, **Central→railway high-level command ambiguity**, và **silent train-sensor failure detection**.
-
-Nếu m muốn, **next turn t có thể đi thẳng vào từng subsection 1.2.1 → 1.2.7 và review kiểu “KEEP / MODIFY / DELETE” từng assumption**, để cuối cùng m có version sạch copy thẳng vào report.
+Mình nghiêng về Cách A để giữ mọi use case trace theo đúng 1 kiểu duy nhất. Bạn chọn A hay B?
