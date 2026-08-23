@@ -1,1053 +1,420 @@
-# EEET2588 Real-Time Systems Project — Master Project Design Prompt
+# Task: Develop HD-Level Use Case Specifications for the Traffic Control System
 
-You are acting as the **lead systems architect for this project**.
+I am preparing the **Initial Design Report** for the EEET2588/EEET2687 Real-Time Systems Engineering project.
 
-Your job is to understand all available project information and then **design the project itself at the system level**.
+Your task is to develop and refine the **Use Case Scenarios and Written Specifications** for Section **3.2 Functional Specifications**.
 
-You are NOT being asked to write the Initial Design Report.
-
-You are NOT being asked to implement or code the system yet.
-
-Instead, your primary deliverable is a comprehensive Markdown file named:
-
-`PROJECT_SPECIFICATION.md`
-
-This file must become the team's **single source of truth for the entire project**.
-
-It should describe, in sufficient detail, **what system we are going to build, how it should behave, which features it contains, how its components interact, what assumptions we are making, how failures are handled, and what scenarios we intend to demonstrate**.
-
-Later, we will derive the Initial Design Report, UML diagrams, QNX architecture, implementation, testing, and demonstration from this specification.
+The goal is NOT to make the use cases unnecessarily long. They must be **precise, traceable, technically meaningful, and consistent with the finalized system design**, at a standard appropriate for a **Distinction / High Distinction engineering design report**.
 
 ---
 
-# 1. Read All Project Sources First
+# 1. Read the Project Context First
 
-Before designing anything, read all relevant files in the project.
+Before writing or modifying any use case, read the relevant project files in the repository.
 
-At minimum, read:
+Priority order:
 
-## `RTS Final Project`
+1. `PROJECT_SPECIFICATION.md`
+   - Treat this as the primary source of truth for the finalized system architecture, behaviour, scope, safety rules, operating modes, and controller responsibilities.
 
-This is the **official project specification from the lecturer**.
+2. The finalized **System Assumptions** file.
+   - Use the assumptions and their IDs (`NU-xx`, `DP-xx`, `TL-xx`, `TC-xx`, `CC-xx`, `RC-xx`, `PA-xx`) as explicit design constraints.
 
-Treat it as the primary authority for formal requirements.
+3. `SYSTEM_DIAGRAMS.md`
+   - Use this to understand topology, controller relationships, naming, and system visualisation.
 
----
+4. `lecture_clarification.md` or equivalent lecturer-clarification file.
+   - Use this to verify requirements or interpretations that may not appear explicitly in the original brief.
 
-## `lecture clarification`
+5. The original project brief / `RTS Final Project` file.
+   - Use this to verify the source requirements.
 
-This contains explanations and clarifications given directly by the lecturer during class.
+6. Existing README / idea files may provide context, but they are NOT authoritative if they conflict with the finalized Project Specification.
 
-This file is extremely important.
+### Source precedence
 
-Many details in it are either:
+If sources conflict, use:
 
-* not explicitly stated in the official brief;
-* clarifications of ambiguous statements in the brief;
-* indications of what the lecturer expects from a strong solution.
+`Finalized Project Specification`
+→ `Finalized System Assumptions`
+→ `Lecturer Clarifications`
+→ `Original Project Brief`
+→ `Other working/idea files`
 
-Treat lecturer clarification as authoritative supplementary information.
+Do NOT silently resolve a genuine unresolved contradiction.
 
-If it appears to conflict with the official specification, explicitly flag the issue instead of silently deciding.
-
----
-
-## `idea.md`
-
-This file is **NOT the project design**.
-
-It is mostly a brainstorming document containing:
-
-* questions;
-* uncertainties;
-* things I thought might need decisions;
-* possible ideas;
-* issues I did not know how to solve.
-
-Do not blindly answer every question in this file.
-
-Do not assume all questions are important.
-
-Use it to identify unresolved design areas.
-
-If a question is unnecessary, irrelevant, premature, or does not materially affect the project, you may ignore or remove it.
+If an important behavioural decision is still ambiguous, identify it and ask me before inventing a solution.
 
 ---
 
-## `README.md`
+# 2. Use Case Scope
 
-This was written early, before the system was fully understood.
+Unless explicitly stated otherwise, treat the **entire distributed Traffic Control System** as the system boundary.
 
-Some content may be correct.
+Therefore, internal controllers such as:
 
-Some may be:
+- `C1`
+- `L1–L6`
+- `RL1–RL3`
 
-* assumptions;
-* premature design decisions;
-* incorrect interpretations;
-* arbitrary values.
+are normally **internal system components**, NOT external UML actors.
 
-Validate everything in README against:
+Do not inconsistently treat an internal controller as an actor unless a particular use case explicitly declares a narrower subsystem boundary and there is a strong reason to do so.
 
-1. official specification;
-2. lecturer clarification;
-3. sound engineering reasoning.
+Potential external actors may include, where appropriate:
 
-Do not preserve an idea merely because it already appears in README.
+- Central Control Room Operator
+- Pedestrian
+- Vehicle / road user
+- Train / train-detection input
+- external sensor/input sources
 
----
-
-# 2. Your Actual Goal
-
-You need to **design the complete project concept**.
-
-Think of this as:
-
-> "Before anyone starts drawing UML or writing C code, exactly what system are we building?"
-
-You need to make enough design decisions that the team can later move from:
-
-`PROJECT_SPECIFICATION.md`
-
-to:
-
-* Initial Design Report;
-* physical layout diagrams;
-* use cases;
-* state charts;
-* sequence diagrams;
-* task architecture;
-* QNX processes;
-* IPC message design;
-* source code;
-* testing;
-* final demonstration.
-
-The project specification must therefore be much more detailed than a summary of the assignment.
+However, determine the correct actors from the actual project design rather than mechanically using this list.
 
 ---
 
-# 3. HD Is the Target
+# 3. Required Use Case Specification Format
 
-The project is intended to target an **HD-level result**.
+Every use case must use a **two-column table**:
 
-However:
+| Field | Description |
+|---|---|
+| Use Case | ... |
+| Goal | ... |
+| Primary Actors | ... |
+| Secondary Actors | ... |
+| Description | ... |
+| Pre-conditions | ... |
+| Triggers | ... |
+| Basic Course of Events | ... |
+| Alternative Paths | ... |
+| Post-conditions | ... |
+| Business Rules | ... |
 
-**HD does NOT mean maximum feature count.**
-
-The official project specifically indicates that complexity is valuable only when it is:
-
-* sensible;
-* justified;
-* correctly implemented;
-* demonstrable;
-* supported by evidence.
-
-Therefore, optimise the design for:
-
-* strong real-time-system reasoning;
-* distributed architecture;
-* local autonomy;
-* safety;
-* fault handling;
-* meaningful coordination;
-* adaptive behaviour where justified;
-* good IPC opportunities;
-* realistic sensors;
-* observable system behaviour;
-* strong demonstration scenarios.
-
-Avoid adding features purely because they sound advanced.
-
-Every major feature should have a reason to exist.
+Do NOT add additional fields unless there is a compelling reason and I approve it.
 
 ---
 
-# 4. Reconstruct the System Correctly
+# 4. Rules for Each Field
 
-Before proposing enhancements, establish what the system actually contains.
+## Use Case
 
-Pay particular attention to the lecturer clarification concerning:
+Use:
 
-* 6 signalised road intersections;
-* one local controller for each intersection;
-* additional railway-crossing local controllers;
-* central controller;
-* train-line behaviour;
-* boom gates;
-* railway flashing lights;
-* train signals;
-* train detection sensors;
-* pedestrian buttons;
-* pedestrian signals;
-* car/vehicle sensors;
-* fixed timing;
-* sensor-driven operation;
-* updateable timing;
-* central override;
-* railway congestion;
-* coordination between intersections;
-* QNX nodes and processes.
+`UC-XX — <Active, goal-oriented name>`
 
-Do not confuse the following concepts:
+The name must describe the behaviour/outcome rather than an implementation component.
 
-### Physical infrastructure
+Good:
+- `UC-04 — Handle Train Approach`
+- `UC-05 — Serve Pedestrian Crossing Request`
 
-Examples:
-
-* roads;
-* lanes;
-* intersections;
-* tracks;
-* pedestrian crossings;
-* traffic lights;
-* train signals;
-* boom gates;
-* sensors.
-
-### Logical controllers
-
-Examples:
-
-* Central Controller;
-* I1–I6 Local Intersection Controllers;
-* railway-crossing controllers.
-
-### Software architecture
-
-Examples:
-
-* QNX nodes;
-* processes;
-* threads/tasks;
-* IPC;
-* synchronisation.
-
-### Physical demonstration environment
-
-Examples:
-
-* laptops;
-* PCs;
-* VMs;
-* QNX targets.
-
-One logical controller does NOT automatically equal one QNX node.
-
-One QNX node does NOT automatically equal one physical computer.
-
-Do not lock the project into such mappings unless there is a reason.
+Avoid:
+- `Railway Controller`
+- `RL1 Process`
+- `Sensor Handler`
 
 ---
 
-# 5. Distinguish Facts From Decisions
+## Goal
 
-For every important item, classify it as one of:
+Write **one concise sentence** describing the successful outcome of the use case.
 
-* **Official Requirement**
-* **Lecturer Clarification**
-* **Team Design Decision**
-* **Engineering Assumption**
-* **Proposed HD Enhancement**
-* **Needs Lecturer Confirmation**
+Describe WHAT must be achieved, not HOW the software implements it.
 
-Do not turn assumptions into requirements.
-
-Do not invent exact numbers simply to make the document look complete.
-
-For example, if train detection lead time is not specified, do not silently state:
-
-> Train is detected exactly 60 seconds before arrival.
-
-Instead, either:
-
-* derive a justified value;
-* propose a value and label it as an assumption;
-* or mark it as an open design decision.
+Do not repeat the Description.
 
 ---
 
-# 6. Design the Project
+## Primary Actors
 
-After understanding all sources, develop the actual system.
+Identify the external actor that initiates the interaction or whose goal drives the use case.
 
-The design should consider the following areas.
-
-These are not mandatory features; evaluate them and select what forms the strongest coherent system.
-
-## Traffic operation
-
-Consider:
-
-* fixed-time traffic sequences;
-* peak-hour traffic behaviour;
-* off-peak behaviour;
-* sensor-driven operation;
-* configurable timing;
-* road priority;
-* turning movements;
-* right-turn arrows if justified;
-* intersection coordination;
-* green-wave behaviour;
-* congestion management.
+Do NOT automatically list `C1`, `Lx`, or `RLx` as actors when the whole distributed system is the system boundary.
 
 ---
 
-## Pedestrian operation
+## Secondary Actors
 
-Consider:
+List external actors/resources that participate in or support the interaction but do not initiate the primary goal.
 
-* pedestrian buttons;
-* request latching;
-* pedestrian WALK signal;
-* pedestrian DON'T WALK signal;
-* minimum crossing time;
-* interaction with traffic phases;
-* interaction with railway pre-emption;
-* what happens if multiple pedestrian requests occur.
+Use `None` when appropriate.
+
+Do not populate this field simply to make the specification appear more detailed.
 
 ---
 
-## Railway operation
+## Description
 
-Consider the complete lifecycle:
+Provide a concise **1–2 sentence overview** explaining:
 
-1. train detected;
-2. railway controller informed;
-3. neighbouring road controllers informed;
-4. road traffic cleared if necessary;
-5. flashing warnings activate;
-6. boom gates close;
-7. gate state verified;
-8. train receives permission to proceed;
-9. train passes;
-10. crossing reopens;
-11. traffic returns to normal.
+- the context;
+- what behaviour is covered;
+- the general outcome.
 
-Also define abnormal behaviour such as:
-
-* boom-gate failure;
-* train signal failure if relevant;
-* crossing unable to secure;
-* communication failure.
+Do not repeat the Goal or reproduce the Basic Course.
 
 ---
 
-## Railway congestion management
+## Pre-conditions
 
-Use the lecturer's clarification seriously.
+State only conditions that must already be true before the use case begins.
 
-When the railway crossing is closed, traffic should not simply continue being directed toward the blocked crossing.
-
-Determine a reasonable strategy for:
-
-* suppressing movements toward the crossing;
-* allowing alternative turning movements;
-* avoiding queues extending back into upstream intersections;
-* coordinating adjacent intersections.
-
-Do not describe this merely as "traffic rerouting" unless the traffic-light system can realistically influence that movement.
-
-Clearly state what the lights can actually accomplish.
-
----
-
-## Central control
-
-Define what the Central Controller can do.
-
-Possible responsibilities include:
-
-* monitor all local controllers;
-* receive state-change events;
-* display current light states;
-* receive faults;
-* display railway state;
-* change operating mode;
-* modify timing parameters;
-* request sequence changes;
-* issue override commands;
-* observe connection health.
-
-Also explicitly define what Central **cannot** do.
-
-The system must preserve local-controller authority over individual physical signals.
-
----
-
-## Local autonomy
-
-Each local controller should have clearly defined independent behaviour.
-
-Determine what happens when:
-
-* Central is unavailable;
-* communication drops;
-* commands stop arriving;
-* stale data is received;
-* another controller becomes unreachable.
-
-Local controllers should retain safe operation where required.
-
----
-
-# 7. Define the Full Project Feature Set
-
-After analysis, classify proposed features into:
-
-## Core Features
-
-Features required for the system to satisfy the assignment.
-
-## HD-Target Features
-
-Features that significantly strengthen:
-
-* real-time reasoning;
-* distributed coordination;
-* adaptability;
-* reliability;
-* safety;
-* demonstration quality.
-
-## Optional / Stretch Features
-
-Useful features that may be implemented only if time permits.
-
-## Rejected Features
-
-Ideas considered but intentionally excluded because they:
-
-* add unnecessary complexity;
-* provide little assessment value;
-* cannot be realistically demonstrated;
-* conflict with the architecture;
-* are too risky for the implementation schedule.
-
-Explain the reasoning for these classifications.
-
----
-
-# 8. Define the Complete System Behaviour
-
-The project specification must describe how the system behaves under important scenarios.
-
-At minimum, consider:
-
-### Normal operation
-
-* normal fixed timing;
-* normal sensor-driven operation.
-
-### Pedestrian request
-
-Example concept:
-
-`button press → request stored → safe phase reached → WALK → clearance → normal traffic resumes`
-
-### Vehicle sensor event
-
-Explain how detected demand affects the local sequence.
-
-### Train approaching
-
-Define the entire system response.
-
-### Train currently occupying crossing
-
-Define how road traffic behaves.
-
-### Railway crossing reopening
-
-Define recovery to normal traffic behaviour.
-
-### Boom-gate failure
-
-Define:
-
-* train signal response;
-* road traffic response;
-* Central notification;
-* recovery requirements.
-
-### Central timing update
-
-Define how timing changes are requested and safely adopted.
-
-### Central override
-
-Define what an override is allowed to change and how normal operation resumes afterward.
-
-### Communication loss
-
-Define behaviour when a local controller loses contact with Central.
-
-### Local controller communication with neighbouring controllers
-
-Determine whether this is required and, if so, what information is exchanged.
-
----
-
-# 9. Define System Modes
-
-Determine the useful operating modes for the final design.
-
-Do not automatically use every possible mode.
-
-Possible examples include:
-
-* PEAK_FIXED;
-* OFF_PEAK_SENSOR;
-* RAILWAY_PREEMPTION;
-* CENTRAL_OVERRIDE;
-* DEGRADED_LOCAL;
-* FAULT_SAFE.
-
-Choose an appropriate set.
-
-For each mode specify:
-
-* purpose;
-* entry condition;
-* behaviour;
-* permitted commands;
-* exit condition;
-* priority relative to other modes.
-
-If railway or safety behaviour must override normal traffic operation, make that priority explicit.
-
----
-
-# 10. Define Safety Rules and Invariants
-
-Create explicit system-level safety rules.
-
-Examples of the type of rules required:
-
-* conflicting vehicle movements must never receive green simultaneously;
-* pedestrian WALK must never conflict with an active vehicle movement through that crossing;
-* unsafe crossing state must result in STOP for the train;
-* local intersection operation must not freeze because Central becomes unavailable;
-* transitions must include appropriate clearance intervals.
-
-Do not simply copy these examples.
-
-Determine the complete set appropriate for the chosen design.
-
-These safety rules should later drive state charts and testing.
-
----
-
-# 11. Define Sensors and Actuators
-
-Create a complete proposed inventory.
-
-For every sensor define:
-
-* name;
-* location;
-* physical purpose;
-* controller that owns it;
-* data/event generated;
-* why it is realistic;
-* how it may be simulated during demonstration.
-
-Potential sensors may include:
-
-* vehicle detectors;
-* pedestrian buttons;
-* train approach detectors;
-* boom-gate state sensors.
-
-Only include realistic and useful sensors.
-
-For every actuator define:
-
-* owning controller;
-* possible states;
-* safe state.
-
-Potential actuators include:
-
-* traffic signals;
-* turn arrows;
-* pedestrian signals;
-* boom gates;
-* railway flashing lights;
-* train signals.
-
----
-
-# 12. Define Controller Responsibilities
-
-Create a responsibility specification for each controller class.
-
-At minimum:
-
-## Central Controller
-
-Define:
-
-* inputs;
-* outputs;
-* commands;
-* monitoring responsibilities;
-* limitations.
-
-## Intersection Local Controller
-
-Define:
-
-* controlled devices;
-* local sensors;
-* traffic logic;
-* pedestrian logic;
-* railway information it consumes;
-* fallback behaviour;
-* Central interaction.
-
-## Railway-Crossing Local Controller
-
-Define:
-
-* train detection;
-* boom-gate control;
-* flashing-light control;
-* train signal;
-* crossing state;
-* failure handling;
-* information shared with road controllers;
-* Central reporting.
-
-If different railway crossings need different behaviour, explain why.
-
----
-
-# 13. Define Controller Relationships
-
-Specify all meaningful logical communication paths.
-
-For example:
-
-`Central ↔ Intersection Controller`
-
-`Central ↔ Railway Controller`
-
-`Railway Controller → Nearby Intersection Controllers`
-
-`Neighbouring Intersection Controller ↔ Intersection Controller`
-
-Only include communication paths that are actually justified.
-
-For each relationship explain:
-
-* what information needs to move;
-* why;
-* whether it is command, status, event, acknowledgement, or fault;
-* whether the communication is safety-relevant;
-* expected behaviour if communication fails.
-
-Do NOT design actual C structs yet unless necessary.
-
-This is still a system-level specification.
-
----
-
-# 14. Real-Time Requirements
-
-Identify the actual real-time characteristics of the design.
-
-For every important event, describe:
-
-* trigger;
-* expected response;
-* relative urgency;
-* whether a deadline exists;
-* whether the event is periodic or asynchronous;
-* what happens if the response is late.
-
-Examples may include:
-
-* traffic phase timers;
-* pedestrian crossing intervals;
-* train approach warning;
-* railway crossing closure;
-* status updates;
-* heartbeat/connection detection;
-* sensor input;
-* emergency override.
-
-If exact numerical deadlines are not yet known, specify that they need to be derived rather than inventing numbers.
-
----
-
-# 15. Traffic Timing Philosophy
-
-The official topology does not provide final signal timings.
-
-Develop a methodology for choosing them.
-
-Consider:
-
-* real intersection modelling;
-* road distances;
-* expected vehicle speed;
-* main-road priority;
-* peak/off-peak demand;
-* intersection-to-intersection travel time;
-* railway-crossing proximity;
-* pedestrian crossing duration.
-
-If exact measurements require external research or lecturer confirmation, state this clearly.
-
-Do not fabricate realistic-looking values without justification.
-
----
-
-# 16. Real-World Reference
-
-Determine whether the project should be based on:
-
-* the provided abstract topology;
-* a real-world intersection/network mapped onto that topology;
-* or the provided topology enhanced using realistic measurements.
-
-Recommend the strongest option for an HD-level project.
-
-If changing the provided topology would require lecturer approval, flag it clearly.
-
----
-
-# 17. Demonstration Design
-
-The project must eventually be demonstrated.
-
-Therefore define **demonstration scenarios alongside the system design**.
-
-For every important feature, determine how an assessor could visibly verify it.
-
-Potential scenarios include:
-
-* normal traffic operation;
-* pedestrian button press;
-* vehicle sensor event;
-* mode switch;
-* timing update;
-* approaching train;
-* railway pre-emption;
-* boom-gate failure;
-* train STOP signal;
-* Central communication failure;
-* local autonomous recovery;
-* Central override;
-* congestion response.
-
-Where keyboard input is used to simulate sensors, propose a clear key mapping.
+They must be specific system states where possible.
 
 Example:
 
-`T1` → Train approaching crossing 1
+`RC1 is OPEN and its railway controller is operational.`
 
-`P1N` → Pedestrian request on north side of I1
+Do NOT confuse a trigger with a pre-condition.
 
-However, develop a sensible final scheme rather than copying these examples automatically.
+For example:
 
-The specification should describe **what will be demonstrated**, not implementation code.
+`A train is detected approaching RC1`
 
----
+is normally a trigger, not a pre-condition.
 
-# 18. Keep the Project Implementable
-
-All design decisions must eventually be feasible using:
-
-* QNX;
-* C or C++;
-* QNX IPC;
-* QNX synchronisation mechanisms;
-* multiple processes;
-* multiple QNX nodes.
-
-However, do NOT start writing code.
-
-Do NOT prematurely decide implementation details such as exact C structs, filenames, functions, mutex placement, or thread APIs unless they are necessary to validate architectural feasibility.
-
-The objective right now is to finish the **system design**.
+Avoid trivial conditions such as "the system is powered on" unless they are genuinely relevant.
 
 ---
 
-# 19. Questions and Unresolved Decisions
+## Triggers
 
-You are allowed to ask me questions.
+Specify the concrete event that starts the use case.
 
-However, do not ask dozens of low-value questions like the current `idea.md`.
+Examples:
 
-Only ask when a decision:
+- a pedestrian button is pressed;
+- a train-approach sensor becomes active;
+- an operator submits a mode-change request;
+- vehicle demand becomes present.
 
-* materially changes system behaviour;
-* changes project scope;
-* affects architecture;
-* affects implementation difficulty;
-* affects demonstration;
-* could significantly affect the grade;
-* cannot be confidently resolved from the lecturer material.
-
-When asking:
-
-1. state the unresolved issue;
-2. explain why it matters;
-3. give the realistic options;
-4. explain the trade-offs;
-5. recommend one option;
-6. ask me to confirm.
-
-Batch related questions.
-
-If you can make a reasonable recommendation yourself, include the recommendation in the specification and label it **Proposed — Awaiting Confirmation** rather than stopping all work.
+Keep the trigger separate from the pre-conditions.
 
 ---
 
-# 20. Required Deliverable: `PROJECT_SPECIFICATION.md`
+# 5. Basic Course of Events
 
-Create or rewrite:
+This is the most important part of the specification.
 
-`PROJECT_SPECIFICATION.md`
+Write the **normal successful path** as numbered chronological steps.
 
-This is the main output of this task.
+Example structure:
 
-It should contain at least the following sections:
+1. The external actor initiates the request.
+2. The system detects/receives the event.
+3. The system validates the applicable conditions.
+4. The system performs the required safe transition.
+5. The system reports or exposes the resulting state.
+6. Normal operation resumes or the requested service completes.
 
-# Traffic Light Control System — Project Specification
+Each step should describe meaningful:
 
-## 1. Project Vision
+**actor/input action → observable system response**
 
-Explain in plain engineering language what system we are building and what makes the chosen solution strong.
+where appropriate.
 
-## 2. Source of Requirements
+### Do NOT:
 
-Summarise which requirements come from the official brief and which important clarifications come from the lecturer.
+- put failure branches inside the Basic Course;
+- write pseudo-code;
+- describe QNX APIs;
+- mention `MsgSend()`, channels, process IDs, structs, threads, etc.;
+- expose unnecessary implementation details;
+- create artificial steps simply to make the flow longer.
 
-## 3. Design Goals
+Section 3 specifies **system behaviour**, not low-level implementation.
 
-Define the major goals of the system.
-
-## 4. Scope
-
-### 4.1 Full Conceptual System
-
-### 4.2 Planned Proof of Concept
-
-### 4.3 Optional Scope
-
-## 5. Physical Network
-
-Define the roads, intersections, railway crossings and relevant topology.
-
-## 6. System Components
-
-Include all major physical and logical components.
-
-## 7. Controller Architecture
-
-Define all logical controllers and responsibilities.
-
-## 8. Sensors
-
-Define selected sensors and justification.
-
-## 9. Actuators and Signals
-
-Define traffic, pedestrian and railway outputs.
-
-## 10. Operating Modes
-
-Fully define the chosen modes and mode priority.
-
-## 11. Normal Traffic Behaviour
-
-Define vehicle control logic conceptually.
-
-## 12. Pedestrian Behaviour
-
-Define the complete pedestrian interaction model.
-
-## 13. Railway Behaviour
-
-Define complete normal railway-crossing behaviour.
-
-## 14. Railway Pre-emption and Traffic Clearing
-
-Define how approaching trains influence nearby traffic.
-
-## 15. Railway Congestion Management
-
-Define how the system prevents traffic accumulation near closed crossings.
-
-## 16. Failure and Safety Behaviour
-
-Include all selected failure cases and safe responses.
-
-## 17. Central Controller Behaviour
-
-Define monitoring, commands and override.
-
-## 18. Local Autonomy
-
-Define behaviour without Central.
-
-## 19. Controller Coordination
-
-Define information exchange between controllers.
-
-## 20. Timing and Coordination Strategy
-
-Define how timings will be derived and coordinated.
-
-## 21. Real-Time Requirements
-
-Identify timing-critical events and priorities.
-
-## 22. Safety Invariants
-
-List rules that must never be violated.
-
-## 23. Feature Classification
-
-### Core
-
-### HD-Target
-
-### Stretch
-
-### Rejected / Deferred
-
-## 24. Demonstration Scenarios
-
-Define how each important project claim will eventually be demonstrated.
-
-## 25. Simulation Inputs
-
-Define proposed keyboard/simulated sensor events where appropriate.
-
-## 26. Assumptions
-
-Maintain a clear list of all assumptions.
-
-Each assumption should include:
-
-* assumption;
-* reason;
-* design consequence;
-* whether lecturer confirmation is needed.
-
-## 27. Open Design Decisions
-
-Only unresolved high-impact decisions belong here.
-
-## 28. Questions for Team / Lecturer
-
-Separate questions that can be answered internally from questions requiring lecturer confirmation.
-
-## 29. Traceability
-
-For major features, indicate whether they originated from:
-
-* official specification;
-* lecturer clarification;
-* team design;
-* HD enhancement.
-
-## 30. Final Proposed System Summary
-
-Provide a concise but complete description of the system after all current decisions.
+IPC implementation belongs in Section 5.
 
 ---
 
-# 21. Quality Standard for the Specification
+# 6. Alternative Paths
 
-The file should be detailed enough that another engineer could read only:
+Alternative Paths must describe meaningful:
 
-`PROJECT_SPECIFICATION.md`
+- deviations;
+- exceptions;
+- fault cases;
+- safety responses;
+- unavailable conditions.
 
-and understand:
+Where possible, reference the Basic Course step where the branch occurs.
 
-* exactly what we intend to build;
-* why each major feature exists;
-* how the whole system behaves;
-* what each controller owns;
-* how railway and road traffic interact;
-* what occurs during failures;
-* what assumptions remain;
-* what makes the project HD-level;
-* what will eventually be demonstrated.
+Use this format:
 
-Do not fill the file with generic textbook explanations.
+**A1 — Gate confirmation failure (Step 5):**  
+If the required `CLOSED` confirmation is not received, the system keeps the train signal at `STOP`, enters the applicable safe state, reports the fault, and terminates the normal crossing sequence.
 
-Every section should relate directly to **our traffic-light project**.
+**A2 — ... (Step X):**  
+...
 
-Avoid vague statements such as:
+State what happens after the alternative:
 
-> "The system should be safe and efficient."
+- return to Step X;
+- resume normal operation;
+- remain in a safe state;
+- terminate the use case.
 
-Instead specify what safety or efficiency means in this system.
+Do NOT write vague alternatives such as:
 
----
+`Gate failure → stop train.`
 
-# 22. Do Not Produce the Initial Design Report Yet
-
-Do NOT structure the output around the assignment-report headings simply because an Initial Design Report is due.
-
-The report will be generated later **from this project specification**.
-
-The conceptual flow must be:
-
-`Official Requirements + Lecturer Clarifications`
-
-↓
-
-`PROJECT_SPECIFICATION.md`
-
-↓
-
-`Initial Design Report`
-
-↓
-
-`Detailed Architecture`
-
-↓
-
-`QNX Implementation`
-
-↓
-
-`Testing`
-
-↓
-
-`Technical Demonstration`
-
-The project design comes first.
+The behaviour and resulting state must be explicit.
 
 ---
 
-# 23. Final Working Principle
+# 7. Post-conditions
 
-You are not helping me "answer an assignment."
+Describe the observable system state after the use case completes.
 
-You are helping me **design the system that the assignment will document and demonstrate**.
+Do NOT simply repeat the final Basic Course step.
 
-Whenever there is a choice between:
+Where relevant, account for both successful and safe exceptional outcomes.
 
-**something that looks sophisticated in the report**
+Example:
 
-and
+- The requested pedestrian service has completed and its pending request is cleared.
+- The crossing has returned to `OPEN`, or remains in a documented safe fault state if normal reopening cannot complete.
 
-**something that makes the actual system stronger, more coherent, safer, more demonstrable, and easier to defend**
+Post-conditions must remain consistent with the project's actual state model.
 
-choose the second.
+---
 
-Build one coherent HD-level project, not a collection of unrelated features.
+# 8. Business Rules
 
-After reading all source files, begin developing `PROJECT_SPECIFICATION.md`.
+Use this field for the safety constraints, invariants, policies, and design rules governing the use case.
 
-If major design decisions remain uncertain, make your best engineering recommendation, mark them clearly, and ask me only the high-impact questions needed to finalise them.
+Where possible, explicitly trace them to the finalized System Assumptions.
+
+Example:
+
+**BR-1:** The train signal may show `PROCEED` only while the relevant gates are sensor-confirmed `CLOSED` (`RC-06`).
+
+**BR-2:** Railway fault response must not depend on Central connectivity (`RC-10`).
+
+**BR-3:** Yellow and all-red clearance intervals cannot be bypassed (`TL-01`).
+
+Do NOT invent a new business rule merely to fill the field.
+
+If an existing assumption already defines the rule, reference it.
+
+---
+
+# 9. Traceability Is Important
+
+The use cases must form part of one coherent system design.
+
+Maintain traceability between:
+
+`Project Requirement`
+→ `System Assumption`
+→ `Use Case`
+→ `State Chart`
+→ `Sequence Diagram`
+→ `Implementation Architecture`
+
+The use cases should therefore be suitable for later mapping to:
+
+- Section 4.1 State Charts;
+- Section 4.2 Sequence / Behavioural Diagrams.
+
+Do NOT introduce behaviour in Section 3 that has no support in the finalized Project Specification or assumptions.
+
+Likewise, identify important finalized system behaviour that is not represented by any proposed use case.
+
+---
+
+# 10. Writing Style
+
+Use professional engineering-report language.
+
+Prioritise:
+
+- precision;
+- deterministic behaviour;
+- concise wording;
+- clear system boundaries;
+- observable behaviour;
+- traceability;
+- safety constraints.
+
+Avoid:
+
+- unnecessary prose;
+- marketing language;
+- vague claims;
+- repetitive explanations;
+- implementation-level detail;
+- restating the same information across Goal, Description, Basic Course, and Post-conditions.
+
+A longer use case is NOT automatically better.
+
+Every sentence must add useful behavioural information.
+
+---
+
+# 11. Important Project Principles
+
+While reading the repository, preserve the finalized architecture, particularly the distinction between:
+
+- Central coordination and local authority;
+- intersection controllers and railway controllers;
+- normal traffic modes and safety/overlay states;
+- ordinary vehicle-presence detection and congestion/queue detection;
+- railway pre-emption and normal traffic scheduling;
+- safe local operation and Central connectivity;
+- high-level Central requests and direct hardware actuation.
+
+Do not allow a use case to accidentally give `C1` direct authority over physical signals, boom gates, flashers, or train signals if the finalized architecture assigns that authority to local controllers.
+
+Similarly, safety-critical actions must remain local where specified by the project.
+
+---
+
+# 12. Workflow
+
+Do NOT immediately generate a large number of final use cases.
+
+First:
+
+1. Read the project files.
+2. Identify the important externally observable system behaviours.
+3. Propose a concise list of candidate use cases.
+4. For each candidate, state:
+   - proposed ID;
+   - name;
+   - primary actor;
+   - one-sentence purpose;
+   - which project assumptions it traces to.
+5. Check whether any candidates overlap and should be merged.
+6. Check whether any important behaviour is missing.
+7. Check whether any proposed use case is actually an internal implementation behaviour rather than a genuine use case.
+
+Then present the proposed use-case set to me for review.
+
+**Do not write the full specification tables until I approve the use-case list.**
+
+---
+
+# 13. After Approval
+
+Once I approve the use-case list, develop each use case using exactly:
+
+| Field | Description |
+|---|---|
+| **Use Case** | `UC-XX — ...` |
+| **Goal** | ... |
+| **Primary Actors** | ... |
+| **Secondary Actors** | ... |
+| **Description** | ... |
+| **Pre-conditions** | ... |
+| **Triggers** | ... |
+| **Basic Course of Events** | 1. ... <br> 2. ... <br> 3. ... |
+| **Alternative Paths** | **A1 — ... (Step X):** ... <br><br> **A2 — ... (Step Y):** ... |
+| **Post-conditions** | ... |
+| **Business Rules** | **BR-1:** ... (`XX-XX`) <br> **BR-2:** ... (`XX-XX`) |
+
+Before finalising each use case, perform a consistency check against the Project Specification and System Assumptions.
+
+If you encounter an unresolved design decision that materially affects the behaviour, **ask me rather than inventing an answer**.
