@@ -23,7 +23,7 @@ Vậy phân loại này không dựa trên "hướng" (cả 2 loại đều có 
 
 Cách đặt tên này cho đúng 5 con đường và 6 giao lộ [REQ], biến lát cắt Pass-minimum (`I1–I2–RC1`) thành đúng 1/3 lặp lại của toàn mạng lưới (thoả "the complete design should duplicate this part" [REQ]), và tách bạch rõ **arterial** (ưu tiên xe chạy thẳng qua, ứng viên cho phối hợp green-wave) khỏi **connector** (lưu lượng cơ bản thấp hơn, nhưng lại là những con đường trực tiếp chịu ảnh hưởng của railway pre-emption và rủi ro ùn tắc) — trả lời trực tiếp cho câu F5 trong `idea.md` về sự khác biệt giữa traffic priority và coordination sensitivity.
 
-**Quy ước lái xe [TEAM, chốt ngày 2026-08-22]:** dự án lấy bối cảnh **Việt Nam, đi bên phải (right-hand traffic)** — team tham chiếu thực tế các giao lộ có đèn mũi tên tại Quận 2, TP.HCM thay vì ví dụ Melbourne trong brief gốc (brief chỉ khuyến khích dựa trên 1 giao lộ thật, không bắt buộc chọn giao lộ nào). Với đi bên phải: dải phân cách (median) luôn nằm bên trái theo hướng di chuyển, lề đường/vỉa hè luôn nằm bên phải.
+**Quy ước lái xe [TEAM, chốt ngày 2026-08-22]:** dự án lấy bối cảnh **Việt Nam, đi bên phải (right-hand traffic)** theo Điều 10 Luật Trật tự, an toàn giao thông đường bộ số 36/2024/QH15. Ví dụ bối cảnh cụ thể là giao lộ có đèn tín hiệu Mai Chí Thọ–Đồng Văn Cống tại khu vực Quận 2 cũ, với layout được ghi nhận trong H. D. Nguyen, *Capacity Analysis of Signalised Intersections in Motorcycle Dependent Cities*, Hình A-7. Đây chỉ là reference cho bối cảnh thực tế, không phải tuyên bố topology hoặc timing của project được đo tại site này. Với đi bên phải, dải phân cách nằm bên trái và lề đường/vỉa hè nằm bên phải theo hướng di chuyển.
 
 Mọi con đường đều 2 chiều với 2 làn mỗi chiều [REQ]. Cách chia làn Core **[TEAM]**: làn sát dải phân cách = đi thẳng + rẽ trái (permissive, nhường xe ngược chiều), làn sát lề đường = đi thẳng + rẽ phải (permissive); không có đèn mũi tên rẽ riêng trong thiết kế Core. Xem `SYSTEM_DIAGRAMS.vi.md`, **Diagram 2**, để biết bố cục làn/hướng đi theo đúng quy ước đi bên phải; xem **Mục 5b** ngay dưới đây cho phân tích đầy đủ và phương án thay thế (làn riêng + đèn mũi tên protected) đã được cân nhắc kỹ nhưng không đưa vào Core.
 
@@ -50,7 +50,7 @@ Team đặt câu hỏi: nếu làn trong vừa cho đi thẳng vừa cho rẽ tr
 
 ### Phương án B — 3 làn riêng biệt (trái/thẳng/phải), 3 đèn mũi tên, rẽ trái protected
 
-**Cách hoạt động:** mỗi approach có làn rẽ trái riêng (chỉ rẽ trái), làn đi thẳng riêng, làn rẽ phải riêng — mỗi làn có đèn mũi tên riêng. Rẽ trái CHỈ được phép khi đèn mũi tên trái xanh, lúc đó chiều đối diện đang đỏ (protected) — loại bỏ hoàn toàn điểm xung đột permissive-left. Đây là mô hình team quan sát được ở 1 số giao lộ Quận 2.
+**Cách hoạt động:** mỗi approach có làn rẽ trái riêng (chỉ rẽ trái), làn đi thẳng riêng, làn rẽ phải riêng — mỗi làn có đèn mũi tên riêng. Rẽ trái CHỈ được phép khi đèn mũi tên trái xanh, lúc đó chiều đối diện đang đỏ (protected) — loại bỏ hoàn toàn điểm xung đột permissive-left. Đây là alternative protected-turn tổng quát, không được trình bày như một đặc điểm đã đo tại giao lộ contextual reference.
 
 **Ưu điểm:** loại bỏ hẳn rủi ro va chạm tại điểm rẽ trái vì không còn phụ thuộc phán đoán tài xế; trực quan, dễ hiểu cho người lái.
 

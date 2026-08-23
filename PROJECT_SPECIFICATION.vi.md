@@ -53,4 +53,4 @@ Vậy: "`I1`" luôn có nghĩa là *giao lộ như một địa điểm*; "`L1`"
 
 ## Quy ước hướng đi đường bộ
 
-Team đặt bối cảnh thực tế của dự án ở **Việt Nam** (đi bên phải — right-hand traffic), tham chiếu ví dụ giao lộ có đèn mũi tên tại Quận 2 (TP.HCM) thay vì ví dụ Melbourne trong brief gốc. Chi tiết và hệ quả thiết kế ở [`spec-vi/02-mang-luoi-va-kien-truc.md`](spec-vi/02-mang-luoi-va-kien-truc.md), Mục 5 và 5b.
+Team đặt bối cảnh thực tế của dự án ở **Việt Nam** (đi bên phải — right-hand traffic), theo Điều 10 Luật Trật tự, an toàn giao thông đường bộ số 36/2024/QH15. Ví dụ bối cảnh được nêu cụ thể là giao lộ có đèn tín hiệu Mai Chí Thọ–Đồng Văn Cống tại khu vực Quận 2 cũ, với layout được ghi nhận trong luận án của H. D. Nguyen, Hình A-7. Đây chỉ là reference cho bối cảnh làn đường và tín hiệu thực tế, không phải tuyên bố rằng topology hoặc timing của đề được đo tại giao lộ đó. Chi tiết và hệ quả thiết kế ở [`spec-vi/02-mang-luoi-va-kien-truc.md`](spec-vi/02-mang-luoi-va-kien-truc.md), Mục 5 và 5b.
