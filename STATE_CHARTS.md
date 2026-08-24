@@ -28,11 +28,6 @@ stateDiagram-v2
     PEAK_FIXED --> mode_selection : pending mode change [safe phase boundary]
     OFF_PEAK_SENSOR --> mode_selection : pending mode change [safe phase boundary]
 
-    note right of mode_selection
-        Re-evaluated at every safe boundary, so a pending
-        change that is no longer current simply re-selects
-        the same mode instead of switching unnecessarily.
-    end note
 ```
 
 ## 4.1.2 SC-01B — PEAK_FIXED Phase Detail
@@ -48,13 +43,20 @@ stateDiagram-v2
     accDescr: Fixed 90 second two-phase vehicle-signal cycle used while PEAK_FIXED is the active mode.
     direction LR
 
-    [*] --> ARTERIAL_GREEN
+    state boundary_after_arterial <<choice>>
+    state boundary_after_connector <<choice>>
+
+    [*] --> ARTERIAL_GREEN : startup or entry from SC-01A
     ARTERIAL_GREEN --> ARTERIAL_YELLOW : after 48 s
     ARTERIAL_YELLOW --> ALL_RED_A_TO_B : after 4 s
-    ALL_RED_A_TO_B --> CONNECTOR_GREEN : after 2 s
+    ALL_RED_A_TO_B --> boundary_after_arterial : after 2 s
+    boundary_after_arterial --> CONNECTOR_GREEN : [no mode change pending]
+    boundary_after_arterial --> [*] : [mode change pending] / return to SC-01A, next phase connector
     CONNECTOR_GREEN --> CONNECTOR_YELLOW : after 30 s
     CONNECTOR_YELLOW --> ALL_RED_B_TO_A : after 4 s
-    ALL_RED_B_TO_A --> ARTERIAL_GREEN : after 2 s
+    ALL_RED_B_TO_A --> boundary_after_connector : after 2 s
+    boundary_after_connector --> ARTERIAL_GREEN : [no mode change pending]
+    boundary_after_connector --> [*] : [mode change pending] / return to SC-01A, next phase arterial
 
     note right of ARTERIAL_GREEN
         Ordinary approach-presence sensors are monitored for
@@ -63,11 +65,6 @@ stateDiagram-v2
         54 s arterial + 36 s connector = 90 s.
     end note
 
-    note left of ALL_RED_B_TO_A
-        This cycle is exited to SC-01A only once the current
-        phase and its clearance complete (TL-04) — never
-        mid-phase, regardless of when a mode change is requested.
-    end note
 ```
 
 ## 4.1.3 SC-01C — OFF_PEAK_SENSOR Phase Detail
@@ -83,15 +80,22 @@ stateDiagram-v2
     accDescr: Demand-responsive two-phase vehicle-signal cycle used while OFF_PEAK_SENSOR is the active mode, including minimum and maximum green and the anti-starvation rule.
     direction LR
 
-    [*] --> ARTERIAL_GREEN
+    state boundary_after_arterial <<choice>>
+    state boundary_after_connector <<choice>>
+
+    [*] --> ARTERIAL_GREEN : startup or entry from SC-01A
     ARTERIAL_GREEN --> ARTERIAL_GREEN : every 4 s [arterial or latched pedestrian demand persists and green < 40 s] / extend 4 s
     ARTERIAL_GREEN --> ARTERIAL_YELLOW : [green >= 8 s and connector demand pending and (no arterial demand or green = 40 s)]
     ARTERIAL_YELLOW --> ALL_RED_A_TO_B : after 4 s
-    ALL_RED_A_TO_B --> CONNECTOR_GREEN : after 2 s
+    ALL_RED_A_TO_B --> boundary_after_arterial : after 2 s
+    boundary_after_arterial --> CONNECTOR_GREEN : [no mode change pending]
+    boundary_after_arterial --> [*] : [mode change pending] / return to SC-01A, next phase connector
     CONNECTOR_GREEN --> CONNECTOR_GREEN : every 4 s [connector or latched pedestrian demand persists and green < 40 s] / extend 4 s
     CONNECTOR_GREEN --> CONNECTOR_YELLOW : [green >= 8 s and (no connector demand or green = 40 s)]
     CONNECTOR_YELLOW --> ALL_RED_B_TO_A : after 4 s
-    ALL_RED_B_TO_A --> ARTERIAL_GREEN : after 2 s
+    ALL_RED_B_TO_A --> boundary_after_connector : after 2 s
+    boundary_after_connector --> ARTERIAL_GREEN : [no mode change pending]
+    boundary_after_connector --> [*] : [mode change pending] / return to SC-01A, next phase arterial
 
     note right of ARTERIAL_GREEN
         With no demand anywhere, the intersection simply has no
@@ -106,11 +110,6 @@ stateDiagram-v2
         most one further arterial session before it is served.
     end note
 
-    note left of ALL_RED_B_TO_A
-        This cycle is exited to SC-01A only once the current
-        phase and its clearance complete (TL-04) — never
-        mid-phase, regardless of when a mode change is requested.
-    end note
 ```
 
 ## 4.1.4 SC-02 — Generic Pedestrian-Signal State Chart
@@ -130,7 +129,9 @@ stateDiagram-v2
     REQUEST_LATCHED --> REQUEST_LATCHED : PED_REQUEST(side) [request already pending] / coalesce request
     REQUEST_LATCHED --> REQUEST_LATCHED : button remains active beyond diagnostic timeout / retain one request and report stuck-active fault
     REQUEST_LATCHED --> WALK : compatible vehicle phase begins / display WALK
+    WALK --> WALK : PED_REQUEST(side) / coalesce repeated request
     WALK --> FLASHING_DONT_WALK : WALK interval expires / begin pedestrian clearance
+    FLASHING_DONT_WALK --> FLASHING_DONT_WALK : PED_REQUEST(side) / coalesce repeated request
     FLASHING_DONT_WALK --> DONT_WALK : clearance interval expires / clear request and display DONT_WALK
 
     note right of REQUEST_LATCHED
@@ -193,7 +194,7 @@ stateDiagram-v2
 
 ## 4.1.6 SC-03B — Clear-Route Override Validation, Pending, and Renewal Detail
 
-This is the detail inside `SC-03A`'s `CENTRAL_OVERRIDE` box: how a `REQUEST_OVERRIDE(CLEAR_ROUTE)` is validated, optionally queued behind an in-progress pedestrian clearance, kept alive by renewal, and always bounded (default maximum 5 minutes, auto-expiring if not renewed). An override is bounded and auto-expiring, and it never truncates an in-progress pedestrian clearance.
+This is the detail inside `SC-03A`'s `CENTRAL_OVERRIDE` box: how a `REQUEST_OVERRIDE(CLEAR_ROUTE)` is validated, optionally queued behind an in-progress pedestrian clearance, kept alive by a valid renewal, and bounded to a maximum of 5 minutes. It expires automatically unless renewed, may be cancelled earlier, and never truncates an in-progress pedestrian clearance (`PA-09`, `PA-11`).
 
 ```mermaid
 ---
@@ -213,18 +214,16 @@ stateDiagram-v2
     OVERRIDE_PENDING --> ACTIVE : pedestrian clearance completes [request remains safe and valid] / ACK and apply at safe boundary
     OVERRIDE_PENDING --> [*] : request cancelled or expires before application / discard request, return to SC-03A NORMAL_OPERATION
 
-    ACTIVE --> ACTIVE : operator renews before expiry / restart the override timer
+    state renewal_validation <<choice>>
+    ACTIVE --> renewal_validation : RENEW_OVERRIDE(duration)
+    renewal_validation --> ACTIVE : [bounded and safe] / ACK, restart override timer
+    renewal_validation --> ACTIVE : [invalid, unsafe, or over limit] / NACK, retain current expiry
     ACTIVE --> [*] : duration expires or operator cancels / return to SC-03A NORMAL_OPERATION
-
-    note right of OVERRIDE_PENDING
-        The pedestrian sequence itself is never truncated
-        (SC-02) — the override simply waits.
-    end note
 
     note right of ACTIVE
         Bounded and auto-expiring: default maximum 5 minutes,
-        renewed only by an explicit operator request, never
-        indefinitely by default.
+        renewed only after an explicit request passes local
+        duration and safety validation (PA-11).
     end note
 ```
 
@@ -302,24 +301,16 @@ stateDiagram-v2
     TRAIN_PRESENT --> FAULT : gate state contradicts CLOSED / set STOP and report fault
     TRAIN_PRESENT --> OPENING : all occupancy windows expire / set STOP and command gates up
 
-    state "CLOSING (= SC-04A CLOSING)" as CLOSING_REF
-    OPENING --> CLOSING_REF : TRAIN_APPROACHING(direction) / stop opening, command gates down, and register occupancy window
+    state "RECLOSING" as RECLOSING
+    state reclose_confirmation <<choice>>
+    OPENING --> RECLOSING : TRAIN_APPROACHING(direction) / stop opening, keep flashers active, register occupancy window, command gates down
+    RECLOSING --> reclose_confirmation : gate reports received or closing deadline reached
+    reclose_confirmation --> CLOSED : [both gates confirmed CLOSED before deadline] / set relevant train signal to PROCEED
+    reclose_confirmation --> FAULT : [confirmation missing or contradictory at deadline] / hold STOP and report fault
     OPENING --> OPEN : both gates confirmed OPEN / stop flashers and broadcast OPEN
     OPENING --> FAULT : gates fail to confirm OPEN / hold last confirmed safe outputs and report fault
 
     FAULT --> OPEN : verified repair and accepted local fault-clear request [crossing safe] / resume normal operation
-
-    note left of TRAIN_PRESENT
-        A gate must not reopen while any occupancy window is
-        still active, including one from a second or third train
-        (RC-04, Invariant #8).
-    end note
-
-    note right of CLOSING_REF
-        A train approaching while the gates are still opening
-        immediately re-closes them, re-joining SC-04A's CLOSING
-        state, rather than completing the reopen.
-    end note
 
     note right of OPENING
         Reopening is timer-based on the occupancy window, not on
