@@ -52,16 +52,18 @@ Replace the unconditional `ACTIVE → ACTIVE` renewal self-loop with explicit va
 
 SC-03B's description, guards, actions, and notes will cite the new `PA-11` rather than the internal `PROJECT_SPECIFICATION.md`.
 
-### 2.4 Restore renewal consistency in SD-07
+### 2.4 Align SD-07 acknowledgement and renewal behaviour
 
-Add a concise optional renewal branch to `SD-07` while the override is active:
+Retain the renewal branch that now exists in `SD-07`, but correct its acknowledgement and validation order so it matches SC-03B:
 
-1. the operator requests renewal through `C1`;
-2. `Lx` revalidates the requested duration and current safety conditions;
-3. `Lx` returns `ACK` and restarts the timer, or returns `NACK` and retains the existing expiry;
-4. expiry, cancellation, railway pre-emption, or a local fault still terminates the override safely.
+1. an initial request that is safe but waiting for pedestrian clearance receives `ACK(accepted, pending clearance)` promptly rather than remaining unacknowledged;
+2. after clearance completes, `Lx` revalidates the retained request before applying it;
+3. a renewal request is revalidated against its duration and current safety conditions;
+4. a valid renewal receives `ACK` and restarts the timer;
+5. an invalid renewal receives `NACK` and leaves the existing expiry unchanged;
+6. expiry, cancellation, railway pre-emption, or a local fault terminates the override safely.
 
-The sequence diagram will cite `PA-11` so its behaviour matches SC-03B and UC-08.
+The sequence diagram will cite `PA-11` so its behaviour matches SC-03B and UC-08. The in-diagram traceability-gap note will be removed once `PA-11` exists.
 
 ### 2.5 Make the SC-01 sub-diagram handoffs explicit
 
