@@ -51,6 +51,8 @@ sequenceDiagram
     opt no demand remains at the rest boundary
         Lx->>Sig: hold arterial GREEN
     end
+
+    Note over Lx: a pending connector demand cannot be starved past one further arterial session (DP-06)
 ```
 
 ## 4.2.2 SD-02 — Serve a Pedestrian Crossing Request
@@ -81,6 +83,10 @@ sequenceDiagram
         Lx->>Lx: coalesce repeated request
     end
 
+    opt button remains active beyond diagnostic timeout
+        Lx->>Lx: retain the one latched request and report a stuck-active fault
+    end
+
     alt compatible vehicle phase is available
         Lx->>VS: begin compatible vehicle phase
     else railway restriction blocks that phase
@@ -89,14 +95,15 @@ sequenceDiagram
     end
 
     Lx->>PS: display WALK
+
+    opt a Central override request arrives during WALK or clearance
+        Note over Lx: the request is deferred or rejected, clearance is never truncated
+    end
+
     Lx->>PS: display FLASHING_DONT_WALK
     Lx->>PS: display DONT_WALK
     Lx->>Lx: clear pending request
     Lx->>VS: permit conflicting movement when otherwise eligible
-
-    opt button remains active beyond diagnostic timeout
-        Lx->>Lx: report stuck-active input fault
-    end
 ```
 
 ## 4.2.3 SD-03 — Configure and Apply an Arterial Coordination Profile
@@ -120,7 +127,7 @@ sequenceDiagram
     Op->>C1: submit SET_TIMING_PROFILE(profile)
     C1->>C1: validate profile structure and target chain
 
-    loop for each Lx in the selected arterial chain
+    loop for each Lx in the selected arterial chain, independently and concurrently
         C1->>Lx: SET_TIMING_PROFILE(parameters, assigned offset)
         Lx->>Lx: validate local timing and safety bounds
         alt parameters are valid
@@ -134,7 +141,18 @@ sequenceDiagram
         end
     end
 
+    Note over C1,Sig: worked example on R1 - L1 offset 0 s, L3 offset 21 s, L5 offset 45 s cumulative (TC-01, TC-02)
+
     C1-->>Op: display per-controller results
+
+    opt a controller's profile is missing or goes stale
+        Lx->>Lx: continue standalone fixed or sensor-driven timing without waiting for C1
+    end
+
+    opt railway pre-emption disrupts a coordinated intersection
+        Lx->>Lx: suspend only the conflicting coordinated movement for the restriction
+        Lx->>Lx: recover coordination through the next valid timing profile, no separate resynchronisation state
+    end
 
     opt operator requests a mode change
         Op->>C1: submit SET_MODE(mode)
@@ -205,10 +223,17 @@ sequenceDiagram
 
         RLx->>TS: STOP
         RLx->>BG: OPEN
-        GS-->>RLx: GATE_OPEN_CONFIRMED
-        RLx->>FL: STOP_FLASHING
-        RLx->>Lx: CROSSING_STATUS(OPEN)
-        RLx->>C1: CROSSING_STATUS(OPEN)
+        GS-->>RLx: gate-position status
+
+        alt both gates confirm OPEN
+            RLx->>FL: STOP_FLASHING
+            RLx->>Lx: CROSSING_STATUS(OPEN)
+            RLx->>C1: CROSSING_STATUS(OPEN)
+        else gates fail to confirm OPEN
+            RLx->>RLx: hold last confirmed safe outputs
+            RLx->>Lx: CROSSING_STATUS(FAULT)
+            RLx->>C1: FAULT_REPORT(gate confirmation)
+        end
     else confirmation is missing or contradictory
         par immediate local response
             RLx->>TS: hold STOP
@@ -217,6 +242,9 @@ sequenceDiagram
             RLx->>C1: FAULT_REPORT(gate confirmation)
         end
     end
+
+    Note over RLx: the approximately 45 s warning-to-arrival figure is a total budget, not the duration of one message
+    Note over RLx: reopening is timer-based on the occupancy window, not on the reserved exit sensor
 ```
 
 ## 4.2.5 SD-05 — Suppress and Drain Road Traffic Around a Railway Closure
@@ -249,6 +277,7 @@ sequenceDiagram
     Lx->>Sig: hold toward-crossing movement at RED
     Lx->>Sig: continue non-conflicting movements
     Q-->>Lx: QUEUE_WARNING(active or clear)
+    Note over Q,Lx: the same binary detector already feeds pre-emption suppression while the crossing is closed (CC-01)
 
     RLx->>Lx: CROSSING_STATUS(OPEN)
     Lx->>Q: request current binary status
@@ -345,20 +374,28 @@ sequenceDiagram
     Lx->>Ped: read pedestrian-clearance status
     Ped-->>Lx: current status
 
-    alt request is unsafe or conflicts with railway pre-emption
+    opt pedestrian clearance is active and can be safely deferred
+        Note over Lx: request retained, unacknowledged, until clearance completes
+        Ped-->>Lx: clearance complete
+        Lx->>Lx: revalidate the retained request
+    end
+
+    alt request is unsafe, conflicts with railway pre-emption, or pedestrian clearance cannot be safely deferred
         Lx-->>C1: NACK(reason)
         C1-->>Op: display rejection
     else request is accepted
         Lx-->>C1: ACK(accepted, pending safe boundary)
-
-        opt pedestrian clearance is active
-            Ped-->>Lx: clearance complete
-            Lx->>Lx: revalidate retained request
-        end
-
         Lx->>Sig: complete vehicle minimums and clearances
         Lx->>Sig: activate requested through-movement
         Lx-->>C1: STATUS(override active)
+
+        loop until the override expires or is cancelled
+            opt operator validly renews before expiry
+                Op->>C1: RENEW_OVERRIDE
+                C1->>Lx: RENEW_OVERRIDE
+                Lx->>Lx: restart the override timer
+            end
+        end
 
         alt override reaches its expiry time
             Lx->>Sig: terminate through mandatory clearance
@@ -372,6 +409,8 @@ sequenceDiagram
         Lx-->>C1: STATUS(override complete)
         C1-->>Op: display completion
     end
+
+    Note over Lx,C1: traceability gap - no assumption ID such as PA-11 yet documents the bounded 5-minute maximum, auto-expiry, and renewal rule in system_assumptions_tables.md
 ```
 
 ## 4.2.8 SD-08 — Monitor Controllers, Lose Central Link, and Resynchronise
@@ -419,9 +458,14 @@ sequenceDiagram
         Gx->>Ac: apply locally authorised output
     end
 
+    opt a railway event occurs while disconnected
+        Note over Gx: the full railway-protection sequence runs to completion with zero Central dependency (RC-10)
+    end
+
     alt communication remains unavailable
         Gx->>Gx: continue autonomous operation
     else communication is restored
+        Gx->>Gx: enter RESYNCHRONISING
         Gx->>C1: HEARTBEAT and complete current state
         C1-->>Gx: STATE_SYNC_ACCEPTED
         Gx->>Gx: exit DEGRADED_LOCAL
