@@ -1,274 +1,594 @@
-# Task: Create HD-Level Mermaid State Charts for the Distributed Traffic-Control System
+# Task: Create HD-Level Mermaid Behavioural Sequence Diagrams for the Distributed Traffic-Control System
 
-I am preparing Section 4.1, **Intersection State Charts**, for the EEET2588/EEET2687 Real-Time Systems Engineering Initial Design Report.
+I am preparing Section 4.2, **Behavioural Specifications**, for the EEET2588/EEET2687 Real-Time Systems Engineering Initial Design Report.
 
 The report requirement is:
 
-> “Provide State Charts describing the lights’ behavior at each intersection. You should include relevant State Chart(s) alongside your use cases.”
+> “Include behavioral specifications such as sequence diagram(s) or collaboration diagrams to map out the chronological flow of actions.”
 
-Create a concise but technically rigorous set of Mermaid state charts based on the finalised project repository:
+Create a concise but technically rigorous set of Mermaid sequence diagrams for the project repository:
 
 https://github.com/lucietran03/traffic-control-system
 
-## 1. Read the authoritative project sources
+Do not modify any repository files. Return the completed diagrams directly in the response.
 
-Before producing any diagram, read the latest versions of:
+## 1. Read the current project sources
 
-1. `PROJECT_SPECIFICATION.md`
+Fetch and read the latest repository version before drawing.
+
+Use:
+
+1. `RTS_Final Project.pdf`
+   - This is the official assignment brief and the source of client requirements.
+
 2. `system_assumptions_tables.md`
-3. `lecture_clarification.md`
-4. `SYSTEM_DIAGRAMS.md`
-5. `scenarios_and_written_specifications.md`, if present
+   - This contains the finalised design decisions, numeric parameters, safety constraints, and traceability IDs.
 
-Use this precedence if any wording conflicts:
+3. `scenarios_and_written_specifications.md`
+   - Use the latest approved ten-use-case version if it is available.
+   - If the repository version still contains only six use cases, state that it is outdated and use the ten-use-case baseline specified below.
 
-`PROJECT_SPECIFICATION.md`
-→ `system_assumptions_tables.md`
-→ `lecture_clarification.md`
-→ other files
+4. `PROJECT_SPECIFICATION.md`
+   - This is an internal consolidated design document.
+   - Use it to check architectural and behavioural consistency, but do not present it as an official external requirement source.
 
-Do not use README or working notes as authority when they conflict with these sources.
+5. `lecture_clarification.md`
+   - Use it only to interpret the brief.
+   - Any final team-selected behaviour should be traced through an assumption ID where available.
 
-Do not invent unresolved states, timings, signals, sensors, commands, or controller authority.
+6. `SYSTEM_DIAGRAMS.md`
+   - Use it for topology, physical locations, controller ownership, and naming.
 
-## 2. System boundary and controller responsibilities
+Use this reasoning precedence:
 
-Preserve these architecture rules:
+`Official RTS project brief`
+→ `Finalised system assumptions`
+→ `Final approved use cases`
+→ `Internal Project Specification`
+→ `Lecturer clarification notes`
+→ `Other working files`
 
-- `I1–I6` are physical intersections.
-- `L1–L6` are their intersection controllers.
-- `RC1–RC3` are physical railway crossings.
-- `RL1–RL3` are their railway controllers.
-- `C1` is the Central Controller.
-- Each `Lx` exclusively controls its own vehicle and pedestrian signals.
-- Each `RLx` exclusively controls its own gates, road-facing flashers, and train signals.
-- `C1` may monitor and send high-level requests but must never directly actuate physical signals.
-- Railway status flows from `RLx` to its two adjacent `Lx` controllers as read-only status.
-- `DEGRADED_LOCAL` is a connectivity/availability condition, not a hazard mode and not a replacement for `PEAK_FIXED` or `OFF_PEAK_SENSOR`.
+Do not silently resolve a genuine contradiction. Report any unresolved contradiction before drawing.
 
-## 3. Required diagrams
+## 2. Approved use-case baseline
 
-Produce the following five diagrams.
+Use this final order:
 
-### SC-01 — Generic Intersection Vehicle-Signal Phase Sequencer
+- `UC-01 — Serve Vehicle Demand`
+- `UC-02 — Serve Pedestrian Crossing Request`
+- `UC-03 — Coordinate Arterial Traffic Progression`
+- `UC-04 — Protect a Railway Crossing for an Approaching Train`
+- `UC-05 — Manage Road Traffic During and After a Railway Closure`
+- `UC-06 — Respond to a Railway Equipment Fault`
+- `UC-07 — Configure Traffic Operating Parameters`
+- `UC-08 — Apply a Bounded Clear-Route Override`
+- `UC-09 — Monitor Network Status and Faults`
+- `UC-10 — Continue Local Operation During Central Link Loss`
 
-This diagram applies to all six intersection controllers `L1–L6`.
+The sequence diagrams must cover all ten use cases, but one diagram may cover multiple closely related use cases.
 
-Show the observable vehicle-light states and transitions for the two-phase intersection:
+Do not create one diagram mechanically for every use case if that produces duplicated interaction flows.
 
-- `ARTERIAL_GREEN`
-- `ARTERIAL_YELLOW`
-- `ALL_RED_A_TO_B`
-- `CONNECTOR_GREEN`
-- `CONNECTOR_YELLOW`
-- `ALL_RED_B_TO_A`
+## 3. Architecture that must be preserved
 
-Represent:
+Use the following naming consistently:
 
-- `PEAK_FIXED`:
-  - arterial green = 48 seconds;
-  - yellow = 4 seconds;
-  - all-red = 2 seconds;
-  - connector green = 30 seconds;
-  - yellow = 4 seconds;
-  - all-red = 2 seconds;
-  - total cycle = 90 seconds;
-  - ordinary vehicle sensors do not alter these durations.
+- `I1–I6`: physical signalised intersections.
+- `L1–L6`: intersection local controllers.
+- `RC1–RC3`: physical railway crossings.
+- `RL1–RL3`: railway-crossing local controllers.
+- `C1`: Central Controller.
+- Central Control Room Operator: external human actor.
 
-- `OFF_PEAK_SENSOR`:
-  - minimum green = 8 seconds;
-  - green extension = 4-second increments;
-  - maximum green = 40 seconds;
-  - when no demand is present, the intersection rests on the arterial phase;
-  - vehicle and latched pedestrian demand are scheduled equally;
-  - a pending connector demand cannot be indefinitely starved;
-  - after no more than one opposing arterial service opportunity, the connector request must be served, subject to clearance.
+Controller authority:
 
-Show transitions using:
+- Each `Lx` exclusively controls the vehicle and pedestrian signals at its own `Ix`.
+- Each `RLx` exclusively controls the gates, flashers, and train signals at its own `RCx`.
+- `C1` monitors and sends high-level requests only.
+- `C1` must never directly set a traffic light colour or actuate a gate, flasher, or train signal.
+- Railway status flows from `RLx` to its two adjacent `Lx` controllers.
+- That railway-to-intersection path is status-only; `Lx` must never command or query railway equipment.
+- Safety-critical local action must not wait for Central acknowledgement.
+- `DEGRADED_LOCAL` is a connectivity condition, not a replacement traffic mode.
+- Each controller continues its local safety logic when Central is unavailable.
 
-`event [guard] / observable action`
+## 4. Required sequence-diagram set
 
-Do not use source code or QNX API calls.
+Produce the following eight diagrams.
 
-### SC-02 — Generic Pedestrian-Signal State Chart
+### SD-01 — Serve Off-Peak Vehicle Demand
 
-This diagram applies to every pedestrian crossing side at `I1–I6`.
+Primary use-case coverage:
 
-Show:
+- UC-01
 
-- `DONT_WALK`
-- `REQUEST_LATCHED`
-- `WALK`
-- `FLASHING_DONT_WALK`
-- return to `DONT_WALK`
+Use one representative intersection `Ix` and controller `Lx`; state that the same interaction applies to `I1–I6`.
 
-Represent:
+Suggested participants:
 
-- one button press creates one pending request;
-- repeated presses are coalesced;
-- WALK begins only with a compatible vehicle phase;
-- active WALK and pedestrian clearance cannot be truncated;
-- a request received during railway pre-emption remains latched;
-- a stuck-active button creates only one request and raises a fault;
-- a permanently silent button cannot be detected by the Core design.
+- Vehicle
+- Vehicle Presence Sensor
+- `Lx`
+- Vehicle Signals
 
-Do not model pedestrian crossings at `RC1–RC3`, because they are outside the selected scope.
+Show the chronological successful flow:
 
-### SC-03 — Intersection Supervisory and Safety Overlay State Chart
+1. A vehicle arrives and activates the approach detector.
+2. The detector reports `DEMAND_PRESENT` to `Lx`.
+3. `Lx` records or latches the demand.
+4. `Lx` evaluates the active mode and phase eligibility.
+5. If a conflicting phase is active, minimum green completes.
+6. `Lx` commands yellow for 4 seconds.
+7. `Lx` commands all-red for 2 seconds.
+8. `Lx` activates the requested green.
+9. Green runs for at least 8 seconds.
+10. While demand persists, `Lx` extends green in 4-second increments up to 40 seconds.
+11. When demand clears or the cap is reached, `Lx` completes the safe clearance.
+12. The served demand clears, and normal phase selection resumes.
 
-Show the high-level authority affecting an `Lx` without duplicating the detailed phase sequence from SC-01.
+Use:
 
-Include:
+- `loop` for the 4-second extension checks;
+- `alt` for demand clearing versus reaching the cap;
+- an alternative showing no demand and arterial rest;
+- a note for the anti-starvation rule (`DP-06`).
 
-- `NORMAL_OPERATION`
-  - containing `PEAK_FIXED` and `OFF_PEAK_SENSOR`;
-- `CENTRAL_OVERRIDE`;
-- `RAILWAY_PREEMPTION`;
-- `FAULT_SAFE`.
+Do not simulate individual vehicles moving through the intersection. The vehicle is only the source of the detector event.
 
-Represent the final priority:
+### SD-02 — Serve a Pedestrian Crossing Request
 
-1. `FAULT_SAFE` — absolute local safety veto;
-2. `RAILWAY_PREEMPTION`;
-3. `CENTRAL_OVERRIDE`;
-4. normal `PEAK_FIXED` / `OFF_PEAK_SENSOR`.
+Primary use-case coverage:
 
-Show:
+- UC-02
 
-- normal mode changes apply only at a safe phase boundary;
-- Central override is bounded and auto-expiring;
-- override is rejected with `NACK` if unsafe;
-- an override cannot truncate pedestrian clearance;
-- an override conflicting with railway pre-emption is rejected;
-- railway pre-emption suppresses only the movement toward the affected crossing;
-- the movement passes through ordinary yellow and all-red clearance before reaching red;
-- compatible cross-traffic, away-from-crossing movements, and pedestrian phases may continue;
-- `FAULT_SAFE` produces all-way `FLASHING_RED` for vehicle signals and `DONT_WALK` for pedestrian signals;
-- fault clearance is explicit, never automatic.
+Suggested participants:
 
-Do not show `DEGRADED_LOCAL` as a higher or lower hazard mode in this diagram. It belongs in SC-05 because it is orthogonal to the light-control mode hierarchy.
-
-### SC-04 — Generic Railway-Crossing Lifecycle
-
-This diagram applies identically to `RL1–RL3`.
-
-Use these main states:
-
-- `OPEN`
-- `WARNING`
-- `CLOSING`
-- `CLOSED`
-- `TRAIN_PRESENT`
-- `OPENING`
-- `FAULT`
+- Pedestrian
+- Pedestrian Button
+- `Lx`
+- Vehicle Signals
+- Pedestrian Signal
 
 Show:
 
-- train approach detection begins the warning sequence;
-- flashers activate immediately in `WARNING`;
-- adjacent intersections receive crossing status;
-- gates begin closing after the flash-only warning interval;
-- train signal remains `STOP` until gate-position sensors confirm the required gates are `CLOSED`;
-- train signal changes to `PROCEED` only after confirmed closure;
-- the approximately 45-second value is a warning-to-arrival budget, not one single state duration;
-- a 20-second occupancy window is registered for each simulated train;
-- a second train adds another active occupancy window;
-- gates remain closed until every active occupancy window has elapsed;
-- the train signal returns to `STOP` before reopening;
-- after reopening, flashers stop and `OPEN` is broadcast;
-- missing or contradictory gate confirmation transitions to `FAULT`;
-- a stuck-active train-approach input transitions to a safe-side fault;
-- `FAULT` keeps the train signal at `STOP` and applies the documented safe outputs;
-- fault clearing requires verified repair and an accepted local fault-clear request;
-- a permanently silent train-approach sensor is an accepted Core limitation and must be shown only as a note, not as a detectable transition.
+1. Pedestrian presses the button.
+2. The button reports `PED_REQUEST`.
+3. `Lx` latches one request.
+4. Repeated presses are coalesced.
+5. `Lx` waits for or schedules the next compatible vehicle phase.
+6. The compatible vehicle phase begins.
+7. The pedestrian signal displays `WALK`.
+8. It transitions to `FLASHING_DONT_WALK`.
+9. It returns to `DONT_WALK`.
+10. Only after clearance completes may a conflicting vehicle movement receive green.
+11. `Lx` clears the pending request.
+12. The pedestrian service ends successfully.
 
-Do not use the reserved train-exit sensor to control reopening. Core reopening is timer-based.
+Use:
 
-### SC-05 — Central Connectivity and Local Autonomy
+- `opt` or `alt` for repeated presses;
+- `alt` for railway restriction delaying service;
+- `critical` or a clearly labelled note to show that pedestrian clearance cannot be truncated;
+- an alternative showing a Central override waiting or being rejected.
 
-Show the connectivity states:
+Do not show pedestrian crossings at `RC1–RC3`.
 
-- `CENTRAL_CONNECTED`
-- `DEGRADED_LOCAL`
-- `RESYNCHRONISING`
+### SD-03 — Configure and Apply an Arterial Coordination Profile
 
-Represent:
+Primary use-case coverage:
 
-- heartbeat every 1 second;
-- three consecutive missed heartbeats enter `DEGRADED_LOCAL`;
-- the controller retains its last validated timing parameters;
-- the local clock continues selecting `PEAK_FIXED` or `OFF_PEAK_SENSOR`;
-- traffic, pedestrian, railway, and fault logic continue locally;
-- Central coordination and override availability are disabled while disconnected;
-- restored communication enters `RESYNCHRONISING`;
-- the local controller sends its complete current state to `C1`;
-- new Central requests are not accepted until that state exchange completes;
-- successful state exchange returns to `CENTRAL_CONNECTED`.
+- UC-03
+- UC-07
 
-Make it clear that connectivity loss alone does not force all-red, `FLASHING_RED`, or frozen operation.
+Use the R1 chain as the representative example:
 
-## 4. Relationship to the use cases
+- `L1 → L3 → L5`
 
-After the diagrams, provide a short mapping using bullets, not a large table:
+State that `L2 → L4 → L6` on R2 follows the same pattern with its own offsets.
 
-- SC-01 → UC-01 and UC-07
-- SC-02 → UC-02 and UC-08
-- SC-03 → UC-05, UC-06, UC-07, and UC-08
-- SC-04 → UC-04 and UC-06
-- SC-05 → UC-09 and UC-10
+Suggested participants:
 
-Use the final renumbered use-case names from the repository. If the repository contains different current numbering, report the discrepancy before drawing and use the repository’s latest approved numbering.
+- Central Control Room Operator
+- `C1`
+- `L1`
+- `L3`
+- `L5`
+- Local Vehicle Signals
 
-## 5. Mermaid requirements
+Show:
 
-Use only Mermaid `stateDiagram-v2`.
+1. The operator submits a `SET_TIMING_PROFILE` request.
+2. `C1` validates the requested network-level profile format.
+3. `C1` sends each `Lx` its own high-level timing parameters and offset.
+4. Each `Lx` independently validates its parameters.
+5. Each controller returns `ACK` or `NACK`.
+6. Accepted profiles remain pending until the next safe phase boundary.
+7. Each `Lx` applies its own offset locally.
+8. `L1` starts the reference arterial green.
+9. `L3` starts its corresponding green after the 21-second cumulative offset.
+10. `L5` starts its corresponding green after the 45-second cumulative offset.
+11. Each controller reports its active profile and phase state to `C1`.
+12. `C1` displays successful coordinated operation.
+
+Use:
+
+- `par` for profile distribution and independent local validation;
+- `alt` for `ACK` versus `NACK`;
+- a note explaining that `C1` distributes parameters but never commands light colours;
+- an alternative for a missing or stale coordination profile, causing standalone operation;
+- an alternative for railway disruption, followed by recovery through the next valid profile;
+- no separate gradual-resynchronisation algorithm.
+
+Also include `SET_MODE` as a concise alternative branch if it shares the same validation and safe-boundary application path.
+
+Trace timing and coordination behaviour to `TC-01`–`TC-05`, `TL-04`, and `PA-09`.
+
+### SD-04 — Protect a Railway Crossing for an Approaching Train
+
+Primary use-case coverage:
+
+- UC-04
+
+Use `RC1`, `RL1`, `L1`, and `L2` as the representative Pass-scope example.
+
+Suggested participants:
+
+- Train
+- Train Approach Sensor
+- `RL1`
+- Road-Facing Flashers
+- Boom Gates
+- Gate Position Sensors
+- Train Signal
+- `L1`
+- `L2`
+- `C1`
+
+Show:
+
+1. The train activates the approach sensor.
+2. The sensor reports `TRAIN_APPROACHING` to `RL1`.
+3. `RL1` registers the train’s expected arrival and 20-second occupancy window.
+4. `RL1` immediately activates the flashers.
+5. In parallel, `RL1` reports `WARNING` to `L1`, `L2`, and `C1`.
+6. `L1` and `L2` independently clear and suppress their movement toward `RC1`.
+7. After the flash-only warning interval, `RL1` commands both gates to close.
+8. The gate-position sensors report the actual gate state.
+9. Only after confirmed closure does `RL1` set the relevant train signal to `PROCEED`.
+10. The crossing remains protected while the occupancy window remains active.
+11. `RL1` returns the train signal to `STOP`.
+12. Only after every active occupancy window has elapsed does `RL1` reopen the gates.
+13. After the gates reopen, the flashers stop.
+14. `RL1` broadcasts `OPEN` to `L1`, `L2`, and `C1`.
+15. The normal railway-crossing sequence completes.
+
+Use:
+
+- `par` for immediate flasher activation, status distribution, and occupancy-window registration;
+- `critical` around gate confirmation before `PROCEED`;
+- `alt` for confirmed versus unconfirmed closure;
+- `opt` or `alt` for a second train;
+- `loop` or an explicit guard while any occupancy window remains active;
+- a note that the approximately 45-second value is the total warning-to-arrival budget, not one message delay;
+- a note that the reserved exit sensor is not used by Core reopening logic.
+
+Do not draw any message from `L1`, `L2`, or `C1` commanding railway equipment.
+
+### SD-05 — Suppress and Drain Road Traffic Around a Railway Closure
+
+Primary use-case coverage:
+
+- UC-05
+
+Suggested participants:
+
+- `RLx`
+- Crossing-Facing Queue Detector at the north-side intersection
+- North-side `Lx`
+- North-side Vehicle Signals
+- Crossing-Facing Queue Detector at the south-side intersection
+- South-side `Lx`
+- South-side Vehicle Signals
+
+Use generic names or the representative `RC1`/`L1`/`L2` configuration, but do not mix generic and concrete identifiers in the same diagram.
+
+Show:
+
+1. `RLx` reports a non-open crossing state to both adjacent `Lx` controllers.
+2. Each `Lx` checks whether its toward-crossing movement is active.
+3. If active, it completes minimum green, yellow, and all-red.
+4. The toward-crossing signal is held at red.
+5. Compatible cross-traffic and away-from-crossing movements may continue.
+6. Queue detectors independently report `QUEUE_WARNING` when their fixed threshold is occupied.
+7. `RLx` later reports `OPEN`.
+8. Each affected `Lx` checks its own queue detector.
+9. If `QUEUE_WARNING` remains active, the controller begins a connector drain phase.
+10. The controller checks the binary warning every 4 seconds.
+11. The drain ends when the warning clears or the 60-second cap is reached.
+12. Required clearances complete.
+13. Each intersection resumes its previous normal phase family.
+
+Use:
+
+- `par` for the two adjacent intersections reacting independently;
+- `alt` for no queue warning versus a drain phase;
+- `loop` for 4-second queue checks;
+- `alt` for early clearance versus the 60-second cap.
+
+Make explicit that:
+
+- the detector is binary and does not count vehicles;
+- the traffic lights suppress feeding toward the crossing but do not physically reroute vehicles;
+- railway suppression does not create a third normal traffic-demand mode.
+
+Trace to `CC-01`–`CC-03` and `TL-01`.
+
+### SD-06 — Contain and Report a Railway Equipment Fault
+
+Primary use-case coverage:
+
+- UC-06
+
+Suggested participants:
+
+- Gate Position Sensor
+- `RLx`
+- Train Signal
+- Boom Gates and Flashers
+- Adjacent `Lx` Controllers
+- `C1`
+- Central Control Room Operator
+
+Show:
+
+1. `RLx` requests or supervises gate closure.
+2. The required `CLOSED` confirmation is missing, contradictory, or explicitly faulted.
+3. `RLx` detects that the safe condition cannot be verified.
+4. In parallel:
+   - `RLx` immediately forces or holds the train signal at `STOP`;
+   - `RLx` applies the documented safe crossing outputs;
+   - `RLx` reports `FAULT` to the adjacent `Lx` controllers;
+   - `RLx` reports the fault to `C1`.
+5. Adjacent `Lx` controllers hold the toward-crossing movements at red.
+6. `C1` displays the fault to the operator.
+7. The fault remains latched.
+8. After physical repair, the operator submits a high-level fault-clear request through `C1`.
+9. `RLx` independently verifies the physical condition.
+10. `RLx` returns `ACK` and clears the fault, or returns `NACK` and retains the safe state.
+11. The interaction ends in verified normal readiness or the safe fault state.
+
+This diagram must use a `par` block to prove that the local `STOP` action does not wait for Central reporting or acknowledgement.
+
+Use:
+
+- `critical` for the immediate local safety response;
+- `alt` for valid versus premature fault clearance;
+- `break` only if Mermaid syntax remains readable for the terminated unsafe normal path.
+
+Do not label the report as “fire-and-forget” unless that term is explicitly defined later in Section 5. Describe only the observable non-blocking relationship.
+
+Trace to `RC-06`, `RC-09`, `RC-10`, `PA-09`, and `PA-10`.
+
+### SD-07 — Validate and Apply a Bounded Clear-Route Override
+
+Primary use-case coverage:
+
+- UC-08
+
+Suggested participants:
+
+- Central Control Room Operator
+- `C1`
+- Target `Lx`
+- Pedestrian Sequencer
+- Railway Status Input
+- Vehicle Signals
+
+Show the successful chronological flow:
+
+1. The operator selects a target through-movement and finite duration.
+2. `C1` sends the high-level `REQUEST_OVERRIDE`.
+3. The target `Lx` validates:
+   - target movement;
+   - requested duration;
+   - conflict matrix;
+   - active pedestrian clearance;
+   - adjacent railway status;
+   - local fault state.
+4. `Lx` returns `ACK`.
+5. `Lx` completes the current protected interval and mandatory clearances.
+6. `Lx` activates the requested through-movement locally.
+7. The override timer begins when the override becomes active.
+8. The override expires, is cancelled, or is validly renewed.
+9. `Lx` safely terminates the override through mandatory clearance.
+10. `Lx` returns to its previous normal mode.
+11. `Lx` reports completion to `C1`.
+12. `C1` displays the result to the operator.
+
+Use:
+
+- `alt` for:
+  - pedestrian clearance in progress;
+  - conflicting railway pre-emption;
+  - invalid or over-limit duration;
+  - local fault;
+- `NACK` for every unsafe request;
+- a note that only `Lx` actuates its physical traffic signals;
+- the new `PA-11` rule if it exists in the current assumptions:
+  - finite duration;
+  - maximum 5 minutes;
+  - automatic expiry unless validly renewed;
+  - earlier cancellation permitted.
+
+If `PA-11` has not yet been added to the repository, explicitly report that traceability gap before generating this diagram. Do not silently cite the internal Project Specification as authority.
+
+### SD-08 — Monitor Controllers, Lose Central Link, and Resynchronise
+
+Primary use-case coverage:
+
+- UC-09
+- UC-10
+
+Suggested participants:
+
+- Central Control Room Operator
+- `C1`
+- Generic Local Controller
+- Local Clock
+- Local Sensors
+- Local Actuators
+
+The “Generic Local Controller” represents any `Lx` or `RLx`. Do not draw nine duplicate lifelines.
+
+Show:
+
+1. While connected, the local controller sends heartbeats every second.
+2. It reports state transitions and faults to `C1`.
+3. `C1` updates the network display.
+4. The operator reviews current controller status.
+5. Three consecutive Central heartbeats are missed.
+6. The local controller declares the Central link unavailable and enters `DEGRADED_LOCAL`.
+7. Central coordination and override availability are disabled locally.
+8. The controller retains its last validated timing parameters.
+9. The local clock continues selecting Peak or Off-Peak operation where applicable.
+10. Local sensors continue driving local behaviour.
+11. Local actuators continue operating under local authority.
+12. Central marks the controller state as stale or unavailable.
+13. Communication later returns.
+14. The local controller sends its complete current state to `C1`.
+15. `C1` replaces its stale view with the reported actual state.
+16. Only after state synchronisation does the local controller accept new Central requests.
+17. Normal coordination resumes, completing the recovery.
+
+Use:
+
+- `loop` for heartbeat and normal status reporting;
+- `alt` for link available versus three missed heartbeats;
+- `par` to show local operation continuing while Central marks the node stale;
+- `critical` or a note for local-state push before accepting new commands;
+- an alternative where the link remains unavailable and safe autonomous operation continues indefinitely;
+- an optional railway event during disconnection, demonstrating zero Central dependency.
+
+Do not show communication loss forcing all-red, `FLASHING_RED`, frozen timing, or frozen mode selection.
+
+Trace to `PA-07`, `PA-08`, `TC-04`, and `RC-10`.
+
+## 5. Mermaid syntax requirements
+
+Use only Mermaid `sequenceDiagram`.
 
 For every diagram:
 
 - provide one independent fenced `mermaid` code block;
 - include a YAML title;
 - include `accTitle` and `accDescr`;
-- use stable ASCII state IDs with readable displayed labels;
-- use `[*]` for initial and terminal pseudostates where appropriate;
-- use `direction LR` or `direction TB` according to whichever is clearer;
-- use composite states only where they materially improve readability;
-- use `<<choice>>` only for genuine guarded branching;
-- use notes for assumptions and accepted limitations;
-- label every important transition with its event, guard, or timeout;
-- keep text concise enough to render legibly in an engineering report;
-- avoid decorative styling unless it clearly distinguishes normal, warning, and fault states;
-- do not rely on unsupported transitions between internal states belonging to different composite states;
-- ensure every code block parses independently in the current Mermaid Live Editor.
+- use `autonumber`;
+- declare participants explicitly and in a logical left-to-right order;
+- use `actor` only for humans, vehicles, pedestrians, or trains where appropriate;
+- use `participant` for controllers, sensors, and actuators;
+- use aliases to keep participant headings short;
+- use `->>` for requests, commands, and physical events;
+- use `-->>` for acknowledgements, status reports, and responses;
+- use `-)` only when explicitly representing an asynchronous/non-blocking event;
+- use activation bars sparingly;
+- use `loop`, `alt`, `opt`, `par`, `critical`, and `break` only where they add behavioural meaning;
+- keep every message concise and observable;
+- avoid implementation-level QNX APIs, process IDs, channel IDs, thread names, and message structs;
+- avoid using the standalone word `end` inside message labels because Mermaid may parse it as block termination;
+- keep each diagram readable on an A4 report page;
+- ensure every Mermaid block parses independently in the current Mermaid Live Editor.
 
-Do not generate flowcharts or sequence diagrams as substitutes for state charts.
+Do not produce a flowchart or state diagram as a substitute.
 
-## 6. Quality checks before answering
+## 6. Behavioural-modelling rules
 
-Before finalising:
+The diagrams must show chronological interaction, not duplicate state-chart content.
 
-1. Check every state and transition against the repository.
-2. Confirm that all mandatory yellow and all-red clearances are preserved.
-3. Confirm that Central never directly actuates any light, gate, flasher, or train signal.
-4. Confirm that railway safety remains local when Central is unavailable.
-5. Confirm that no gate opens while any occupancy window remains active.
-6. Confirm that no train signal shows `PROCEED` without sensor-confirmed gate closure.
-7. Confirm that an in-progress pedestrian clearance cannot be truncated.
-8. Confirm that `DEGRADED_LOCAL` is not presented as a hazard-priority mode.
-9. Confirm that the queue detector is not represented as a vehicle counter.
-10. Confirm that every diagram is readable when rendered on an A4 report page.
+Therefore:
 
-## 7. Required response format
+- show who initiates each event;
+- show which controller makes each decision;
+- show which controller owns each physical actuation;
+- show acknowledgements and rejections where externally observable;
+- show parallel local safety action where required;
+- show complete normal endings;
+- show only important alternative and fault paths;
+- do not enumerate every internal timer tick unless it changes the observable interaction;
+- do not turn Section 4.2 into an IPC structure specification.
+
+Detailed message types, fields, QNX channels, and implementation structs belong in Section 5.2.
+
+## 7. Traceability requirements
+
+After each diagram, provide three concise bullets:
+
+- **Covers:** relevant use-case IDs.
+- **Constraints:** relevant assumption IDs.
+- **Official requirement:** relevant page of `RTS_Final Project.pdf`, where directly applicable.
+
+Do not cite `PROJECT_SPECIFICATION.md` as an official requirement.
+
+If behaviour is a team design decision, cite its assumption ID.
+
+If required behaviour has no corresponding assumption ID, identify it as a traceability gap instead of citing the internal specification.
+
+## 8. Quality checks before answering
+
+Confirm all of the following:
+
+1. All ten approved use cases are covered by at least one sequence diagram.
+2. Every Main Flow reaches a complete observable outcome.
+3. Alternative branches either rejoin a named point or terminate in an explicit state.
+4. Central never directly actuates physical equipment.
+5. `Lx` never commands railway equipment.
+6. Railway safety never waits for Central.
+7. Gate-confirmed closure occurs before train `PROCEED`.
+8. Gates remain closed while any occupancy window remains active.
+9. Railway pre-emption preserves intersection yellow and all-red clearance.
+10. Pedestrian clearance cannot be truncated.
+11. Queue detection is binary and is not represented as vehicle counting.
+12. An unsafe Central request produces `NACK`.
+13. `DEGRADED_LOCAL` retains the last validated parameters while local mode selection continues.
+14. Reconnection pushes local actual state to Central before new commands are accepted.
+15. The diagrams complement rather than duplicate the five state charts in Section 4.1.
+16. Every Mermaid block is syntactically valid and legible.
+
+## 9. Required response format
 
 Respond in this order:
 
-1. **Coverage decision** — briefly justify why these diagrams are sufficient and whether one generic `Lx` chart can validly represent `L1–L6`.
-2. **Assumptions or contradictions found** — list only genuine unresolved issues. Do not invent a resolution.
-3. **SC-01 Mermaid code**
-4. **SC-02 Mermaid code**
-5. **SC-03 Mermaid code**
-6. **SC-04 Mermaid code**
-7. **SC-05 Mermaid code**
-8. **Use-case-to-state-chart mapping**
-9. **Final consistency check**
+1. **Coverage decision**
+   - Confirm whether eight diagrams are sufficient.
+   - Explain briefly why one sequence diagram per use case is unnecessary.
 
-Do not modify repository files. Return the diagrams and analysis directly in the response.
+2. **Repository version checked**
+   - State the commit hash used.
+   - Identify whether the repository contains the approved ten-use-case version.
+   - Identify whether `PA-11` exists.
+
+3. **Contradictions or traceability gaps**
+   - List only genuine problems.
+   - Do not invent resolutions.
+
+4. **SD-01 Mermaid code and traceability**
+
+5. **SD-02 Mermaid code and traceability**
+
+6. **SD-03 Mermaid code and traceability**
+
+7. **SD-04 Mermaid code and traceability**
+
+8. **SD-05 Mermaid code and traceability**
+
+9. **SD-06 Mermaid code and traceability**
+
+10. **SD-07 Mermaid code and traceability**
+
+11. **SD-08 Mermaid code and traceability**
+
+12. **Use-case coverage summary**
+   - Use concise bullets rather than a large table.
+
+13. **Final consistency and Mermaid validation check**
+
+Return only the diagrams and supporting analysis. Do not edit or commit repository files.
