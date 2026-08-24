@@ -13,14 +13,15 @@ title: SC-01 — Generic Intersection Vehicle-Signal Phase Sequencer
 stateDiagram-v2
     accTitle: SC-01 Generic Intersection Vehicle-Signal Phase Sequencer
     accDescr: Normal two-phase vehicle-signal operation for intersection controllers L1 to L6 in Peak Fixed and Off-Peak Sensor modes.
-    direction LR
+    direction TB
 
-    state initial_mode <<choice>>
-    [*] --> initial_mode : initialise from local schedule and last validated configuration
-    initial_mode --> PEAK_FIXED : [Peak schedule selected]
-    initial_mode --> OFF_PEAK_SENSOR : [Off-Peak schedule selected]
+    state mode_selection <<choice>>
+    [*] --> mode_selection : initialise
+    mode_selection --> PEAK_FIXED : [Peak selected]
+    mode_selection --> OFF_PEAK_SENSOR : [Off-Peak selected]
 
     state "PEAK_FIXED" as PEAK_FIXED {
+        direction LR
         state "ARTERIAL_GREEN" as P_ARTERIAL_GREEN
         state "ARTERIAL_YELLOW" as P_ARTERIAL_YELLOW
         state "ALL_RED_A_TO_B" as P_ALL_RED_A_TO_B
@@ -28,15 +29,16 @@ stateDiagram-v2
         state "CONNECTOR_YELLOW" as P_CONNECTOR_YELLOW
         state "ALL_RED_B_TO_A" as P_ALL_RED_B_TO_A
         [*] --> P_ARTERIAL_GREEN
-        P_ARTERIAL_GREEN --> P_ARTERIAL_YELLOW : after 48 s / begin arterial clearance
-        P_ARTERIAL_YELLOW --> P_ALL_RED_A_TO_B : after 4 s / set all approaches red
-        P_ALL_RED_A_TO_B --> P_CONNECTOR_GREEN : after 2 s / release connector movement
-        P_CONNECTOR_GREEN --> P_CONNECTOR_YELLOW : after 30 s / begin connector clearance
-        P_CONNECTOR_YELLOW --> P_ALL_RED_B_TO_A : after 4 s / set all approaches red
-        P_ALL_RED_B_TO_A --> P_ARTERIAL_GREEN : after 2 s / release arterial movement
+        P_ARTERIAL_GREEN --> P_ARTERIAL_YELLOW : after 48 s
+        P_ARTERIAL_YELLOW --> P_ALL_RED_A_TO_B : after 4 s
+        P_ALL_RED_A_TO_B --> P_CONNECTOR_GREEN : after 2 s
+        P_CONNECTOR_GREEN --> P_CONNECTOR_YELLOW : after 30 s
+        P_CONNECTOR_YELLOW --> P_ALL_RED_B_TO_A : after 4 s
+        P_ALL_RED_B_TO_A --> P_ARTERIAL_GREEN : after 2 s
     }
 
     state "OFF_PEAK_SENSOR" as OFF_PEAK_SENSOR {
+        direction LR
         state "ARTERIAL_GREEN" as O_ARTERIAL_GREEN
         state "ARTERIAL_YELLOW" as O_ARTERIAL_YELLOW
         state "ALL_RED_A_TO_B" as O_ALL_RED_A_TO_B
@@ -44,18 +46,18 @@ stateDiagram-v2
         state "CONNECTOR_YELLOW" as O_CONNECTOR_YELLOW
         state "ALL_RED_B_TO_A" as O_ALL_RED_B_TO_A
         [*] --> O_ARTERIAL_GREEN
-        O_ARTERIAL_GREEN --> O_ARTERIAL_GREEN : every 4 s [arterial demand persists and green < 40 s] / extend green by 4 s
-        O_ARTERIAL_GREEN --> O_ARTERIAL_YELLOW : [green >= 8 s and connector demand pending and (no arterial demand or green = 40 s)] / begin arterial clearance
-        O_ARTERIAL_YELLOW --> O_ALL_RED_A_TO_B : after 4 s / set all approaches red
-        O_ALL_RED_A_TO_B --> O_CONNECTOR_GREEN : after 2 s / release connector movement
-        O_CONNECTOR_GREEN --> O_CONNECTOR_GREEN : every 4 s [connector demand persists and green < 40 s] / extend green by 4 s
-        O_CONNECTOR_GREEN --> O_CONNECTOR_YELLOW : [green >= 8 s and (no connector demand or green = 40 s)] / begin connector clearance
-        O_CONNECTOR_YELLOW --> O_ALL_RED_B_TO_A : after 4 s / set all approaches red
-        O_ALL_RED_B_TO_A --> O_ARTERIAL_GREEN : after 2 s / release arterial movement; rest here if no demand exists
+        O_ARTERIAL_GREEN --> O_ARTERIAL_GREEN : every 4 s [arterial demand and green < 40 s] / extend 4 s
+        O_ARTERIAL_GREEN --> O_ARTERIAL_YELLOW : [green >= 8 s and connector demand and (no arterial demand or green = 40 s)]
+        O_ARTERIAL_YELLOW --> O_ALL_RED_A_TO_B : after 4 s
+        O_ALL_RED_A_TO_B --> O_CONNECTOR_GREEN : after 2 s
+        O_CONNECTOR_GREEN --> O_CONNECTOR_GREEN : every 4 s [connector demand and green < 40 s] / extend 4 s
+        O_CONNECTOR_GREEN --> O_CONNECTOR_YELLOW : [green >= 8 s and (no connector demand or green = 40 s)]
+        O_CONNECTOR_YELLOW --> O_ALL_RED_B_TO_A : after 4 s
+        O_ALL_RED_B_TO_A --> O_ARTERIAL_GREEN : after 2 s
     }
 
-    PEAK_FIXED --> OFF_PEAK_SENSOR : pending Off-Peak selection [current phase and required clearances complete] / apply mode change
-    OFF_PEAK_SENSOR --> PEAK_FIXED : pending Peak selection [current phase and required clearances complete] / apply mode change
+    PEAK_FIXED --> mode_selection : pending mode change [safe phase boundary]
+    OFF_PEAK_SENSOR --> mode_selection : pending mode change [safe phase boundary]
 ```
 
 ## 4.1.2 SC-02 — Generic Pedestrian-Signal State Chart
