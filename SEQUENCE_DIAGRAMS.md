@@ -277,7 +277,7 @@ sequenceDiagram
     Lx->>Sig: hold toward-crossing movement at RED
     Lx->>Sig: continue non-conflicting movements
     Q-->>Lx: QUEUE_WARNING(active or clear)
-    Note over Q,Lx: the same binary detector already feeds pre-emption suppression while the crossing is closed (CC-01)
+    Note over Q,Lx: this binary QUEUE_WARNING supports the wider congestion-suppression strategy (CC-01), but the toward-crossing red-hold itself is driven only by crossing status, not by this detector
 
     RLx->>Lx: CROSSING_STATUS(OPEN)
     Lx->>Q: request current binary status
@@ -348,7 +348,7 @@ sequenceDiagram
 
 ## 4.2.7 SD-07 — Validate and Apply a Bounded Clear-Route Override
 
-This sequence shows a Central clear-route request being validated and executed by the target intersection controller. The local controller retains exclusive actuation authority, rejects unsafe requests, never truncates pedestrian clearance, and terminates an accepted override through the required vehicle-signal clearance sequence (`PA-09`, UC-08). It realises UC-08.
+This sequence shows a Central clear-route request being validated and executed by the target intersection controller. A request retained behind an in-progress pedestrian clearance is still `ACK`'d immediately to meet the Central command-response deadline, with only activation deferred until clearance completes and the request is revalidated. Every renewal is independently validated against its duration limit and current safety conditions and may be rejected without disturbing the existing expiry (`PA-11`). The controller retains exclusive actuation authority, rejects unsafe requests, never truncates pedestrian clearance, and terminates an accepted override through the required vehicle-signal clearance sequence (`PA-09`, UC-08). It realises UC-08.
 
 ```mermaid
 ---
@@ -374,26 +374,67 @@ sequenceDiagram
     Lx->>Ped: read pedestrian-clearance status
     Ped-->>Lx: current status
 
-    opt pedestrian clearance is active and can be safely deferred
-        Note over Lx: request retained, unacknowledged, until clearance completes
-        Ped-->>Lx: clearance complete
-        Lx->>Lx: revalidate the retained request
-    end
-
-    alt request is unsafe, conflicts with railway pre-emption, or pedestrian clearance cannot be safely deferred
+    alt request is unsafe, conflicts with railway pre-emption, or pedestrian clearance is active and cannot be safely deferred
         Lx-->>C1: NACK(reason)
         C1-->>Op: display rejection
-    else request is accepted
+    else pedestrian clearance is active and can be safely deferred
+        Lx-->>C1: ACK(accepted, pending clearance)
+        Note over Lx,C1: ACK meets the Central command-response deadline (Section 21), only activation is deferred
+        Ped-->>Lx: clearance complete
+        Lx->>Lx: revalidate the retained request
+
+        alt request remains safe and valid
+            Lx->>Sig: complete vehicle minimums and clearances
+            Lx->>Sig: activate requested through-movement
+            Lx-->>C1: STATUS(override active)
+
+            loop until the override expires or is cancelled
+                opt operator requests a renewal before expiry
+                    Op->>C1: RENEW_OVERRIDE
+                    C1->>Lx: RENEW_OVERRIDE
+                    Lx->>Lx: revalidate duration limit, pedestrian clearance, railway status, fault state, and conflict matrix
+                    alt renewal is valid
+                        Lx-->>C1: ACK(renewed)
+                        Lx->>Lx: restart the override timer
+                    else renewal is invalid or unsafe
+                        Lx-->>C1: NACK(reason)
+                        Note over Lx: existing expiry time is unchanged
+                    end
+                end
+            end
+
+            alt override reaches its expiry time
+                Lx->>Sig: terminate through mandatory clearance
+            else operator cancels active override
+                Op->>C1: CANCEL_OVERRIDE
+                C1->>Lx: CANCEL_OVERRIDE
+                Lx->>Sig: terminate through mandatory clearance
+            end
+
+            Lx->>Lx: restore previous normal mode
+            Lx-->>C1: STATUS(override complete)
+            C1-->>Op: display completion
+        else request no longer safe or valid once clearance completes
+            Lx-->>C1: STATUS(override discarded, condition no longer valid)
+        end
+    else request is accepted without delay
         Lx-->>C1: ACK(accepted, pending safe boundary)
         Lx->>Sig: complete vehicle minimums and clearances
         Lx->>Sig: activate requested through-movement
         Lx-->>C1: STATUS(override active)
 
         loop until the override expires or is cancelled
-            opt operator validly renews before expiry
+            opt operator requests a renewal before expiry
                 Op->>C1: RENEW_OVERRIDE
                 C1->>Lx: RENEW_OVERRIDE
-                Lx->>Lx: restart the override timer
+                Lx->>Lx: revalidate duration limit, pedestrian clearance, railway status, fault state, and conflict matrix
+                alt renewal is valid
+                    Lx-->>C1: ACK(renewed)
+                    Lx->>Lx: restart the override timer
+                else renewal is invalid or unsafe
+                    Lx-->>C1: NACK(reason)
+                    Note over Lx: existing expiry time is unchanged
+                end
             end
         end
 
@@ -410,7 +451,7 @@ sequenceDiagram
         C1-->>Op: display completion
     end
 
-    Note over Lx,C1: traceability gap - no assumption ID such as PA-11 yet documents the bounded 5-minute maximum, auto-expiry, and renewal rule in system_assumptions_tables.md
+    Note over Lx,C1: bounded 5-minute maximum, auto-expiry, and validated renewal are documented in system_assumptions_tables.md (PA-11)
 ```
 
 ## 4.2.8 SD-08 — Monitor Controllers, Lose Central Link, and Resynchronise

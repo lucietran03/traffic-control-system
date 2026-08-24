@@ -194,7 +194,7 @@ stateDiagram-v2
 
 ## 4.1.6 SC-03B — Clear-Route Override Validation, Pending, and Renewal Detail
 
-This is the detail inside `SC-03A`'s `CENTRAL_OVERRIDE` box: how a `REQUEST_OVERRIDE(CLEAR_ROUTE)` is validated, optionally queued behind an in-progress pedestrian clearance, kept alive by a valid renewal, and bounded to a maximum of 5 minutes. It expires automatically unless renewed, may be cancelled earlier, and never truncates an in-progress pedestrian clearance (`PA-09`, `PA-11`).
+This is the detail inside `SC-03A`'s `CENTRAL_OVERRIDE` box: how a `REQUEST_OVERRIDE(CLEAR_ROUTE)` is validated, optionally queued behind an in-progress pedestrian clearance, kept alive by a valid renewal, and bounded to a maximum of 5 minutes. It expires automatically unless renewed, may be cancelled earlier, and never truncates an in-progress pedestrian clearance (`PA-09`, `PA-11`). A request queued behind pedestrian clearance still receives `ACK` immediately, meeting the standard Central command-response deadline (Project Specification, Section 21) — only its activation is deferred.
 
 ```mermaid
 ---
@@ -202,23 +202,30 @@ title: SC-03B — Clear-Route Override Validation, Pending, and Renewal Detail
 ---
 stateDiagram-v2
     accTitle: SC-03B Clear-Route Override Validation, Pending, and Renewal Detail
-    accDescr: Validation, pedestrian-clearance queueing, active operation, and renewal for a bounded Central clear-route override, entered from and exited to SC-03A.
+    accDescr: Validation, pedestrian-clearance queueing, active operation, and validated renewal for a bounded Central clear-route override, entered from and exited to SC-03A.
     direction LR
 
     state override_validation <<choice>>
     [*] --> override_validation : REQUEST_OVERRIDE(CLEAR_ROUTE, target, duration) from SC-03A
-    override_validation --> ACTIVE : [bounded, safe, and no pedestrian clearance active] / ACK and apply at safe boundary
-    override_validation --> OVERRIDE_PENDING : [otherwise safe but pedestrian clearance active] / queue request
+    override_validation --> ACTIVE : [bounded, safe, and no pedestrian clearance active] / ACK, apply at safe boundary
+    override_validation --> OVERRIDE_PENDING : [otherwise safe but pedestrian clearance active] / ACK(pending clearance), queue request
     override_validation --> [*] : [unsafe, unbounded, or conflicts with railway pre-emption] / NACK, return to SC-03A NORMAL_OPERATION
 
-    OVERRIDE_PENDING --> ACTIVE : pedestrian clearance completes [request remains safe and valid] / ACK and apply at safe boundary
-    OVERRIDE_PENDING --> [*] : request cancelled or expires before application / discard request, return to SC-03A NORMAL_OPERATION
+    OVERRIDE_PENDING --> ACTIVE : pedestrian clearance completes [request remains safe and valid] / apply at safe boundary
+    OVERRIDE_PENDING --> [*] : request no longer valid, cancelled, or expires before application / discard request, return to SC-03A NORMAL_OPERATION
 
     state renewal_validation <<choice>>
     ACTIVE --> renewal_validation : RENEW_OVERRIDE(duration)
     renewal_validation --> ACTIVE : [bounded and safe] / ACK, restart override timer
     renewal_validation --> ACTIVE : [invalid, unsafe, or over limit] / NACK, retain current expiry
     ACTIVE --> [*] : duration expires or operator cancels / return to SC-03A NORMAL_OPERATION
+
+    note right of OVERRIDE_PENDING
+        The pedestrian sequence itself is never truncated
+        (SC-02) — the override simply waits. The initial ACK
+        already covers this state; it is not repeated when the
+        queued request later activates.
+    end note
 
     note right of ACTIVE
         Bounded and auto-expiring: default maximum 5 minutes,
