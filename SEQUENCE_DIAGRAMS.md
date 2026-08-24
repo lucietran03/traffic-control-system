@@ -1,6 +1,6 @@
 # 4.2 Behavioural Specifications
 
-The following sequence diagrams show the chronological interactions that realise the principal use cases defined in Section 3.2. Eight diagrams cover all ten use cases because UC-03 and UC-07 share the same configuration-distribution interaction, while UC-09 and UC-10 form one continuous monitoring, disconnection, and reconnection sequence. State transitions internal to individual controllers are defined separately in Section 4.1.
+The following sequence diagrams show the chronological interactions that realise the ten use cases defined in Section 3.2. Eight diagrams provide complete coverage because UC-03 and UC-07 share the same configuration-distribution interaction, while UC-09 and UC-10 form one continuous monitoring, disconnection, and reconnection sequence. Internal controller states and transitions are defined separately in Section 4.1.
 
 ## 4.2.1 SD-01 — Serve Off-Peak Vehicle Demand
 
@@ -348,7 +348,7 @@ sequenceDiagram
 
 ## 4.2.7 SD-07 — Validate and Apply a Bounded Clear-Route Override
 
-This sequence shows a Central clear-route request being validated and executed by the target intersection controller. A request retained behind an in-progress pedestrian clearance is still `ACK`'d immediately to meet the Central command-response deadline, with only activation deferred until clearance completes and the request is revalidated. Every renewal is independently validated against its duration limit and current safety conditions and may be rejected without disturbing the existing expiry (`PA-11`). The controller retains exclusive actuation authority, rejects unsafe requests, never truncates pedestrian clearance, and terminates an accepted override through the required vehicle-signal clearance sequence (`PA-09`, UC-08). It realises UC-08.
+This sequence shows how a target intersection controller validates and executes a Central clear-route request while retaining exclusive authority over its signals. A safely deferred request is acknowledged promptly but activates only after pedestrian clearance completes and local validation still succeeds. Initial requests and renewals remain bounded by local safety checks, and every accepted override ends through the required vehicle-signal clearance sequence (`PA-09`, `PA-11`, UC-08).
 
 ```mermaid
 ---

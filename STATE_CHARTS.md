@@ -32,7 +32,7 @@ stateDiagram-v2
 
 ## 4.1.2 SC-01B — PEAK_FIXED Phase Detail
 
-The fixed 90-second two-phase cycle used whenever `PEAK_FIXED` is the active mode (entered from `SC-01A`). Ordinary approach sensors are monitored for status and fault purposes only and never alter these durations (`TL-01`, `TL-02`).
+This state chart details the fixed 90-second two-phase cycle used while `PEAK_FIXED` is active. Ordinary approach sensors are monitored for status and fault reporting but do not alter the configured phase durations (`TL-01`, `TL-02`).
 
 ```mermaid
 ---
@@ -69,7 +69,7 @@ stateDiagram-v2
 
 ## 4.1.3 SC-01C — OFF_PEAK_SENSOR Phase Detail
 
-The demand-responsive cycle used whenever `OFF_PEAK_SENSOR` is the active mode (entered from `SC-01A`). Green is bounded between 8 s and 40 s, extends only while demand persists, and a connector request cannot be starved past one further arterial session because arterial green is capped (`TL-03`, `DP-04`, `DP-06`).
+This state chart details the demand-responsive cycle used while `OFF_PEAK_SENSOR` is active. Each green interval is bounded between 8 and 40 seconds and extends only while demand persists; the arterial cap ensures that a pending connector request is served after no more than one further arterial service opportunity (`TL-03`, `DP-04`, `DP-06`).
 
 ```mermaid
 ---
@@ -194,7 +194,7 @@ stateDiagram-v2
 
 ## 4.1.6 SC-03B — Clear-Route Override Validation, Pending, and Renewal Detail
 
-This is the detail inside `SC-03A`'s `CENTRAL_OVERRIDE` box: how a `REQUEST_OVERRIDE(CLEAR_ROUTE)` is validated, optionally queued behind an in-progress pedestrian clearance, kept alive by a valid renewal, and bounded to a maximum of 5 minutes. It expires automatically unless renewed, may be cancelled earlier, and never truncates an in-progress pedestrian clearance. A safely deferred request receives `ACK` promptly; only its activation waits for pedestrian clearance to complete (`PA-09`, `PA-11`).
+This state chart details the `CENTRAL_OVERRIDE` state introduced in SC-03A. It shows local validation, safe deferral behind an active pedestrian clearance, bounded activation, renewal, cancellation, and automatic expiry. A safely deferred request is acknowledged promptly, but it is activated only after pedestrian clearance completes and the request remains valid (`PA-09`, `PA-11`).
 
 ```mermaid
 ---
@@ -236,7 +236,7 @@ stateDiagram-v2
 
 ## 4.1.7 SC-04A — Railway Crossing Approach and Closure
 
-The first half of the railway-crossing lifecycle used identically by `RL1–RL3`: from train-approach detection through the flash-only warning interval, commanded gate closure, and sensor-confirmed closure before any train signal may show `PROCEED` (`RC-03`, `RC-06`, `RC-11`). Continues in `SC-04B` once the gates are confirmed `CLOSED`.
+This state chart defines the first part of the railway-crossing lifecycle shared by `RL1–RL3`. It covers train-approach detection, the flash-only warning interval, commanded gate closure, and sensor-confirmed closure before any train signal may display `PROCEED`; the lifecycle continues in SC-04B after the gates are confirmed `CLOSED` (`RC-03`, `RC-06`, `RC-11`).
 
 ```mermaid
 ---
@@ -286,7 +286,7 @@ stateDiagram-v2
 
 ## 4.1.8 SC-04B — Railway Crossing Occupancy and Reopening
 
-The second half of the lifecycle, entered from `SC-04A`'s `CLOSED` state once gate closure is confirmed. A gate must not reopen while any train's occupancy window remains active, including a second or third train registered from either direction, and the train signal always returns to `STOP` before the gates move (`RC-04`, `RC-05`).
+This state chart defines the second part of the railway-crossing lifecycle, entered from SC-04A after gate closure is confirmed. The gates remain closed while any registered occupancy window is active, including windows created by additional trains from either direction, and all train signals return to `STOP` before the gates begin opening (`RC-04`, `RC-05`).
 
 ```mermaid
 ---
