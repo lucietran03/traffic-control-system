@@ -1,127 +1,163 @@
-# 3.2 Scenarios and Written Specifications
+## 3.2 Scenarios and Written Specifications
 
-> Detail chronological use case scenarios that validate your core system assumptions. Keep the written flow brief and step-by-step.
+The following use cases define the principal externally observable behaviours of the distributed traffic-control system. They progress from normal traffic operation through coordination, railway protection, Central control functions, and degraded operation. Each Main Flow describes a complete successful outcome, while each Alternative Flow identifies its branching step and resulting endpoint.
 
-The following scenarios outline the step-by-step chronological interactions between external entities and the distributed traffic-control system to validate the project's core architectural assumptions. These written specifications detail the system's behavior across standard traffic demand, pedestrian integration, railway pre-emption, hardware fault containment, and network communication. By mapping out these critical operational extremes, the scenarios demonstrate how the system balances central coordination via inter-process communication (IPC) with independent, local fail-safe authority and graceful degradation during network failures.
-
-**Notation.** Sensor and actuator identifiers below use the same shorthand as `SYSTEM_DIAGRAMS.md` (Diagrams 3–4): `S_x` (approach vehicle-presence sensor, `[S]`), `Q_x` (advance/queue sensor, `[Q]`, CC-01), `Pb_x` (pedestrian push-button, `[Pb]`), `TA_x` (train-approach sensor, `[TA]`), `BgS_x` (boom-gate position sensor, `[BgS]`), and `TS_x` (train signal actuator, `[TS]`). Business rules are cited by their ID in `system_assumptions_tables.md` (e.g. `TL-01`, `RC-03`) rather than by section number, so the citations remain valid if the surrounding report is reorganised.
-
-## 3.2.1 Off-Peak Sensor Actuation
-
-In `OFF_PEAK_SENSOR` mode, the intersection defaults to resting on the arterial phase (R1/R2) to maintain high-priority traffic flow. This scenario illustrates the system's responsiveness when a vehicle arrives on an idle connector road (R3-R5). The local controller (Lx) guarantees a bounded service window by executing standard clearance intervals and extending the green light in 4-second increments up to a strict 40-second maximum cap, preventing indefinite starvation of the connector road.
-
-**Table 10: Use Case 01 Specification**
+### 3.2.1 UC-01 — Serve Vehicle Demand
 
 | Field | Description |
 |---|---|
-| **Use Case** | UC01: Off-Peak Sensor Actuation |
-| **Goal** | Serve vehicle demand on an idle connector road without indefinitely starving the arterial phase. |
-| **Primary Actors** | Vehicle |
-| **Secondary Actors** | None |
-| **Description** | A vehicle triggers the stop-line sensor on an idle connector road. The system safely transitions the phase and extends green up to 40 seconds. |
-| **Pre-conditions** | The vehicle presence sensor (`S_x`) on the connector approach becomes active. |
-| **Trigger** | A vehicle activates the presence sensor (`S_x`). |
-| **Basic Course of Events** | 1. The system applies 4 seconds of yellow and 2 seconds of all-red clearance to the arterial phase.<br>2. The connector phase transitions to green for a guaranteed minimum of 8 seconds.<br>3. Green extends in 4-second increments while demand persists.<br>4. The phase terminates at the strict 40-second maximum cap. |
-| **Alternative Paths** | **3a. Demand clears before the maximum cap:**<br>1. The vehicle clears the approach, and `S_x` reports `DEMAND_ABSENT`.<br>2. The system completes the current 4-second increment, then initiates the clearance intervals.<br>3. The system returns to resting on the arterial phase. |
-| **Post-conditions** | Connector vehicle demand is served. The system returns to resting on the arterial phase. |
-| **Business Rules** | **Bounded Connector Service (DP-06):** Latched connector demand must be served after at most one opposing arterial service opportunity, subject to required clearances.<br><br>**Timing and Extension Limits (TL-01 and TL-03):** Green extends in 4-second increments up to a strict 40-second maximum, accompanied by mandatory 4-second yellow and 2-second all-red clearance intervals.<br><br>**Arterial Priority Default (DP-04):** In the absence of demand, the intersection defaults to resting on the arterial phase (R1/R2). |
+| **Name** | `UC-01 — Serve Vehicle Demand` |
+| **Goal** | Serve arterial and connector traffic safely according to the active normal operating mode. |
+| **Summary** | The system operates each intersection using fixed phase timing during Peak periods and detected demand during Off-Peak periods. All phase changes preserve the configured green and clearance limits. |
+| **Primary Actors** | Vehicle / road user |
+| **Secondary Actors** | Vehicle-presence sensor |
+| **Pre-conditions** | 1. The intersection is operating in `PEAK_FIXED` or `OFF_PEAK_SENSOR`.<br>2. No local fault, railway restriction, or Central override prevents the requested movement.<br>3. The current timing profile has been locally validated. |
+| **Triggers** | A scheduled phase becomes due in `PEAK_FIXED`, or vehicle demand becomes present in `OFF_PEAK_SENSOR`. |
+| **Main Flow** | 1. The system identifies the active normal operating mode.<br>2. The system selects the next eligible vehicle phase using the fixed schedule or recorded demand, as applicable.<br>3. If a conflicting phase is active, the system completes its required minimum-green interval.<br>4. The active phase passes through 4 seconds of yellow and 2 seconds of all-red clearance.<br>5. The selected vehicle phase receives green for at least 8 seconds.<br>6. In `OFF_PEAK_SENSOR`, the system checks demand every 4 seconds and extends green while demand persists, up to 40 seconds.<br>7. When service is complete, the system safely terminates the phase through the required clearance intervals.<br>8. The served demand is cleared, and the system returns to normal phase selection. |
+| **Alternative Flows** | **2.1 — Peak Fixed operation:**<br>2.1.1. The system selects the next phase from the fixed 90-second cycle.<br>2.1.2. Ordinary presence sensors do not alter the fixed phase duration.<br>2.1.3. Continue at Step 3.<br><br>**2.2 — No Off-Peak demand is present:**<br>2.2.1. The system retains or returns to the arterial resting phase.<br>2.2.2. The system waits for new vehicle or pedestrian demand.<br>2.2.3. The use case ends in the normal arterial rest state.<br><br>**6.1 — Demand clears before the Off-Peak maximum:**<br>6.1.1. The system completes the current 4-second extension increment.<br>6.1.2. Continue at Step 7.<br><br>**6.2 — Connector demand is waiting:**<br>6.2.1. The system prevents repeated arterial extension or immediate arterial reselection.<br>6.2.2. The connector demand is served after no more than one opposing arterial service opportunity.<br>6.2.3. Continue at Step 3 for the connector phase.<br><br>**3.1 — A higher-priority condition arises:**<br>3.1.1. The system preserves all mandatory clearance intervals.<br>3.1.2. The applicable railway, override, or fault use case takes control.<br>3.1.3. This use case ends with the vehicle demand served or safely retained as pending. |
+| **Post-conditions** | 1. The selected vehicle demand has been served or remains safely pending under a higher-priority restriction.<br>2. No conflicting movements have received green simultaneously.<br>3. The intersection has resumed normal phase selection or its arterial rest state. |
+| **Business Rules** | **BR-1:** Every conflicting transition must include 4 seconds of yellow and 2 seconds of all-red clearance (`TL-01`).<br>**BR-2:** Off-Peak green must remain between 8 and 40 seconds and may extend only in 4-second increments (`TL-01`, `TL-03`).<br>**BR-3:** With no demand, Off-Peak operation rests on the arterial phase (`DP-04`, `TL-03`).<br>**BR-4:** A latched connector demand must not be indefinitely starved (`DP-06`).<br>**BR-5:** Ordinary presence demand affects phase selection only in `OFF_PEAK_SENSOR` (`PA-04`). |
 
-## 3.2.2 Pedestrian Parallel Walk
-
-The pedestrian parallel walk scenario demonstrates the system's ability to integrate foot traffic without requiring a disruptive all-red scramble phase. When a pedestrian activates the push-button, the request is latched and scheduled concurrently with the next non-conflicting vehicle phase. The local controller enforces a strict three-state safety sequence, ensuring pedestrian safety and proper clearance before conflicting vehicle traffic is permitted to proceed.
-
-**Table 11: Use Case 02 Specification**
+### 3.2.2 UC-02 — Serve Pedestrian Crossing Request
 
 | Field | Description |
 |---|---|
-| **Use Case** | UC02: Pedestrian Parallel Walk |
-| **Goal** | Serve a pedestrian request safely alongside a compatible vehicle phase. |
+| **Name** | `UC-02 — Serve Pedestrian Crossing Request` |
+| **Goal** | Complete a requested pedestrian crossing safely with a compatible vehicle phase. |
+| **Summary** | A pedestrian button press creates one pending request. The system serves it with the next compatible vehicle phase and completes the full pedestrian clearance sequence before releasing conflicting traffic. |
 | **Primary Actors** | Pedestrian |
-| **Secondary Actors** | None |
-| **Description** | A pedestrian request is latched and served alongside a compatible vehicle phase, concluding with a three-state clearance sequence. |
-| **Pre-conditions** | The pedestrian crossing currently displays `DONT_WALK`. |
-| **Trigger** | A pedestrian presses the push-button (`Pb_x`). |
-| **Basic Course of Events** | 1. The system latches the pending request.<br>2. The system schedules `WALK` concurrently with the next non-conflicting vehicle phase.<br>3. The system applies a `FLASHING_DONT_WALK` clearance before the vehicle phase concludes.<br>4. The signal returns to `DONT_WALK`, and the latch clears. |
-| **Alternative Paths** | **1a. The pedestrian presses the button repeatedly:**<br>1. The system coalesces repeated presses into a single pending request (TL-06).<br>2. The flow returns to Step 2 of the Basic Course of Events. |
-| **Post-conditions** | The pedestrian request latch is cleared. The signal rests at `DONT_WALK`. |
-| **Business Rules** | **Latched and Coalesced Demand (TL-06):** One button press creates one pending request; repeated presses are coalesced. Requests have equal scheduling status to vehicle demand.<br><br>**Concurrent Three-State Sequence (TL-05):** The pedestrian sequence (`WALK` → `FLASHING_DONT_WALK` → `DONT_WALK`) must run concurrently with a non-conflicting vehicle phase, not as a separate scramble phase. |
+| **Secondary Actors** | Pedestrian push-button |
+| **Pre-conditions** | 1. The pedestrian crossing is located at one of `I1–I6`.<br>2. The relevant pedestrian signal displays `DONT_WALK`.<br>3. No pedestrian service is currently active for that crossing side. |
+| **Triggers** | The pedestrian presses the relevant push-button. |
+| **Main Flow** | 1. The pedestrian presses the crossing button.<br>2. The system detects the button event and latches one pending request.<br>3. The system identifies the next vehicle phase compatible with the requested crossing.<br>4. When the compatible phase begins, the pedestrian signal changes to `WALK`.<br>5. After the WALK interval, the signal changes to `FLASHING_DONT_WALK` for clearance.<br>6. The signal returns to `DONT_WALK` before any conflicting vehicle movement receives green.<br>7. The system clears the pending request.<br>8. The pedestrian service is complete, and ordinary phase operation continues. |
+| **Alternative Flows** | **2.1 — A request is already pending:**<br>2.1.1. The system coalesces the new press into the existing request.<br>2.1.2. No additional service request is created.<br>2.1.3. Continue at Step 3.<br><br>**3.1 — Railway restriction prevents immediate service:**<br>3.1.1. The request remains latched.<br>3.1.2. If another compatible phase is available, continue at Step 4 with that phase.<br>3.1.3. Otherwise, wait until the restriction clears and then return to Step 3.<br><br>**5.1 — A Central override arrives during pedestrian clearance:**<br>5.1.1. The system does not truncate `WALK` or `FLASHING_DONT_WALK`.<br>5.1.2. The override waits or is rejected according to its safety constraints.<br>5.1.3. Continue at Step 6.<br><br>**2.2 — Button remains stuck active:**<br>2.2.1. The input is coalesced into one request.<br>2.2.2. The system reports the stuck-active input as a fault.<br>2.2.3. Continue at Step 3 without generating additional requests. |
+| **Post-conditions** | 1. After successful service, the pedestrian signal displays `DONT_WALK` and the request is cleared.<br>2. If service remains restricted, the request stays latched.<br>3. No conflicting vehicle movement has received green before pedestrian clearance completed. |
+| **Business Rules** | **BR-1:** Pedestrian service must follow `WALK → FLASHING_DONT_WALK → DONT_WALK` (`TL-05`).<br>**BR-2:** WALK may run only with a non-conflicting vehicle phase (`TL-05`).<br>**BR-3:** Repeated presses create no more than one pending request (`TL-06`).<br>**BR-4:** A request received during railway pre-emption must not be discarded (`PA-02`).<br>**BR-5:** Pedestrian facilities are modelled at intersections only (`PA-01`). |
 
-## 3.2.3 Railway Pre-emption and Drain
-
-This scenario highlights the critical intersection of traffic management and railway safety. Upon detecting an approaching train, the local railway controller (`RLx`) begins an approximately 45-second warning-to-arrival sequence and immediately notifies the adjacent intersection controller (`Lx`), which suppresses traffic feeding toward the crossing. The queue-warning detector (`Q_x`) and the train's fixed occupancy timer are independent mechanisms: a road queue can trigger `Q_x` at any point while the crossing is closed, while the occupancy timer only governs when `RLx` is permitted to reopen the gates. Once the crossing reopens, `Lx` uses whichever detector state is current to size a bounded 60-second drain phase, clearing any accumulated connector-road backlog before resuming normal cyclical operation.
-
-**Table 12: Use Case 03 Specification**
+### 3.2.3 UC-03 — Coordinate Arterial Traffic Progression
 
 | Field | Description |
 |---|---|
-| **Use Case** | UC03: Railway Pre-emption and Drain |
-| **Goal** | Protect the railway crossing and efficiently clear the post-closure traffic backlog. |
+| **Name** | `UC-03 — Coordinate Arterial Traffic Progression` |
+| **Goal** | Coordinate successive arterial green phases using validated travel-time offsets. |
+| **Summary** | The system applies distance-and-speed-based timing offsets along R1 and R2 to support vehicle progression between successive intersections. Coordination remains an enhancement rather than a dependency for safe local operation. |
+| **Primary Actors** | Vehicle / arterial road user |
+| **Secondary Actors** | Central Control Room Operator |
+| **Pre-conditions** | 1. A valid arterial coordination profile is available.<br>2. The relevant intersections are operating normally.<br>3. No railway or fault state is currently disrupting the coordinated phases. |
+| **Triggers** | A validated arterial coordination profile becomes active. |
+| **Main Flow** | 1. Central supplies each relevant intersection with its validated timing offset.<br>2. Each local controller validates the received offset.<br>3. Each controller applies its offset at a safe phase boundary.<br>4. The first intersection in the arterial chain begins its coordinated green phase.<br>5. Downstream intersections begin their corresponding green phases according to the configured travel-time offsets.<br>6. Vehicles travelling near the assumed arterial speed receive the intended green-progression opportunity.<br>7. Each controller reports its active profile and phase state to Central.<br>8. The coordinated profile remains active while valid, completing the use case in normal coordinated operation. |
+| **Alternative Flows** | **2.1 — An offset violates a local safety bound:**<br>2.1.1. The receiving controller rejects the profile with `NACK`.<br>2.1.2. The controller retains its previous valid configuration.<br>2.1.3. The use case ends with that intersection operating safely without the rejected profile.<br><br>**1.1 — The coordination profile is missing or stale:**<br>1.1.1. The affected controller does not wait for Central.<br>1.1.2. It continues standalone fixed or sensor-driven operation.<br>1.1.3. The use case ends in safe standalone operation.<br><br>**5.1 — Railway pre-emption disrupts a coordinated intersection:**<br>5.1.1. The affected controller suspends the conflicting coordinated movement and follows the railway restriction.<br>5.1.2. After the restriction clears, it resumes safe standalone cycling.<br>5.1.3. The next valid timing profile restores ordinary coordination without a separate resynchronisation state.<br>5.1.4. The use case ends when coordinated or safe standalone operation resumes. |
+| **Post-conditions** | 1. The arterial chain is operating with validated offsets, or its intersections remain safe in standalone operation.<br>2. Every local controller retains authority over its own phase timing.<br>3. Coordination has not bypassed any local safety rule. |
+| **Business Rules** | **BR-1:** Coordination applies only to `I1–I3–I5` on R1 and `I2–I4–I6` on R2 (`TC-02`).<br>**BR-2:** Offsets are derived from distance divided by assumed travel speed (`TC-01`, `TC-02`).<br>**BR-3:** Central distributes profiles, while each local controller validates and applies its own parameters (`TC-03`).<br>**BR-4:** Missing or stale coordination must degrade to standalone operation (`TC-04`).<br>**BR-5:** Railway disruption is recovered through the normal timing-profile path (`TC-05`). |
+
+### 3.2.4 UC-04 — Protect a Railway Crossing for an Approaching Train
+
+| Field | Description |
+|---|---|
+| **Name** | `UC-04 — Protect a Railway Crossing for an Approaching Train` |
+| **Goal** | Secure the railway crossing before authorising an approaching train to proceed. |
+| **Summary** | When an approaching train is detected, the system warns road users, suppresses traffic toward the crossing, closes and verifies the gates, and maintains protection until every active train-occupancy window has elapsed. |
 | **Primary Actors** | Train |
+| **Secondary Actors** | Train-approach sensor, boom-gate position sensors |
+| **Pre-conditions** | 1. The crossing is `OPEN`.<br>2. Its train signals display `STOP`.<br>3. Its local railway controller is operational.<br>4. No unresolved crossing fault is active. |
+| **Triggers** | A train-approach sensor reports `TRAIN_APPROACHING`. |
+| **Main Flow** | 1. The system detects the approaching train and registers its expected arrival and occupancy window.<br>2. The crossing enters `WARNING`, and the road-facing flashers activate.<br>3. The system reports the crossing state to the two adjacent intersections and Central.<br>4. Each adjacent intersection safely clears the movement heading toward the crossing and holds it at red.<br>5. After the flash-only warning interval, both boom gates begin closing.<br>6. The gate-position sensors confirm that the required gates are `CLOSED`.<br>7. The relevant train signal changes to `PROCEED`.<br>8. The gates remain closed and the crossing remains protected throughout the train’s occupancy window.<br>9. After every active occupancy window has elapsed, the train signal returns to `STOP`.<br>10. The gates reopen, the flashers stop, and the crossing returns to `OPEN`.<br>11. The system reports `OPEN` to the adjacent intersections and Central, completing the crossing sequence. |
+| **Alternative Flows** | **6.1 — Gate closure is not confirmed:**<br>6.1.1. The train signal remains at `STOP`.<br>6.1.2. The crossing enters `FAULT` and holds the applicable road restrictions.<br>6.1.3. The system reports the fault to Central independently of the local safety response.<br>6.1.4. The normal crossing sequence terminates in the safe fault state.<br><br>**8.1 — A second train is detected before reopening:**<br>8.1.1. The system registers an additional occupancy window.<br>8.1.2. The gates remain closed while either occupancy window remains active.<br>8.1.3. Return to Step 9 only after all active windows have elapsed.<br><br>**8.2 — Train-approach input remains active beyond its diagnostic timeout:**<br>8.2.1. The system identifies a stuck-active sensor fault.<br>8.2.2. The crossing remains on the safe side with the gates down and train signal at `STOP`.<br>8.2.3. The fault is reported and the use case ends in the safe fault state.<br><br>**3.1 — Central communication is unavailable:**<br>3.1.1. The local crossing sequence continues without Central dependency.<br>3.1.2. Status reporting resumes when communication becomes available.<br>3.1.3. Continue at Step 4. |
+| **Post-conditions** | 1. The crossing has returned to `OPEN`; or<br>2. The crossing remains in a documented safe fault state with the train signal at `STOP` and road access restricted.<br>3. No gate has reopened while an occupancy window remained active. |
+| **Business Rules** | **BR-1:** Railway warning uses an approximately 45-second warning-to-arrival budget (`RC-03`).<br>**BR-2:** A train signal may show `PROCEED` only after gate closure is sensor-confirmed (`RC-06`).<br>**BR-3:** Gates must remain closed until every active occupancy window has elapsed (`RC-04`).<br>**BR-4:** Only the owning railway controller may actuate railway equipment (`RC-01`, `RC-02`).<br>**BR-5:** Railway protection must not depend on Central connectivity (`RC-10`).<br>**BR-6:** A permanently silent approach sensor is not detectable by the Core design (`RC-11`). |
+
+### 3.2.5 UC-05 — Manage Road Traffic During and After a Railway Closure
+
+| Field | Description |
+|---|---|
+| **Name** | `UC-05 — Manage Road Traffic During and After a Railway Closure` |
+| **Goal** | Prevent traffic from being fed toward an unavailable crossing and safely clear the queue after reopening. |
+| **Summary** | Adjacent intersections suppress the movement toward a closing or closed crossing. After reopening, a bounded drain phase is used when the advance detector reports that the queue has reached its threshold. |
+| **Primary Actors** | Vehicle / road user |
+| **Secondary Actors** | Crossing-status input, advance/queue detector |
+| **Pre-conditions** | 1. The intersection is adjacent to a railway crossing.<br>2. It receives the current state of that crossing.<br>3. Its normal phase sequencer is operational. |
+| **Triggers** | The adjacent crossing reports a state other than `OPEN`. |
+| **Main Flow** | 1. The system receives the non-open crossing status.<br>2. If the toward-crossing movement is active, the system completes its minimum-green requirement.<br>3. The movement safely transitions through yellow and all-red to red.<br>4. The system withholds green from the toward-crossing movement while the crossing remains unavailable.<br>5. Compatible cross-traffic and away-from-crossing movements continue where permitted.<br>6. The crossing reports `OPEN` while the advance detector reports `QUEUE_WARNING`.<br>7. The system starts the connector drain phase.<br>8. The system checks `QUEUE_WARNING` every 4 seconds and extends the drain phase while the warning remains active.<br>9. The warning clears before the 60-second cap.<br>10. The system safely terminates the drain phase and resumes ordinary phase selection. |
+| **Alternative Flows** | **6.1 — No queue warning exists after reopening:**<br>6.1.1. The system skips the extended drain phase.<br>6.1.2. Normal phase selection resumes.<br>6.1.3. The use case ends in normal operation.<br><br>**9.1 — Queue warning remains active at 60 seconds:**<br>9.1.1. The drain phase terminates at the hard cap.<br>9.1.2. The system completes the required clearance intervals.<br>9.1.3. Normal bounded phase selection resumes, ending the use case.<br><br>**4.1 — Crossing enters `FAULT`:**<br>4.1.1. The movement toward the crossing remains red.<br>4.1.2. Compatible non-conflicting traffic continues where safe.<br>4.1.3. The restriction remains until the fault clears and the crossing reports `OPEN`.<br>4.1.4. Return to Step 6 after reopening. |
+| **Post-conditions** | 1. Traffic toward an unavailable crossing remains suppressed.<br>2. After reopening, the drain phase has completed, reached its cap, or was unnecessary.<br>3. The intersection has resumed ordinary phase selection. |
+| **Business Rules** | **BR-1:** A toward-crossing movement must receive no green until the crossing reports `OPEN` (`CC-02`).<br>**BR-2:** The queue detector reports only whether the queue has reached its fixed detection point (`CC-01`).<br>**BR-3:** Drain extension uses 4-second increments and a 60-second cap (`CC-03`).<br>**BR-4:** Railway suppression may not bypass yellow or all-red clearance (`TL-01`). |
+
+### 3.2.6 UC-06 — Respond to a Railway Equipment Fault
+
+| Field | Description |
+|---|---|
+| **Name** | `UC-06 — Respond to a Railway Equipment Fault` |
+| **Goal** | Contain a railway-equipment fault locally and expose it to the Central Control Room. |
+| **Summary** | The system responds locally when a required railway-equipment state cannot be confirmed. The train signal is forced to `STOP` independently of Central communication, and the fault is reported for operator attention. |
+| **Primary Actors** | Railway-equipment fault input |
+| **Secondary Actors** | Central Control Room Operator |
+| **Pre-conditions** | 1. A railway controller is performing or supervising a safety-relevant operation.<br>2. The applicable equipment state is being monitored. |
+| **Triggers** | A required gate-state confirmation is missing, contradictory, or explicitly reports a fault. |
+| **Main Flow** | 1. The system detects that the expected safe equipment state cannot be confirmed.<br>2. The crossing enters `FAULT`.<br>3. The train signal is immediately forced or held at `STOP`.<br>4. The gates, flashers, and adjacent road restrictions are held in their applicable safe states.<br>5. Independently of the local safety response, the system reports the fault to Central.<br>6. Central displays the fault to the operator.<br>7. The fault remains latched and normal crossing operation remains suspended.<br>8. The use case ends with the crossing contained in its documented safe fault state. |
+| **Alternative Flows** | **5.1 — Central communication is unavailable:**<br>5.1.1. The local safe state remains active without waiting for Central.<br>5.1.2. The operator notification remains unavailable until reporting can resume.<br>5.1.3. Continue at Step 7.<br><br>**7.1 — Operator requests fault clearance after repair:**<br>7.1.1. The local railway controller verifies that the physical fault has cleared.<br>7.1.2. If verification succeeds, it accepts the request and safely restores normal crossing readiness.<br>7.1.3. The use case ends with the crossing ready for normal operation.<br><br>**7.2 — Fault-clear request is premature:**<br>7.2.1. The local controller detects that the unsafe condition remains.<br>7.2.2. It rejects the request with `NACK`.<br>7.2.3. The crossing remains in `FAULT`, and the use case ends in the safe fault state. |
+| **Post-conditions** | 1. The crossing remains protected with the train signal at `STOP`; or<br>2. After verified repair, the fault is cleared and the crossing is ready for normal operation.<br>3. No Central acknowledgement was required to establish the local safe state. |
+| **Business Rules** | **BR-1:** Missing or contradictory gate confirmation must force `STOP` and raise a local fault (`RC-06`).<br>**BR-2:** The local safety response and Central report are independent actions (`RC-10`).<br>**BR-3:** Central may request fault clearance but may not actuate railway equipment (`RC-09`).<br>**BR-4:** An unsafe request must be rejected with `NACK` (`PA-09`).<br>**BR-5:** A local fault must not cascade to unrelated locations (`PA-10`). |
+
+### 3.2.7 UC-07 — Configure Traffic Operating Parameters
+
+| Field | Description |
+|---|---|
+| **Name** | `UC-07 — Configure Traffic Operating Parameters` |
+| **Goal** | Apply a valid mode or timing-profile change without disrupting safe active operation. |
+| **Summary** | The operator requests a normal operating-mode or timing-profile change. The target controller validates the request and applies an accepted change only at a safe phase boundary. |
+| **Primary Actors** | Central Control Room Operator |
 | **Secondary Actors** | None |
-| **Description** | The system runs a 45-second lead-time warning-and-closure sequence for an approaching train, holds the gates closed for the train's full occupancy window, and — once reopened — runs a bounded drain phase only if a queue is still present. |
-| **Pre-conditions** | The system operates normally, and the advance/queue sensor (`Q_x`) is inactive. |
-| **Trigger** | The train-approach sensor (`TA_x`) activates. |
-| **Basic Course of Events** | 1. `RLx` starts the flashers and notifies the adjacent `Lx` and `C1` (crossing state → `WARNING`).<br>2. `Lx` suppresses the toward-crossing movement through the normal yellow/all-red clearance (it does not cut green instantly).<br>3. `RLx` closes the gates within the ~45-second warning budget and sets the train signal (`TS_x`) to `PROCEED` only once `BgS_x` confirms `CLOSED`.<br>4. Independently of the above, if the queue on the toward-crossing approach reaches `Q_x` at any point while the crossing is closed, `Lx` records `QUEUE_WARNING`.<br>5. The train occupies the crossing for its fixed 20-second occupancy window; `RLx` reopens the gates only once every active occupancy window (including any second train) has elapsed.<br>6. If `QUEUE_WARNING` is active at reopening, `Lx` runs a bounded drain phase, extending the connector green in 4-second increments up to a 60-second cap. |
-| **Alternative Paths** | **4a. No queue ever forms:**<br>1. `Q_x` never reports `QUEUE_WARNING` during the closure.<br>2. At reopening, `Lx` skips the drain phase entirely and resumes normal phase selection immediately.<br><br>**6a. The queue clears before the drain cap:**<br>1. `Q_x` stops reporting `QUEUE_WARNING` before the 60-second cap is reached.<br>2. The system ends the drain phase early and resumes normal phase selection. |
-| **Post-conditions** | The railway crossing is open. Any traffic backlog is cleared. Normal phase selection resumes. |
-| **Business Rules** | **Crossing-Closure Suppression (CC-02):** From pre-emption until the crossing reports `OPEN`, movements feeding toward the crossing receive no green.<br><br>**Post-Reopening Drain (CC-03):** The connector phase extends in 4-second increments while `QUEUE_WARNING` remains active, bounded by a strict 60-second cap.<br><br>**Train-Approach Warning Budget (RC-03):** An approximately 45-second warning-to-arrival budget is enforced to cover flasher lead, gate movement, and adjacent-intersection clearances.<br><br>**Fixed Occupancy Window (RC-04):** Each train occupies the crossing for a fixed 20-second window from its expected arrival; gates stay closed until every active window, including an overlapping second train, has elapsed. |
+| **Pre-conditions** | 1. Central communication is available.<br>2. The target controller is operational and reporting its current state.<br>3. Central holds a valid target and proposed parameter set. |
+| **Triggers** | The operator submits a `SET_MODE` or `SET_TIMING_PROFILE` request. |
+| **Main Flow** | 1. The operator selects a target controller and enters the requested mode or timing parameters.<br>2. The operator submits the request.<br>3. The target controller validates the request against supported ranges and local safety constraints.<br>4. The controller returns `ACK` to indicate acceptance.<br>5. If a phase is active, the accepted change remains pending until the current phase and required clearances complete.<br>6. The controller applies the change at the next safe phase boundary.<br>7. The controller reports the updated mode or profile to Central.<br>8. Central displays the confirmed configuration, and the use case ends successfully. |
+| **Alternative Flows** | **3.1 — Request violates a safety constraint:**<br>3.1.1. The controller rejects the request with `NACK`.<br>3.1.2. Central displays the rejection reason.<br>3.1.3. The current validated configuration remains active.<br>3.1.4. The use case ends without applying the requested change.<br><br>**3.2 — Communication fails before acceptance:**<br>3.2.1. No unconfirmed change is applied.<br>3.2.2. The controller continues using its last validated parameters.<br>3.2.3. Central marks the request as unsuccessful or unresolved.<br>3.2.4. The use case ends in autonomous local operation.<br><br>**5.1 — A higher-priority state is active:**<br>5.1.1. The accepted change remains pending or is rejected as applicable.<br>5.1.2. The higher-priority behaviour proceeds first.<br>5.1.3. If the request remains valid afterward, return to Step 6; otherwise, end without applying it. |
+| **Post-conditions** | 1. The accepted configuration is active and reported; or<br>2. The previous validated configuration remains active after rejection or communication failure.<br>3. No active phase or clearance interval has been unsafely truncated. |
+| **Business Rules** | **BR-1:** Normal mode selection uses only `PEAK_FIXED` and `OFF_PEAK_SENSOR` (`DP-01`).<br>**BR-2:** A mode switch takes effect only at a safe phase boundary (`TL-04`).<br>**BR-3:** Timing values must preserve the configured green and clearance limits (`TL-01`).<br>**BR-4:** Each local controller validates and applies its own profile (`TC-03`).<br>**BR-5:** A request violating a safety invariant must be rejected with `NACK` (`PA-09`). |
 
-## 3.2.4 Fail-Safe Hardware Fault
-
-Robust distributed control requires immediate, localized responses to hardware failures. In this scenario, a boom gate fails to provide sensor confirmation that it has successfully closed. The local railway controller (RLx) bypasses any reliance on network connectivity or central acknowledgment, immediately forcing the train signal to `STOP` to protect the crossing. Simultaneously, a fire-and-forget fault report is dispatched to alert the Control Operator, demonstrating the system's fail-safe local autonomy.
-
-**Table 13: Use Case 04 Specification**
+### 3.2.8 UC-08 — Apply a Bounded Clear-Route Override
 
 | Field | Description |
 |---|---|
-| **Use Case** | UC04: Fail-Safe Hardware Fault |
-| **Goal** | Contain a critical hardware failure locally to ensure physical safety while alerting the central control room. |
-| **Primary Actors** | Hardware/Boom Gate |
-| **Secondary Actors** | Control Operator |
-| **Description** | A boom gate fails to confirm closure. The local system independently forces the train signal to `STOP` and reports the fault to the Control Operator's terminal. |
-| **Pre-conditions** | The system has initiated a gate-closing sequence. |
-| **Trigger** | The boom-gate position sensor (`BgS_x`) fails to confirm `CLOSED` within the expected physical window. |
-| **Basic Course of Events** | 1. The system detects the missing sensor confirmation.<br>2. The system independently forces the train signal (`TS_x`) to `STOP`.<br>3. The system transmits a fire-and-forget fault report for display to the Control Operator.<br>4. The system maintains the fail-safe state without awaiting acknowledgment. |
-| **Alternative Paths** | **3a. The central link is offline:**<br>1. The communication link to the central control room is down after three consecutive missed heartbeats.<br>2. The system continues to apply its local safe state (`STOP`) independently.<br>3. The fault report to the Control Operator is buffered or dropped depending on the IPC implementation, but physical safety is maintained. |
-| **Post-conditions** | The train signal remains at `STOP`. The Control Operator is notified of the fault when communication is available. The crossing remains physically protected. |
-| **Business Rules** | **Gate-Confirmed Train Authority (RC-06):** A train signal may show `PROCEED` only when gates are sensor-confirmed `CLOSED`.<br><br>**Independent Fault Response (RC-10):** The railway controller independently forces the train signal to `STOP` and reports to the central controller (C1) without waiting for an acknowledgment.<br><br>**Local Fault Containment (PA-10):** A local failure affects only its own location and must not cascade through the distributed network. |
-
-## 3.2.5 Central Link Failure and Autonomous Fallback
-
-Distributed systems must gracefully handle network degradation without compromising local safety. In this scenario, the communication link between a local controller and the central control room drops. Upon missing three consecutive heartbeats, the system declares the link unavailable and enters a degraded autonomous mode. It retains its last validated timing parameters rather than freezing or reverting to arbitrary defaults and continues normal phase cycling using its local hardware clock.
-
-**Table 14: Use Case 05 Specification**
-
-| Field | Description |
-|---|---|
-| **Use Case** | UC05: Central Link Failure and Autonomous Fallback |
-| **Goal** | Maintain safe, continuous local intersection operation when central communication is lost. |
-| **Primary Actors** | Local Hardware Clock |
-| **Secondary Actors** | Central Controller (as a disconnected monitoring entity) |
-| **Description** | The heartbeat link fails. The system enters a degraded mode, retains its last known timing profile, and relies on its local clock for phase transitions. |
-| **Pre-conditions** | The system operates normally with an active heartbeat connection to the central control room. |
-| **Trigger** | The system registers three consecutive missed 1-second heartbeats from the central control room. |
-| **Basic Course of Events** | 1. The system detects a heartbeat timeout and declares the communication link unavailable.<br>2. The system transitions into a `DEGRADED_LOCAL` operational state.<br>3. The system locks in the last validated timing parameters and disables external coordination.<br>4. The local hardware clock assumes full authority over Peak/Off-Peak mode switching and phase cycling. |
-| **Alternative Paths** | **3a. Reconnection occurs:**<br>1. The system detects resumed heartbeats from the central control room.<br>2. The system pushes its complete current state to the central controller before accepting any new commands.<br>3. Normal coordinated operation resumes. |
-| **Post-conditions** | The intersection continues safe, autonomous operation without central coordination. |
-| **Business Rules** | **Central-Link Failure Protocol (PA-07):** After three consecutive missed 1-second heartbeats, the local controller declares the Central link unavailable, retains the last validated timing parameters, and its local clock continues selecting Peak/Off-Peak mode — coordination and override availability are removed, but local mode selection is never frozen and the intersection is never forced to an all-red or otherwise degraded output state.<br><br>**Reconnection State Push (PA-08):** On reconnection, the local controller sends its complete current state before accepting any new Central command, since the local state may have advanced while Central's view was stale. |
-
-## 3.2.6 Central Profile Update
-
-To support dynamic traffic coordination, the system allows central operators to push updated timing profiles to local nodes via IPC. This scenario demonstrates the system's strict adherence to local safety authority during a remote update. When a new `SET_TIMING_PROFILE` command is received, the system validates the request against its hardcoded safety invariants. Rather than applying the change immediately mid-phase, the system queues the update to take effect only at the next safe phase boundary.
-
-**Table 15: Use Case 06 Specification**
-
-| Field | Description |
-|---|---|
-| **Use Case** | UC06: Central Profile Update |
-| **Goal** | Safely apply updated coordination timing parameters received from the central control room. |
-| **Primary Actors** | Control Operator |
+| **Name** | `UC-08 — Apply a Bounded Clear-Route Override` |
+| **Goal** | Temporarily prioritise a requested through-movement without overriding local safety authority. |
+| **Summary** | The operator requests a bounded clear-route override for a target intersection. The local controller accepts the request only if the movement can be served without violating railway protection, pedestrian clearance, or signal-transition requirements. |
+| **Primary Actors** | Central Control Room Operator |
 | **Secondary Actors** | None |
-| **Description** | A Control Operator pushes a new timing profile. The local system validates the parameters and applies them at the next safe phase boundary. |
-| **Pre-conditions** | The system operates normally with an active, synchronized link to the central control room. |
-| **Trigger** | The system receives a `SET_TIMING_PROFILE` IPC command from the central control room. |
-| **Basic Course of Events** | 1. The system extracts the proposed timing parameters (for example, a new green-wave offset) from the IPC message.<br>2. The system validates the parameters against local safety invariants, such as minimum-green and clearance limits.<br>3. The system returns an `ACK` message to the central control room confirming successful validation.<br>4. The system queues the mode or timing change and applies it at the next safe phase boundary. |
-| **Alternative Paths** | **2a. The command violates safety invariants:**<br>1. The proposed profile attempts to bypass the 4-second yellow or 2-second all-red clearance intervals.<br>2. The system rejects the command and returns a `NACK` message to the central control room.<br>3. The system continues operating safely with its current timing profile. |
-| **Post-conditions** | The intersection operates using the updated, validated timing parameters without interrupting an active phase. |
-| **Business Rules** | **Unsafe Command Rejection (PA-09):** Any Central command that violates a safety invariant is rejected with a `NACK`.<br><br>**Safe Mode Transition (TL-04):** Any validated change requested by the central controller takes effect only at the next safe phase boundary. |
+| **Pre-conditions** | 1. Central communication is available.<br>2. The target controller is operational and reporting its current state.<br>3. The operator has selected a valid target movement and bounded duration. |
+| **Triggers** | The operator submits `REQUEST_OVERRIDE(CLEAR_ROUTE, target, duration)`. |
+| **Main Flow** | 1. The operator selects the target through-movement and override duration.<br>2. The operator submits the override request.<br>3. The target controller validates the request against its conflict matrix and current restrictions.<br>4. The controller returns `ACK` for the accepted request.<br>5. The controller completes the current protected interval and required clearances.<br>6. The requested through-movement receives green for the accepted duration.<br>7. The override expires automatically or is cancelled by the operator.<br>8. The controller safely terminates the override movement through the required clearances.<br>9. The controller restores its previous normal mode and reports the result to Central.<br>10. Central displays completion of the override, ending the use case. |
+| **Alternative Flows** | **3.1 — Pedestrian clearance is in progress:**<br>3.1.1. The controller does not truncate the pedestrian sequence.<br>3.1.2. The override waits until clearance completes or is rejected if it cannot be safely deferred.<br>3.1.3. If retained, return to Step 3; otherwise, end with `NACK`.<br><br>**3.2 — Railway pre-emption conflicts with the requested movement:**<br>3.2.1. The controller rejects the request with `NACK`.<br>3.2.2. The movement toward the crossing remains red.<br>3.2.3. Central displays the rejection, and the use case ends.<br><br>**3.3 — Requested duration is invalid or unbounded:**<br>3.3.1. The controller rejects the request or requires a valid bounded duration.<br>3.3.2. No override is applied.<br>3.3.3. The use case ends unless the operator submits a corrected request.<br><br>**6.1 — A higher-priority fault occurs during the override:**<br>6.1.1. The controller terminates the override through the applicable safe transition.<br>6.1.2. It enters the required local fault response.<br>6.1.3. Central is notified, and the use case ends in the safe fault state. |
+| **Post-conditions** | 1. The override has completed or been rejected.<br>2. The controller has returned to its prior normal mode unless a higher-priority state remains active.<br>3. No local safety invariant has been bypassed. |
+| **Business Rules** | **BR-1:** An override may not bypass yellow or all-red clearance (`TL-01`).<br>**BR-2:** A movement toward a non-open crossing must receive no green (`CC-02`).<br>**BR-3:** An unsafe override must be rejected with `NACK` (`PA-09`).<br>**BR-4:** Central sends only high-level requests; the local controller retains output authority (Project Specification, Sections 8 and 18).<br>**BR-5:** An override must be bounded and auto-expiring (Project Specification, Sections 18 and 22). |
+
+### 3.2.9 UC-09 — Monitor Network Status and Faults
+
+| Field | Description |
+|---|---|
+| **Name** | `UC-09 — Monitor Network Status and Faults` |
+| **Goal** | Provide the Central Control Room Operator with an accurate network-wide view of controller states and faults. |
+| **Summary** | Central presents the latest reported state of the nine local controllers and identifies missing, stale, or faulted locations. Monitoring does not grant Central direct hardware-actuation authority. |
+| **Primary Actors** | Central Control Room Operator |
+| **Secondary Actors** | None |
+| **Pre-conditions** | 1. Central is operational.<br>2. At least one local controller is registered for monitoring.<br>3. The Central display is available to the operator. |
+| **Triggers** | The operator opens or refreshes the network-status display, or the system receives a state transition, heartbeat timeout, or fault report. |
+| **Main Flow** | 1. The operator opens the network-status display.<br>2. Central receives current state and health information from the available local controllers.<br>3. Central associates each report with its physical intersection or railway crossing.<br>4. The display presents each available controller’s mode, signal or crossing state, sensor status, and active faults.<br>5. Central checks the freshness of each controller using the heartbeat policy.<br>6. Central identifies any missing, stale, or faulted locations.<br>7. The operator reviews the current network state and active fault indications.<br>8. Central continues updating the display as new reports arrive, completing the requested monitoring view. |
+| **Alternative Flows** | **5.1 — A controller becomes unreachable:**<br>5.1.1. Central marks that controller as stale or unavailable.<br>5.1.2. The last report is not presented as current state.<br>5.1.3. Continue at Step 6.<br><br>**6.1 — A railway fault report arrives:**<br>6.1.1. Central displays the fault with the applicable severity.<br>6.1.2. The railway controller independently maintains its local safe state.<br>6.1.3. Continue at Step 7.<br><br>**2.1 — A previously unavailable controller reconnects:**<br>2.1.1. Central waits for the controller’s complete current-state report.<br>2.1.2. Central replaces the stale view only after receiving that report.<br>2.1.3. Return to Step 3. |
+| **Post-conditions** | 1. The operator can distinguish current, stale, unavailable, and faulted controller states.<br>2. Newly reported faults are visible to the operator.<br>3. Monitoring has not directly altered any local actuator. |
+| **Business Rules** | **BR-1:** Central monitors nine local controllers rather than directly controlling their devices (Project Specification, Sections 8.1 and 18).<br>**BR-2:** Heartbeat loss is identified after three consecutive missed heartbeats (`PA-07`).<br>**BR-3:** A reconnected controller supplies its current state before accepting new commands (`PA-08`).<br>**BR-4:** Railway fault reporting must not delay the local `STOP` response (`RC-10`). |
+
+### 3.2.10 UC-10 — Continue Local Operation During Central Link Loss
+
+| Field | Description |
+|---|---|
+| **Name** | `UC-10 — Continue Local Operation During Central Link Loss` |
+| **Goal** | Maintain safe local operation while Central communication is unavailable and safely resynchronise after reconnection. |
+| **Summary** | A local controller detects loss of its Central link and continues autonomously. It retains its last validated parameters, uses its local clock for mode selection, and sends its actual state to Central after reconnection. |
+| **Primary Actors** | Communication network |
+| **Secondary Actors** | Central Control Room Operator |
+| **Pre-conditions** | 1. The local controller is operating normally.<br>2. It has a previously validated timing configuration.<br>3. It normally exchanges heartbeats with Central. |
+| **Triggers** | Three consecutive 1-second Central heartbeats are missed. |
+| **Main Flow** | 1. The local controller detects the heartbeat timeout.<br>2. The controller declares its Central link unavailable and enters `DEGRADED_LOCAL`.<br>3. Central coordination and override availability are disabled for that controller.<br>4. The controller retains its last validated timing parameters.<br>5. Its local clock continues selecting `PEAK_FIXED` or `OFF_PEAK_SENSOR` as applicable.<br>6. Local traffic, pedestrian, railway, and safety behaviour continues without Central dependency.<br>7. The communication link becomes available again.<br>8. The local controller sends its complete current state to Central.<br>9. After the state exchange completes, the controller accepts new Central requests and normal coordination resumes.<br>10. The controller exits `DEGRADED_LOCAL`, completing the recovery. |
+| **Alternative Flows** | **7.1 — Link remains unavailable:**<br>7.1.1. The controller continues autonomous operation using its last validated parameters.<br>7.1.2. Its local clock continues normal Peak/Off-Peak selection.<br>7.1.3. The use case ends in safe `DEGRADED_LOCAL` operation.<br><br>**6.1 — Railway event occurs while disconnected:**<br>6.1.1. The relevant local railway controller executes the complete railway-protection sequence.<br>6.1.2. Adjacent intersections apply the required railway restrictions.<br>6.1.3. No action waits for Central.<br>6.1.4. Return to Step 7 when communication becomes available.<br><br>**8.1 — Central holds stale state after reconnection:**<br>8.1.1. The local controller rejects or defers new Central requests.<br>8.1.2. The controller completes transmission of its current state.<br>8.1.3. Return to Step 9 after successful state synchronisation. |
+| **Post-conditions** | 1. The controller is continuing safe autonomous operation; or<br>2. It has transferred its actual state to Central and resumed validated coordination.<br>3. Local operation has not frozen or entered an unnecessary all-red state solely because Central was unavailable. |
+| **Business Rules** | **BR-1:** Heartbeats occur every second, and three consecutive misses declare the Central link unavailable (`PA-07`).<br>**BR-2:** The controller retains its last validated parameters while its local clock continues selecting the applicable mode (`PA-07`).<br>**BR-3:** On reconnection, the controller sends its current state before accepting new Central commands (`PA-08`).<br>**BR-4:** Loss of coordination must degrade to standalone operation rather than blocking the controller (`TC-04`). |
