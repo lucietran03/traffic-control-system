@@ -403,17 +403,24 @@ sequenceDiagram
                 end
             end
 
-            alt override reaches its expiry time
-                Lx->>Sig: terminate through mandatory clearance
-            else operator cancels active override
-                Op->>C1: CANCEL_OVERRIDE
-                C1->>Lx: CANCEL_OVERRIDE
-                Lx->>Sig: terminate through mandatory clearance
-            end
+            alt railway pre-emption or local fault occurs
+                Lx->>Sig: terminate override through the applicable safe transition
+                Lx->>Lx: enter the higher-priority local state
+                Lx-->>C1: STATUS(override terminated, safety condition active)
+                C1-->>Op: display safety termination
+            else normal override termination
+                alt override reaches its expiry time
+                    Lx->>Sig: terminate through mandatory clearance
+                else operator cancels active override
+                    Op->>C1: CANCEL_OVERRIDE
+                    C1->>Lx: CANCEL_OVERRIDE
+                    Lx->>Sig: terminate through mandatory clearance
+                end
 
-            Lx->>Lx: restore previous normal mode
-            Lx-->>C1: STATUS(override complete)
-            C1-->>Op: display completion
+                Lx->>Lx: restore previous normal mode
+                Lx-->>C1: STATUS(override complete)
+                C1-->>Op: display completion
+            end
         else request no longer safe or valid once clearance completes
             Lx-->>C1: STATUS(override discarded, condition no longer valid)
         end
@@ -438,17 +445,24 @@ sequenceDiagram
             end
         end
 
-        alt override reaches its expiry time
-            Lx->>Sig: terminate through mandatory clearance
-        else operator cancels active override
-            Op->>C1: CANCEL_OVERRIDE
-            C1->>Lx: CANCEL_OVERRIDE
-            Lx->>Sig: terminate through mandatory clearance
-        end
+        alt railway pre-emption or local fault occurs
+            Lx->>Sig: terminate override through the applicable safe transition
+            Lx->>Lx: enter the higher-priority local state
+            Lx-->>C1: STATUS(override terminated, safety condition active)
+            C1-->>Op: display safety termination
+        else normal override termination
+            alt override reaches its expiry time
+                Lx->>Sig: terminate through mandatory clearance
+            else operator cancels active override
+                Op->>C1: CANCEL_OVERRIDE
+                C1->>Lx: CANCEL_OVERRIDE
+                Lx->>Sig: terminate through mandatory clearance
+            end
 
-        Lx->>Lx: restore previous normal mode
-        Lx-->>C1: STATUS(override complete)
-        C1-->>Op: display completion
+            Lx->>Lx: restore previous normal mode
+            Lx-->>C1: STATUS(override complete)
+            C1-->>Op: display completion
+        end
     end
 
     Note over Lx,C1: bounded 5-minute maximum, auto-expiry, and validated renewal are documented in system_assumptions_tables.md (PA-11)

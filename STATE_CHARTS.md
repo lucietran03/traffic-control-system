@@ -194,7 +194,7 @@ stateDiagram-v2
 
 ## 4.1.6 SC-03B — Clear-Route Override Validation, Pending, and Renewal Detail
 
-This is the detail inside `SC-03A`'s `CENTRAL_OVERRIDE` box: how a `REQUEST_OVERRIDE(CLEAR_ROUTE)` is validated, optionally queued behind an in-progress pedestrian clearance, kept alive by a valid renewal, and bounded to a maximum of 5 minutes. It expires automatically unless renewed, may be cancelled earlier, and never truncates an in-progress pedestrian clearance (`PA-09`, `PA-11`). A request queued behind pedestrian clearance still receives `ACK` immediately, meeting the standard Central command-response deadline (Project Specification, Section 21) — only its activation is deferred.
+This is the detail inside `SC-03A`'s `CENTRAL_OVERRIDE` box: how a `REQUEST_OVERRIDE(CLEAR_ROUTE)` is validated, optionally queued behind an in-progress pedestrian clearance, kept alive by a valid renewal, and bounded to a maximum of 5 minutes. It expires automatically unless renewed, may be cancelled earlier, and never truncates an in-progress pedestrian clearance. A safely deferred request receives `ACK` promptly; only its activation waits for pedestrian clearance to complete (`PA-09`, `PA-11`).
 
 ```mermaid
 ---
@@ -208,7 +208,7 @@ stateDiagram-v2
     state override_validation <<choice>>
     [*] --> override_validation : REQUEST_OVERRIDE(CLEAR_ROUTE, target, duration) from SC-03A
     override_validation --> ACTIVE : [bounded, safe, and no pedestrian clearance active] / ACK, apply at safe boundary
-    override_validation --> OVERRIDE_PENDING : [otherwise safe but pedestrian clearance active] / ACK(pending clearance), queue request
+    override_validation --> OVERRIDE_PENDING : [otherwise safe but pedestrian clearance active] / ACK(accepted, pending clearance), queue request
     override_validation --> [*] : [unsafe, unbounded, or conflicts with railway pre-emption] / NACK, return to SC-03A NORMAL_OPERATION
 
     OVERRIDE_PENDING --> ACTIVE : pedestrian clearance completes [request remains safe and valid] / apply at safe boundary
