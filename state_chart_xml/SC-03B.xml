@@ -1,0 +1,102 @@
+<mxfile host="Electron">
+  <diagram name="SC-03B" id="0">
+    <mxGraphModel dx="2822" dy="912" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="n2" parent="1" style="ellipse;html=1;fillColor=#ffffff;strokeColor=#000000;labelPosition=right;verticalLabelPosition=middle;align=left;verticalAlign=middle;spacingLeft=8;fontColor=#000000;fontStyle=1;" value="ENTRY from SC-03A" vertex="1">
+          <mxGeometry height="30" width="30" x="120" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="n3" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=10;" value="" vertex="1">
+          <mxGeometry height="60" width="60" x="105" y="239" as="geometry" />
+        </mxCell>
+        <mxCell id="n4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=12;fontStyle=1;" value="ACTIVE" vertex="1">
+          <mxGeometry height="40" width="125" x="440" y="449" as="geometry" />
+        </mxCell>
+        <mxCell id="n6" parent="1" style="shape=sumEllipse;perimeter=ellipsePerimeter;html=1;backgroundOutline=1;fillColor=#ffffff;strokeColor=#000000;labelPosition=right;verticalLabelPosition=middle;align=left;verticalAlign=middle;spacingLeft=8;fontColor=#000000;fontStyle=1;" value="EXIT to SC-03A NORMAL_OPERATION" vertex="1">
+          <mxGeometry height="30" width="30" x="120" y="360" as="geometry" />
+        </mxCell>
+        <mxCell id="n7" parent="1" style="shape=sumEllipse;perimeter=ellipsePerimeter;html=1;backgroundOutline=1;fillColor=#ffffff;strokeColor=#000000;labelPosition=right;verticalLabelPosition=middle;align=left;verticalAlign=middle;spacingLeft=8;fontColor=#000000;fontStyle=1;" value="EXIT to SC-03A NORMAL_OPERATION" vertex="1">
+          <mxGeometry height="30" width="30" x="-315" y="570" as="geometry" />
+        </mxCell>
+        <mxCell id="n8" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=10;" value="" vertex="1">
+          <mxGeometry height="60" width="60" x="800" y="439" as="geometry" />
+        </mxCell>
+        <mxCell id="n9" parent="1" style="shape=sumEllipse;perimeter=ellipsePerimeter;html=1;backgroundOutline=1;fillColor=#ffffff;strokeColor=#000000;labelPosition=right;verticalLabelPosition=middle;align=left;verticalAlign=middle;spacingLeft=8;fontColor=#000000;fontStyle=1;" value="EXIT to SC-03A NORMAL_OPERATION" vertex="1">
+          <mxGeometry height="30" width="30" x="487.5" y="570" as="geometry" />
+        </mxCell>
+        <mxCell id="e1001" edge="1" parent="1" source="n2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#ffffff;" target="n3" value="REQUEST_OVERRIDE(CLEAR_ROUTE, target, duration) from SC-03A">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e1002" edge="1" parent="1" source="n3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#ffffff;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="n4" value="[bounded, safe, and no pedestrian clearance active]&amp;nbsp;&lt;div&gt;/ ACK, apply at safe boundary&lt;/div&gt;">
+          <mxGeometry relative="1" x="-0.2831" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e1003" edge="1" parent="1" source="n3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#ffffff;" target="n5" value="[otherwise safe but pedestrian clearance active]&amp;nbsp;&lt;div&gt;/ ACK(accepted, pending clearance), queue request&lt;/div&gt;">
+          <mxGeometry relative="1" x="-0.1924" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e1004" edge="1" parent="1" source="n3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="n6" value="[unsafe, unbounded, or conflicts with railway pre-emption] / NACK, return to SC-03A NORMAL_OPERATION">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e1005" edge="1" parent="1" source="n5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#ffffff;" target="n4" value="pedestrian clearance completes [request remains safe and valid] / apply at safe boundary">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e1006" edge="1" parent="1" source="n5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#ffffff;" target="n7" value="request no longer valid, cancelled, or expires before application&amp;nbsp;&lt;div&gt;/ discard request, return to SC-03A NORMAL_OPERATION&lt;/div&gt;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e1007" edge="1" parent="1" source="n4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="n8" value="RENEW_OVERRIDE(duration)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="920" y="344" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e1008" edge="1" parent="1" source="n8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" target="n4" value="[bounded and safe] / ACK, restart override timer">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint as="offset" />
+            <mxPoint x="780" y="364" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e1009" edge="1" parent="1" source="n8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#ffffff;entryX=0.75;entryY=1;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="n4" value="[invalid, unsafe, or over limit] / NACK, retain current expiry">
+          <mxGeometry relative="1" x="-0.0181" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e1010" edge="1" parent="1" source="n4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#ffffff;" target="n9" value="duration expires or operator cancels / return to SC-03A NORMAL_OPERATION">
+          <mxGeometry relative="1" x="0.3684" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="note2001" parent="1" style="shape=note;dashed=1;dashPattern=4 4;whiteSpace=wrap;html=1;size=18;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=10;align=left;" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;The pedestrian sequence itself is never truncated (SC-02) — the override simply waits. The initial ACK already covers this state; it is not repeated when the queued request later activates.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="56" width="320" x="-210" y="392" as="geometry" />
+        </mxCell>
+        <mxCell id="note2002" parent="1" style="shape=note;dashed=1;dashPattern=4 4;whiteSpace=wrap;html=1;size=18;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=10;align=left;" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Bounded and auto-expiring: default maximum 5 minutes, renewed only after an explicit request passes local duration and safety validation (PA-11).&lt;/font&gt;" vertex="1">
+          <mxGeometry height="60" width="260" x="150" y="392" as="geometry" />
+        </mxCell>
+        <mxCell id="5VH0FVWKRODC7Tl2MqaW-1" edge="1" parent="1" source="n3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#ffffff;" target="n5" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="135" y="240" as="sourcePoint" />
+            <mxPoint x="135" y="425" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="n5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=12;fontStyle=1;" value="OVERRIDE_PENDING" vertex="1">
+          <mxGeometry height="40" width="140" x="-370" y="448" as="geometry" />
+        </mxCell>
+        <mxCell id="5VH0FVWKRODC7Tl2MqaW-2" edge="1" parent="1" source="n5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=-0.002;entryY=0.389;entryDx=0;entryDy=0;entryPerimeter=0;exitX=0.75;exitY=0;exitDx=0;exitDy=0;endArrow=none;endFill=0;dashed=1;strokeWidth=2;" target="note2001">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="-120" y="414" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="5VH0FVWKRODC7Tl2MqaW-3" edge="1" parent="1" source="n4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0;entryDx=260;entryDy=18;entryPerimeter=0;exitX=0.25;exitY=0;exitDx=0;exitDy=0;endArrow=none;endFill=0;dashed=1;strokeWidth=2;" target="note2002">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="-260" y="436" as="sourcePoint" />
+            <mxPoint x="-202" y="410" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

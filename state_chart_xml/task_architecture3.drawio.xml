@@ -1,0 +1,242 @@
+<mxfile host="Electron">
+  <diagram name="Task Architecture - 10 QNX Nodes" id="1DU4G0_OsjpJs_jF4-R1">
+    <mxGraphModel dx="3479" dy="2216" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-107" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="1030" width="1480" x="-1600" y="-70" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-213" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#d6d8db;fontFamily=Helvetica;align=center;" value="&lt;b style=&quot;font-size: 18px;&quot;&gt;QNX Neutrino RTOS — Distributed Task and IPC Architecture (10 Logical Nodes)&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size: 12px; color: rgb(85, 85, 85);&quot;&gt;Locally autonomous control with Central monitoring and validated coordination&lt;/span&gt;" vertex="1">
+          <mxGeometry height="60" width="1440" x="-1580" y="-50" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-214" parent="1" style="swimlane;startSize=22;rounded=1;arcSize=8;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontSize=11;fontFamily=Helvetica;" value="Architecture Components" vertex="1">
+          <mxGeometry height="215" width="340" x="-480" y="25" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-215" parent="NsXxP8NgFj-sbvMw0hzp-214" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" value="Supervisory / Central Display Process" vertex="1">
+          <mxGeometry height="25" width="310" x="15" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-216" parent="NsXxP8NgFj-sbvMw0hzp-214" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" value="Autonomous Intersection Controller (proc_Lx)" vertex="1">
+          <mxGeometry height="25" width="310" x="15" y="62" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-217" parent="NsXxP8NgFj-sbvMw0hzp-214" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;fontStyle=1;" value="Autonomous Railway Controller (proc_RLx)" vertex="1">
+          <mxGeometry height="25" width="310" x="15" y="94" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-218" parent="NsXxP8NgFj-sbvMw0hzp-214" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;fontStyle=1;" value="Hardware Inputs (Car / Pedestrian / Train Sensors)" vertex="1">
+          <mxGeometry height="25" width="310" x="15" y="126" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-219" parent="NsXxP8NgFj-sbvMw0hzp-214" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;fontStyle=1;" value="QNX Qnet / IPC Messaging Channels" vertex="1">
+          <mxGeometry height="25" width="310" x="15" y="158" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-220" parent="1" style="swimlane;startSize=28;rounded=1;arcSize=8;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=13;fontFamily=Helvetica;" value="Node 10: Central Supervisory &amp; Display Controller (proc_central)" vertex="1">
+          <mxGeometry height="215" width="1070" x="-1580" y="25" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-222" parent="NsXxP8NgFj-sbvMw0hzp-220" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" value="&lt;b&gt;Supervisor Mode Engine Task&lt;/b&gt;&lt;br&gt;• Peak / Off-Peak schedule&lt;br&gt;• Validated timing profiles and arterial offsets&lt;br&gt;• Mode, override and railway fault-clear requests" vertex="1">
+          <mxGeometry height="75" width="230" x="340" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-223" parent="NsXxP8NgFj-sbvMw0hzp-220" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" value="&lt;b&gt;Operator HMI / Status Display&lt;/b&gt;&lt;br/&gt;• Network-wide controller status&lt;br/&gt;• Signal, crossing, command and fault display" vertex="1">
+          <mxGeometry height="75" width="230" x="805" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-224" parent="NsXxP8NgFj-sbvMw0hzp-220" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;" value="&lt;b&gt;Persistent Audit Logger&lt;/b&gt;&lt;br/&gt;• Timestamped state, command and fault events&lt;br/&gt;• Persistent /fs storage" vertex="1">
+          <mxGeometry height="75" width="220" x="815" y="135" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-226" edge="1" parent="NsXxP8NgFj-sbvMw0hzp-220" source="NsXxP8NgFj-sbvMw0hzp-222" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#d6b656;strokeWidth=1.5;fontSize=10;" target="NsXxP8NgFj-sbvMw0hzp-223" value="POSIX Shared Memory">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-227" edge="1" parent="NsXxP8NgFj-sbvMw0hzp-220" source="NsXxP8NgFj-sbvMw0hzp-222" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;strokeWidth=1.5;fontSize=10;" target="NsXxP8NgFj-sbvMw0hzp-224" value="Async Ring Buffer">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="400" y="185.03" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-228" parent="NsXxP8NgFj-sbvMw0hzp-220" style="text;html=1;fontSize=10;fontColor=#555555;align=center;" value="Autonomous Edge Operation: Central failure does not impair local road or railway safety." vertex="1">
+          <mxGeometry height="25" width="570" x="20" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-229" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;strokeWidth=2;fontFamily=Helvetica;" value="&lt;div align=&quot;center&quot;&gt;&lt;b&gt;Qnet Inter-node Channels&lt;/b&gt;&lt;/div&gt;&lt;div align=&quot;justify&quot;&gt;&lt;b&gt;1) Direct railway-status path:&lt;/b&gt; each RLx sends CROSSING_STATUS directly to its two adjacent Lx controllers; this safety path does not depend on C1.&lt;/div&gt;&lt;div align=&quot;justify&quot;&gt;&lt;b&gt;2) Supervisory path:&lt;/b&gt; all nine local controllers send heartbeat, status and fault messages to C1. C1 sends validated SET_MODE, SET_TIMING_PROFILE and REQUEST_OVERRIDE commands; receivers return ACK/NACK.&lt;/div&gt;" vertex="1">
+          <mxGeometry height="104" width="1440" x="-1580" y="290" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-230" parent="1" style="swimlane;startSize=28;rounded=1;arcSize=8;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=13;fontFamily=Helvetica;" value="Road Intersection Subsystem (6 Autonomous Nodes)" vertex="1">
+          <mxGeometry height="480" width="760" x="-1580" y="457.5" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-231" parent="NsXxP8NgFj-sbvMw0hzp-230" style="swimlane;startSize=24;rounded=1;arcSize=6;fillColor=#f8f9fa;strokeColor=#82b366;fontStyle=1;fontSize=11;" value="Node 1: Intersection L1 Controller  — Detailed Edge Architecture" vertex="1">
+          <mxGeometry height="350" width="735" x="20" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-232" parent="NsXxP8NgFj-sbvMw0hzp-231" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;" value="&lt;b&gt;Vehicle / Queue Sensor Input&lt;/b&gt;&lt;br/&gt;• Stop-line presence detector&lt;br/&gt;• Separate advance / queue detector" vertex="1">
+          <mxGeometry height="55" width="120" x="20" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-233" parent="NsXxP8NgFj-sbvMw0hzp-231" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;" value="&lt;b&gt;Pedestrian Button&lt;/b&gt;&lt;br/&gt;Push-to-Walk Call Switch&lt;br/&gt;&lt;i&gt;Debounced ISR Handler&lt;/i&gt;" vertex="1">
+          <mxGeometry height="55" width="120" x="20" y="95" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-234" parent="NsXxP8NgFj-sbvMw0hzp-231" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;" value="&lt;b&gt;Local Clock / Timer Task&lt;/b&gt;&lt;br/&gt;• Phase and clearance timing&lt;br/&gt;• Local Peak / Off-Peak fallback selection" vertex="1">
+          <mxGeometry height="55" width="120" x="20" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-235" parent="NsXxP8NgFj-sbvMw0hzp-231" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" value="&lt;b&gt;Local Traffic FSM Task&lt;/b&gt;&lt;br&gt;• PEAK_FIXED: 90 s two-phase cycle&lt;br&gt;• OFF_PEAK_SENSOR: bounded demand response&lt;br&gt;• Pedestrian request latching and clearance&lt;br&gt;• Directional railway pre-emption&lt;br&gt;• Post-opening queue drain and local mode fallback" vertex="1">
+          <mxGeometry height="140" width="210" x="270" y="55" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-236" parent="NsXxP8NgFj-sbvMw0hzp-231" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" value="&lt;b&gt;Signal Output Task&lt;/b&gt;&lt;br/&gt;• Vehicle and pedestrian signal heads&lt;br/&gt;• Conflict interlock and safe outputs" vertex="1">
+          <mxGeometry height="70" width="145" x="570" y="77.5" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-237" parent="NsXxP8NgFj-sbvMw0hzp-231" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" value="&lt;b&gt;Qnet Command / Pre-emption Task&lt;/b&gt;&lt;br&gt;• Receive direct CROSSING_STATUS from RLx&lt;br&gt;• Validate C1 commands and return ACK/NACK" vertex="1">
+          <mxGeometry height="70" width="155" x="20" y="230" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-238" edge="1" parent="NsXxP8NgFj-sbvMw0hzp-231" source="NsXxP8NgFj-sbvMw0hzp-232" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#82b366;strokeWidth=1.5;fontSize=9;" target="NsXxP8NgFj-sbvMw0hzp-235" value="Vehicle / Queue Events">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-239" edge="1" parent="NsXxP8NgFj-sbvMw0hzp-231" source="NsXxP8NgFj-sbvMw0hzp-233" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#82b366;strokeWidth=1.5;fontSize=9;" target="NsXxP8NgFj-sbvMw0hzp-235" value="Pedestrian Request">
+          <mxGeometry relative="1" x="-0.5714" y="10" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-240" edge="1" parent="NsXxP8NgFj-sbvMw0hzp-231" source="NsXxP8NgFj-sbvMw0hzp-234" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#82b366;strokeWidth=1.5;fontSize=9;" target="NsXxP8NgFj-sbvMw0hzp-235" value="Timer / Mode Events">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-241" edge="1" parent="NsXxP8NgFj-sbvMw0hzp-231" source="NsXxP8NgFj-sbvMw0hzp-235" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#d6b656;strokeWidth=1.5;fontSize=9;" target="NsXxP8NgFj-sbvMw0hzp-236" value="Validated Signal Commands">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-242" edge="1" parent="NsXxP8NgFj-sbvMw0hzp-231" source="NsXxP8NgFj-sbvMw0hzp-237" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#9673a6;strokeWidth=1.5;fontSize=9;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" target="NsXxP8NgFj-sbvMw0hzp-235" value="Crossing Status / Validated Request">
+          <mxGeometry relative="1" x="-0.039" y="-7" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="240.03" y="265.03" />
+              <mxPoint x="240.03" y="141.31" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="watchdog-road" parent="NsXxP8NgFj-sbvMw0hzp-231" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;dashed=1;" value="&lt;b&gt;Local Watchdog Process&lt;/b&gt;&lt;br&gt;Supervises proc_inter and forces safe road outputs on process failure" vertex="1">
+          <mxGeometry height="65" width="175" x="340" y="242.5" as="geometry" />
+        </mxCell>
+        <mxCell id="watchdog-road-edge" edge="1" parent="NsXxP8NgFj-sbvMw0hzp-231" source="watchdog-road" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#666666;fontSize=9;endArrow=block;endFill=1;" target="NsXxP8NgFj-sbvMw0hzp-236" value="safe outputs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-243" parent="NsXxP8NgFj-sbvMw0hzp-230" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=15;" value="&lt;b&gt;Nodes 2–6: L2–L6 replicated intersection controllers&lt;/b&gt;&lt;br&gt;Each node uses the same configuration-driven task architecture, with location-specific signals, presence/queue sensors, pedestrian buttons and crossing adjacency." vertex="1">
+          <mxGeometry height="60" width="720" x="20" y="400" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-244" parent="1" style="swimlane;startSize=28;rounded=1;arcSize=8;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;fontSize=13;fontFamily=Helvetica;" value="Railway Level Crossing Subsystem (3 Safety Nodes)" vertex="1">
+          <mxGeometry height="480" width="650" x="-790" y="457.5" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-245" parent="NsXxP8NgFj-sbvMw0hzp-244" style="swimlane;startSize=24;rounded=1;arcSize=6;fillColor=#f8f9fa;strokeColor=#d79b00;fontStyle=1;fontSize=11;" value="Node 7: Railway Controller RL1 (controlling RC1) — Detailed Architecture" vertex="1">
+          <mxGeometry height="350" width="610" x="20" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-246" parent="NsXxP8NgFj-sbvMw0hzp-245" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;" value="&lt;b&gt;Train-Sensor Input Task&lt;/b&gt;&lt;br/&gt;Two directional binary approach sensors" vertex="1">
+          <mxGeometry height="70" width="120" x="15" y="65" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-248" parent="NsXxP8NgFj-sbvMw0hzp-245" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;" value="&lt;b&gt;Safety Timer Task&lt;/b&gt;&lt;br/&gt;Warning, gate movement and overlapping occupancy-window timing" vertex="1">
+          <mxGeometry height="60" width="120" x="15" y="147.5" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-249" parent="NsXxP8NgFj-sbvMw0hzp-245" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" value="&lt;b&gt;Railway Protection FSM Task&lt;/b&gt;&lt;br&gt;• Warning and gate-closing sequence&lt;br&gt;• Gate-position confirmation interlock&lt;br&gt;• Train STOP / PROCEED control&lt;br&gt;• Overlapping occupancy-window tracking&lt;br&gt;• Local fault-safe response" vertex="1">
+          <mxGeometry height="140" width="145" x="210" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-250" parent="NsXxP8NgFj-sbvMw0hzp-245" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" value="&lt;b&gt;Boom-Gate Output Task&lt;/b&gt;&lt;br/&gt;• Dual gate actuators&lt;br/&gt;• Gate-position sensor feedback" vertex="1">
+          <mxGeometry height="60" width="135" x="460" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-251" parent="NsXxP8NgFj-sbvMw0hzp-245" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" value="&lt;b&gt;Warning and Train-Signal Output Task&lt;/b&gt;&lt;br&gt;• Road-facing red flashers&lt;br&gt;• Train STOP / PROCEED signals" vertex="1">
+          <mxGeometry height="60" width="135" x="460" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-253" edge="1" parent="NsXxP8NgFj-sbvMw0hzp-245" source="NsXxP8NgFj-sbvMw0hzp-246" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#b85450;strokeWidth=1.5;fontSize=9;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="NsXxP8NgFj-sbvMw0hzp-249" value="Train-Approach Event">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="135" y="90" />
+              <mxPoint x="195" y="90" />
+              <mxPoint x="195" y="110" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-255" edge="1" parent="NsXxP8NgFj-sbvMw0hzp-245" source="NsXxP8NgFj-sbvMw0hzp-248" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#82b366;strokeWidth=1.5;fontSize=9;" target="NsXxP8NgFj-sbvMw0hzp-249" value="Safety Timer Events">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="195.03" y="160.03" />
+              <mxPoint x="195.03" y="170.03" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-256" edge="1" parent="NsXxP8NgFj-sbvMw0hzp-245" source="NsXxP8NgFj-sbvMw0hzp-249" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#d6b656;strokeWidth=1.5;fontSize=9;exitX=1.007;exitY=0.274;exitDx=0;exitDy=0;exitPerimeter=0;" target="NsXxP8NgFj-sbvMw0hzp-250" value="Boom Control">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-257" edge="1" parent="NsXxP8NgFj-sbvMw0hzp-245" source="NsXxP8NgFj-sbvMw0hzp-249" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#d6b656;strokeWidth=1.5;fontSize=9;exitX=1.014;exitY=0.561;exitDx=0;exitDy=0;exitPerimeter=0;" target="NsXxP8NgFj-sbvMw0hzp-251" value="Flasher / Train-Signal Commands">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-260" parent="NsXxP8NgFj-sbvMw0hzp-244" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;spacingLeft=15;" value="&lt;b&gt;Nodes 8–9: RL2 and RL3 replicated railway controllers&lt;/b&gt;&lt;br&gt;Each node uses the same configuration-driven task architecture and exclusively controls the gates, flashers and train signals at RC2 or RC3." vertex="1">
+          <mxGeometry height="60" width="595" x="20" y="400" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-261" edge="1" parent="1" source="NsXxP8NgFj-sbvMw0hzp-220" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6c8ebf;strokeWidth=2;fontSize=10;exitX=0.5;exitY=1;entryX=0.25;entryY=0;startArrow=classic;startFill=1;" target="NsXxP8NgFj-sbvMw0hzp-229" value="Heartbeat / Status / Fault Reporting; Validated Commands with ACK/NACK">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-262" edge="1" parent="1" source="NsXxP8NgFj-sbvMw0hzp-230" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#82b366;strokeWidth=2;fontSize=10;exitX=0.5;exitY=0;entryX=0.25;entryY=1;" target="NsXxP8NgFj-sbvMw0hzp-229" value="Road State / Demand / Queue / Fault Status (MsgSend)">
+          <mxGeometry relative="1" x="0.2532" y="51" as="geometry">
+            <mxPoint x="1" y="9" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NsXxP8NgFj-sbvMw0hzp-263" edge="1" parent="1" source="NsXxP8NgFj-sbvMw0hzp-244" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#d79b00;strokeWidth=2;fontSize=10;exitX=0.5;exitY=0;entryX=0.75;entryY=1;" target="NsXxP8NgFj-sbvMw0hzp-229" value="Crossing / Gate / Flasher / Train-Signal / Fault Status (MsgSend)">
+          <mxGeometry relative="1" x="-0.0532" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="Q0zEoyh-f9V35mPRDLfS-1" edge="1" parent="1" source="NsXxP8NgFj-sbvMw0hzp-229" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#82b366;strokeWidth=2;fontSize=10;exitX=0.368;exitY=0.94;entryX=0.75;entryY=0;entryDx=0;entryDy=0;exitDx=0;exitDy=0;exitPerimeter=0;" target="NsXxP8NgFj-sbvMw0hzp-230" value="Direct MSG_CROSSING_STATUS_UPDATE">
+          <mxGeometry relative="1" x="0.4239" y="20" as="geometry">
+            <mxPoint as="offset" />
+            <mxPoint x="-1040" y="439" as="sourcePoint" />
+            <mxPoint x="-1060" y="380" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="Q0zEoyh-f9V35mPRDLfS-4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" value="&lt;div&gt;&lt;b&gt;Qnet Railway-Status Task&lt;/b&gt;&lt;/div&gt;• Send CROSSING_STATUS directly to adjacent Lx controllers&lt;br&gt;• Receive validated C1 requests and return ACK/NACK" vertex="1">
+          <mxGeometry height="60" width="145" x="-320" y="690" as="geometry" />
+        </mxCell>
+        <mxCell id="Q0zEoyh-f9V35mPRDLfS-5" edge="1" parent="1" source="NsXxP8NgFj-sbvMw0hzp-249" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#9673a6;strokeWidth=1.5;fontSize=9;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=0.75;exitY=1;exitDx=0;exitDy=0;" target="Q0zEoyh-f9V35mPRDLfS-4" value="Crossing State / Fault Update">
+          <mxGeometry relative="1" x="-0.3851" y="-21" as="geometry">
+            <mxPoint x="-21" y="-21" as="offset" />
+            <mxPoint x="-1050" y="807" as="sourcePoint" />
+            <mxPoint x="-955" y="710" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="Q0zEoyh-f9V35mPRDLfS-8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" value="&lt;div&gt;&lt;b&gt;Qnet Central Server Task&lt;/b&gt;&lt;/div&gt;• name_attach() server&lt;br&gt;• MsgReceive() / MsgReply()&lt;br&gt;• Route status, faults and ACK/NACK" vertex="1">
+          <mxGeometry height="75" width="220" x="-1560" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="Q0zEoyh-f9V35mPRDLfS-9" edge="1" parent="1" source="Q0zEoyh-f9V35mPRDLfS-8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6c8ebf;strokeWidth=1.5;fontSize=10;startArrow=none;startFill=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" target="NsXxP8NgFj-sbvMw0hzp-222" value="MsgReceive&amp;nbsp;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="-1250" y="180" as="sourcePoint" />
+            <mxPoint x="-1150" y="198" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="Q0zEoyh-f9V35mPRDLfS-10" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" value="&lt;div&gt;&lt;b&gt;Qnet Status / Heartbeat Task&lt;/b&gt;&lt;/div&gt;• Send heartbeat every 1 s&lt;br&gt;• Send state, demand, queue and fault updates to C1" vertex="1">
+          <mxGeometry height="75" width="170" x="-1010" y="660" as="geometry" />
+        </mxCell>
+        <mxCell id="Q0zEoyh-f9V35mPRDLfS-11" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" value="&lt;div&gt;&lt;b&gt;Qnet Status / Heartbeat Task&lt;/b&gt;&lt;/div&gt;• Send heartbeat every 1 s&lt;br&gt;• Send crossing state, equipment status and faults to C1" vertex="1">
+          <mxGeometry height="60" width="155" x="-475" y="750" as="geometry" />
+        </mxCell>
+        <mxCell id="Q0zEoyh-f9V35mPRDLfS-13" edge="1" parent="1" source="NsXxP8NgFj-sbvMw0hzp-249" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#9673a6;strokeWidth=1.5;fontSize=9;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=0.228;exitY=1.006;exitDx=0;exitDy=0;exitPerimeter=0;" target="Q0zEoyh-f9V35mPRDLfS-11" value="Send Event Log message&amp;nbsp;">
+          <mxGeometry relative="1" x="0.0165" y="-33" as="geometry">
+            <mxPoint as="offset" />
+            <mxPoint x="-370" y="680" as="sourcePoint" />
+            <mxPoint x="-239" y="700" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="Q0zEoyh-f9V35mPRDLfS-17" edge="1" parent="1" source="NsXxP8NgFj-sbvMw0hzp-235" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#9673a6;strokeWidth=1.5;fontSize=9;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=1.002;exitY=0.712;exitDx=0;exitDy=0;exitPerimeter=0;" target="Q0zEoyh-f9V35mPRDLfS-10" value="Send Event Log message&amp;nbsp;">
+          <mxGeometry relative="1" x="0.0165" y="-33" as="geometry">
+            <mxPoint as="offset" />
+            <mxPoint x="-550" y="730" as="sourcePoint" />
+            <mxPoint x="-503" y="819" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="sTbapqNOO1_NUAnVa2HT-2" parent="1" style="text;whiteSpace=wrap;html=1;" value="&lt;code&gt;Link health: 1 s heartbeat; 3 missed HEARTBEAT_ACKs → DEGRADED_LOCAL&lt;/code&gt;" vertex="1">
+          <mxGeometry height="60" width="520" x="-710" y="-130" as="geometry" />
+        </mxCell>
+        <mxCell id="sTbapqNOO1_NUAnVa2HT-3" parent="1" style="text;whiteSpace=wrap;html=1;" value="&lt;code&gt;Supervisory channel: monitoring + validated commands (ACK/NACK)&lt;/code&gt;" vertex="1">
+          <mxGeometry height="40" width="500" x="-675" y="-170" as="geometry" />
+        </mxCell>
+        <mxCell id="watchdog-rail" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;dashed=1;" value="&lt;b&gt;Local Watchdog Process&lt;/b&gt;&lt;br&gt;Supervises proc_cross and forces railway safe outputs on process failure" vertex="1">
+          <mxGeometry height="65" width="175" x="-760" y="835" as="geometry" />
+        </mxCell>
+        <mxCell id="watchdog-rail-gate-edge" edge="1" parent="1" source="watchdog-rail" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#666666;fontSize=9;endArrow=block;endFill=1;" target="NsXxP8NgFj-sbvMw0hzp-250" value="safe gate output">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="watchdog-rail-signal-edge" edge="1" parent="1" source="watchdog-rail" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#666666;fontSize=9;endArrow=block;endFill=1;" target="NsXxP8NgFj-sbvMw0hzp-251" value="STOP / warning">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="central-watchdog-monitor" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;" value="&lt;b&gt;Watchdog Monitor Task&lt;/b&gt;&lt;br&gt;Monitors all nine local-controller heartbeats and raises communication alarms" vertex="1">
+          <mxGeometry height="55" width="230" x="-1240" y="160" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,0 +1,74 @@
+<mxfile host="Electron">
+  <diagram name="SC-02" id="0">
+    <mxGraphModel dx="1245" dy="781" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="n2" parent="1" style="ellipse;html=1;aspect=fixed;fillColor=#000000;strokeColor=#000000;" value="" vertex="1">
+          <mxGeometry height="30" width="30" x="50" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="Gxea8DGIdRdxTC1ilX2X-1" edge="1" parent="1" source="n3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;dashed=1;strokeWidth=2;" target="note2002">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="n3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=12;fontStyle=1;" value="DONT_WALK" vertex="1">
+          <mxGeometry height="70" width="190" x="120" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="n4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=12;fontStyle=1;" value="REQUEST_LATCHED" vertex="1">
+          <mxGeometry height="70" width="137.5" x="608.75" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="n5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=12;fontStyle=1;" value="WALK" vertex="1">
+          <mxGeometry height="70" width="190" x="582.5" y="310" as="geometry" />
+        </mxCell>
+        <mxCell id="n6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=12;fontStyle=1;" value="FLASHING_DONT_WALK" vertex="1">
+          <mxGeometry height="70" width="190" x="120" y="310" as="geometry" />
+        </mxCell>
+        <mxCell id="e1001" edge="1" parent="1" source="n2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#ffffff;" target="n3" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e1002" edge="1" parent="1" source="n3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#ffffff;" target="n4" value="PED_REQUEST(side)&amp;nbsp;&lt;div&gt;[no request pending] / latch request&lt;/div&gt;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e1004" edge="1" parent="1" source="n4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#ffffff;" target="n4" value="button remains active beyond diagnostic timeout&amp;nbsp;&lt;div&gt;/ retain one request and report stuck-active fault&lt;/div&gt;">
+          <mxGeometry relative="1" y="110" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e1005" edge="1" parent="1" source="n4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#ffffff;" target="n5" value="compatible vehicle phase begins&amp;nbsp;&lt;span style=&quot;background-color: light-dark(rgb(255, 255, 255), rgb(18, 18, 18)); color: light-dark(rgb(0, 0, 0), rgb(237, 237, 237));&quot;&gt;/ display WALK&lt;/span&gt;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e1006" edge="1" parent="1" source="n5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#ffffff;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=1;entryDx=0;entryDy=0;" target="n5" value="PED_REQUEST(side)&amp;nbsp;&lt;span style=&quot;background-color: light-dark(rgb(255, 255, 255), rgb(18, 18, 18)); color: light-dark(rgb(0, 0, 0), rgb(237, 237, 237));&quot;&gt;/ coalesce repeated request&lt;/span&gt;">
+          <mxGeometry relative="1" y="10" as="geometry">
+            <mxPoint x="1" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e1007" edge="1" parent="1" source="n5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#ffffff;" target="n6" value="WALK interval expires&amp;nbsp;&lt;span style=&quot;background-color: light-dark(rgb(255, 255, 255), rgb(18, 18, 18)); color: light-dark(rgb(0, 0, 0), rgb(237, 237, 237));&quot;&gt;/ begin pedestrian clearance&lt;/span&gt;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e1008" edge="1" parent="1" source="n6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#ffffff;entryX=0.75;entryY=1;entryDx=0;entryDy=0;exitX=0.25;exitY=1;exitDx=0;exitDy=0;" target="n6" value="PED_REQUEST(side)&amp;nbsp;&lt;span style=&quot;background-color: light-dark(rgb(255, 255, 255), rgb(18, 18, 18)); color: light-dark(rgb(0, 0, 0), rgb(237, 237, 237));&quot;&gt;/ coalesce repeated request&lt;/span&gt;">
+          <mxGeometry relative="1" y="-10" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e1009" edge="1" parent="1" source="n6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#ffffff;" target="n3" value="clearance interval expires / clear request and display DONT_WALK">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="note2001" parent="1" style="shape=note;dashed=1;dashPattern=4 4;whiteSpace=wrap;html=1;size=18;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=10;align=left;" value="A request arriving while railway pre-emption (SC-03A) suppresses the compatible movement simply has no enabled WALK transition yet and remains latched, not discarded (PA-02) — it is served once a compatible phase returns." vertex="1">
+          <mxGeometry height="44" width="380" x="487.5" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="note2002" parent="1" style="shape=note;dashed=1;dashPattern=4 4;whiteSpace=wrap;html=1;size=18;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=10;align=left;" value="A permanently silent push-button is not detectable by the Core design (PA-03) — indistinguishable from no request. Shown here only as a note, not as a transition." vertex="1">
+          <mxGeometry height="44" width="300" x="80" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="Gxea8DGIdRdxTC1ilX2X-2" edge="1" parent="1" source="n4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;dashed=1;strokeWidth=2;entryX=0.5;entryY=1;entryDx=0;entryDy=0;entryPerimeter=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;" target="note2001">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="312.5" y="166" as="sourcePoint" />
+            <mxPoint x="312.5" y="140" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
