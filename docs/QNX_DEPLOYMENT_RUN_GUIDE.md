@@ -14,7 +14,7 @@ Follow the `Gide to enable network services and SSH connnection to QNX VM target
 
 ### 2.1 File Transfer
 - 1. Open the Target File System Navigator in Momentics (`Window -> Show View -> QNX Target File System Navigator`).  
-- 2. Drag and drop the compiled binaries (`c_main, lx_main, rlx_main`) from your local `build/x86_64-debug/` folder into the target's `/tmp` directory.  
+- 2. Drag and drop the compiled binaries (`c_main, lx_main, rlx_main`) from its respective project's build output directory into the target VM's `/tmp` directory.
 
 ### 2.2 Execution Order
 Run the processes via SSH terminals in this strict sequence to ensure Qnet name attachment dependencies are met:
