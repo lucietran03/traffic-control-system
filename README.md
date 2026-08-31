@@ -2,9 +2,7 @@
 
 A real-time traffic light control system designed and implemented for the **EEET2588 Real-Time Systems** design project.
 
-The system models a distributed road traffic network with multiple signalised intersections and railway crossings. Each intersection is controlled locally, while a central controller provides monitoring, coordination, operating-mode selection, and exceptional override support.
-
-The proof-of-concept is implemented using the **QNX Neutrino Real-Time Operating System** with **C/C++**, QNX interprocess communication mechanisms, and synchronisation primitives.
+The system models a distributed road traffic network with multiple signalised intersections and railway crossings. The proof-of-concept is implemented using the **QNX Neutrino Real-Time Operating System** (specifically QNX 7.1) with **C**, QNX inter-process communication mechanisms (`Qnet`), and synchronisation primitives.
 
 ## Project Scope
 
@@ -25,6 +23,8 @@ The complete system design covers:
 
 ## High-Level Architecture
 
+The system utilizes a strict distributed hierarchy to guarantee real-time safety. Each local controller remains responsible for its own intersection and must continue operating safely if communication with the central controller is unavailable.
+
 ```text
                         Central Controller
                                C1
@@ -37,43 +37,26 @@ The complete system design covers:
       I1 I2 I3 I4 I5 I6                   RC1 RC2 RC3
 ```
 
-The central controller does not directly control individual traffic lights. Each local controller remains responsible for its own intersection and must continue operating safely if communication with the central controller is unavailable.
+### Critical Design Principles
+- **Safety & Intersection Logic**: Modules managing the hardware conflict matrix, 90-second phase cycles, and 45-second railway warning budgets must never block waiting for Central communication.  
+- **Supervisory Logic**: The Central controller is strictly for monitoring, configuring, and requesting bounded overrides; it must never directly actuate a physical signal or boom gate.
 
-## Planned Repository Structure
+## Repository Structure
+
+The codebase is organized strictly into independent QNX executables and shared IPC contracts.
 
 ```text
-qnx-traffic-control-system/
-├── central/
-│   └── Central controller implementation
-│
-├── intersection/
-│   └── Local road-intersection controller
-│
-├── railway/
-│   └── Railway-crossing controller
-│
-├── common/
-│   └── Shared message definitions, enums and utilities
-│
-├── include/
-│   └── Shared header files
-│
-├── input/
-│   └── Simulated sensor and operator input components
-│
-├── display/
-│   └── Terminal-based system state display
-│
-├── tests/
-│   └── Test programs and test scenarios
-│
-├── docs/
-│   └── Design notes, diagrams and implementation documentation
-│
-└── README.md
+traffic-control-system/
+├── app/
+│   ├── central/          # Supervisory node (c_main, c_mode_eng, c_hmi)
+│   ├── intersection/     # Autonomous road traffic logic (lx_main, lx_fsm, lx_timer)
+│   ├── railway/          # Safety-critical barrier control (rlx_main, rlx_gate, rlx_fsm)
+│   └── shared/           # Qnet IPC implementation, shared payloads, and sys_types.h
+├── docs/                 # Official briefs, system diagrams, and integration guides
+└── README.md             
 ```
 
-The directory structure may evolve as the system architecture is refined during the Initial Design phase.
+For a complete, file-by-file breakdown of the `.c` and `.h` dependencies, see the [QNX Project File Overview](`docs/QNX_PROJECT_FILE_OVERVIEW.md`).  
 
 ## Development Environment
 
@@ -103,25 +86,30 @@ git commit -m "Implement local intersection controller"
 git push origin feature/intersection-controller
 ```
 
-## Current Status
+## Getting Started
 
-**Phase:** Initial Design
+The project relies on **QNX Momentics IDE 8.0.3** and **VirtualBox** for target deployment. Please follow our dedicated documentation guides in sequence to set up, build, and run the project:
 
-Current work focuses on defining:
+### 1. IDE Setup & Compilation
+- **Guide**: [QNX Momentics 8.0.3 Integration](docs/QNX_MOMENTICS_INTEGRATION.md).
+- **Summary**: Instructions on setting up a clean workspace (ensuring no spaces in the directory path to prevent makefile errors), importing the `app/` folders into three distinct QNX Executable projects, linking shared headers, and building the `c_main`, `lx_main`, and `rlx_main` binaries.  
 
-* System assumptions
-* Intersection layouts
-* Traffic-light state behaviour
-* Railway-crossing behaviour
-* Central and local controller responsibilities
-* Traffic demand and priority
-* Timing requirements
-* Traffic coordination
-* Congestion control
-* Inter-process and inter-node communication architecture
-* Failure and fallback behaviour
+### 2. VM Network Configuration
+- **Guide**: [QNX Deployment Run Guide](docs/QNX_DEPLOYMENT_RUN_GUIDE.md).
+- **Summary**: Because QNET is not automatically loaded on new QNX x86 VM targets, this guide covers modifying the VirtualBox adapters (`qnet-lab` internal network or Bridged LAN) and editing the QNX `startup.sh` / `start_net.s`h scripts to enable transparent distributed processing.  
 
-Implementation details will be progressively added as the design is finalised.
+### 3. Execution Sequence
+Once compiled and transferred to the `/tmp` directory of your target VMs, the processes must be executed via SSH in this strict sequence to ensure proper Qnet name attachment dependencies:  
+- 1. **Start Central (`C1`)**: Connect to the Central VM and run `/tmp/c_main`.
+- 2. **Start Railways (`RL1-RL3`)**: Connect to the Railway VMs and run `/tmp/rlx_main`.  
+- 3. **Start Intersections (`L1-L6`)**: Connect to the Intersection VMs and run `/tmp/lx_main`.  
+
+## Deployment Topologies
+
+Depending on hardware availability, the system supports three deployment cases:  
+1. **Single Computer (Virtual Network)**: 3 VMs (`VM_x86_Target01, 02, 03`) running locally via VirtualBox Internal Network (`qnet-lab`).  
+2. **Two Computers (Bridged LAN)**: Split load where PC A hosts Central/Intersections, and PC B hosts the Railway nodes over a bridged physical network.  
+3. **Three Computers (True Distributed)**: High-resiliency setup mapping one VM per physical PC across the same subnet.
 
 ## Team
 

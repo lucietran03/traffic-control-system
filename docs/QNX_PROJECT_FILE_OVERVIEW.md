@@ -15,15 +15,15 @@ These headers guarantee that all distributed processes interpret Qnet payloads a
 
 | File Name | Location | Description | Core Purpose | Process |
 |-----------|---------|-----------|--------------|----------|
-| `sys_types.h` | `app/shared/include` | Global enumerations and bitmasks | Defines traffic modes (`PEAK_FIXED`), signal aspects, crossing states (`WARNING, CLOSED`), and hardware fault flags. | TODO |
-| `ipc_msg.h` | `app/shared/include` | Qnet message structures | Standardizes payloads for status updates, `SET_OPERATION_MODE`, and `MSG_HEARTBEAT` exchanges. | TODO |
-| `qnet_utils.h` | `app/shared/include` | IPC utility prototypes | Exposes wrappers for QNX `name_attach()`, `MsgSend()`, and `MsgReceive()`. | TODO |
-| `c_*.h` | `app/central/include` | Cental node prototypes | Exposes supervisor mode engine limits, watchdog timeouts, and HMI display formatting functions. | TODO |
-| `lx_*.h` | `app/intersection/include` | Intersection prototypes | Defines FSM states, 90-second timer bounds, and collision interlock definitions. | TODO |
-| `rlx_*.h` | `app/railway/include` | Railway node prototypes | Defines the 45-second warning budget, overlapping occupancy window limits, and gate-confirmed-closed constraints. | TODO |
+| `sys_types.h` | `app/shared/includes` | Global enumerations and bitmasks | Defines traffic modes (`PEAK_FIXED`), signal aspects, crossing states (`WARNING, CLOSED`), and hardware fault flags. | TODO |
+| `ipc_msg.h` | `app/shared/includes` | Qnet message structures | Standardizes payloads for status updates, `SET_OPERATION_MODE`, and `MSG_HEARTBEAT` exchanges. | TODO |
+| `qnet_utils.h` | `app/shared/includes` | IPC utility prototypes | Exposes wrappers for QNX `name_attach()`, `MsgSend()`, and `MsgReceive()`. | TODO |
+| `c_*.h` | `app/central/includes` | Cental node prototypes | Exposes supervisor mode engine limits, watchdog timeouts, and HMI display formatting functions. | TODO |
+| `lx_*.h` | `app/intersection/includes` | Intersection prototypes | Defines FSM states, 90-second timer bounds, and collision interlock definitions. | TODO |
+| `rlx_*.h` | `app/railway/includes` | Railway node prototypes | Defines the 45-second warning budget, overlapping occupancy window limits, and gate-confirmed-closed constraints. | TODO |
 
 ## 2. Central Supervisory Controller (`C1`)
-*Base Path / Location*: `app/central/`
+*Base Path / Location*: `app/central/src`
 
 These files govern network-wide monitoring, configuration distribution, and the operator's digital cockpit display.
 
@@ -39,7 +39,7 @@ These files govern network-wide monitoring, configuration distribution, and the 
 **Note**: `mon` = `monitor`.
 
 ## 3. Intersection Local Controller (`L1-L6`)
-*Base Path / Location*: `app/intersection/`
+*Base Path / Location*: `app/intersection/src`
 
 These files manage the autonomous traffic logic, pedestrian latching, and localized failsafe operation for physical intersections `I1` through `I6`.
 
@@ -56,7 +56,7 @@ These files manage the autonomous traffic logic, pedestrian latching, and locali
 ## 5. Shared Logic & Project Documentation
 
 ## 4. Railway Level Crossing Controller (`RL1-RL3`)
-*Base Path / Location*: `app/railway/`
+*Base Path / Location*: `app/railway/src`
 
 These files implement the safety-critical barrier control, flashing warnings, and overlapping train occupancy tracking for crossings `RC1` through `RC3`.
 
@@ -72,7 +72,7 @@ These files implement the safety-critical barrier control, flashing warnings, an
 | `rlx_watchdog.c` | Failsafe supervisor | Forces boom gates down and train signals to `STOP` if the primary railway process fails. | TODO |
 
 ## 5. Shared Logic
-*Base Path / Location*: `app/shared/`
+*Base Path / Location*: `app/shared/src`
 
 These files provide the IPC infrastructure execution.
 

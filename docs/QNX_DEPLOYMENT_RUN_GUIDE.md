@@ -7,7 +7,7 @@ This document outlines the execution sequence and networking configurations requ
 ## 1. Network & System Pre-requisites
 **Goal**: Establish Qnet communication and SSH access across all target VMs.
 
-Follow the `Gide to enable network services and SSH connnection to QNX VM targets.pdf` file provided on canvas Lab 2.
+Follow the `Guide to enable network services and SSH connnection to QNX VM targets.pdf` file provided on canvas Lab 2.
 
 ## 2. Binary Transfer & Execution Sequence
 **Goal**: Move compiled binaries to the targets and execute them in the correct dependency order.
