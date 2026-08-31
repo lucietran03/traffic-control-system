@@ -32,9 +32,9 @@ The system consists of three independent executable applications:
 |------|--------|-------------|
 | 2.1 | New Project | Navigate to `File -> New -> QNX Project` and select QNX Executable. |
 | 2.2 | Project Setup | Name the project. Ensure the language is set to `C` and select the `x86_64` CPU variant, as required by QNX7.1. Click Finish. |
-| 2.3 | Integrate Headers (`.h`) | In the Project Explorer, create the target includes folders. Import the following files so they are globally accessible: (`app/shared/includes`: `sys_types.h`, `ipc_msg.h`, `qnet_utils.h`, `app/central/includes`: `c_*.h`, `app/intersection/includes`: `lx_*.h`, `app/railway/includes`: `rlx_*.h`) |
+| 2.3 | Integrate Headers (`.h`) | In the Project Explorer, create the target include folders. Import the following files so they are globally accessible: (`app/shared/include`: `sys_types.h`, `ipc_msg.h`, `qnet_utils.h`, `app/central/include`: `c_*.h`, `app/intersection/include`: `lx_*.h`, `app/railway/include`: `rlx_*.h`) |
 | 2.4 | Integrate Source (`.c`) | Import the respective `.c` files into their logical directories within the project: (Central: `c_main.c, c_server.c, c_mode_eng.c, c_watchdog_mon.c, c_hmi.c, c_logger.c`, Intersection: `lx_main.c, lx_sensor.c, lx_timer.c, lx_fsm.c, lx_signal.c, lx_comm.c, lx_watchdog.c`, Railway: `rlx_main.c, rlx_sensor.c, rlx_timer.c, rlx_fsm.c, rlx_gate.c, rlx_signal.c, rlx_comm.c, rlx_watchdog.c`) |
-| 2.5 | Configure Includes Path | Right-click the project -> `Properties -> C/C++ General -> Paths and Symbols`. Add the `app/shared/includes` directory to the Includes tab for each project so the compiler resolves cross-node dependencies and the project's on include directory (`app/central/includes`: `c_*.h`, `app/intersection/includes`: `lx_*.h`, `app/railway/includes`: `rlx_*.h`).  |
+| 2.5 | Configure include Path | Right-click the project -> `Properties -> C/C++ General -> Paths and Symbols`. Add the `app/shared/include` directory to the include tab for each project so the compiler resolves cross-node dependencies and the project's on include directory (`app/central/include`: `c_*.h`, `app/intersection/include`: `lx_*.h`, `app/railway/include`: `rlx_*.h`).  |
 
 After applying the changes, the compiler will correctly resolve all header dependencies.
 
