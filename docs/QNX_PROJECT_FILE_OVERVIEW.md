@@ -15,9 +15,9 @@ These headers guarantee that all distributed processes interpret Qnet payloads a
 
 | File Name | Location | Description | Core Purpose | Process |
 |-----------|---------|-----------|--------------|----------|
-| `sys_types.h` | `app/shared/includes` | Global enumerations and bitmasks | Defines traffic modes (`PEAK_FIXED`), signal aspects, crossing states (`WARNING, CLOSED`), and hardware fault flags. | TODO |
-| `ipc_msg.h` | `app/shared/includes` | Qnet message structures | Standardizes payloads for status updates, `SET_OPERATION_MODE`, and `MSG_HEARTBEAT` exchanges. | TODO |
-| `qnet_utils.h` | `app/shared/includes` | IPC utility prototypes | Exposes wrappers for QNX `name_attach()`, `MsgSend()`, and `MsgReceive()`. | TODO |
+| `sys_types.h` | `app/shared/includes` | Global enumerations and bitmasks | Defines traffic modes (`PEAK_FIXED`), signal aspects, crossing states (`WARNING, CLOSED`), and hardware fault flags. | Done |
+| `ipc_msg.h` | `app/shared/includes` | Qnet message structures | Standardizes payloads for status updates, `SET_MODE`, and `HEARTBEAT` exchanges. | Done |
+| `qnet_utils.h` | `app/shared/includes` | IPC utility prototypes | Defines the `traffic/<id>` attach-point naming convention (`ipc_attach_name()`). Wrappers for `name_attach()`/`MsgSend()`/`MsgReceive()` not yet written. | Partial |
 | `c_*.h` | `app/central/includes` | Cental node prototypes | Exposes supervisor mode engine limits, watchdog timeouts, and HMI display formatting functions. | TODO |
 | `lx_*.h` | `app/intersection/includes` | Intersection prototypes | Defines FSM states, 90-second timer bounds, and collision interlock definitions. | TODO |
 | `rlx_*.h` | `app/railway/includes` | Railway node prototypes | Defines the 45-second warning budget, overlapping occupancy window limits, and gate-confirmed-closed constraints. | TODO |
@@ -78,4 +78,4 @@ These files provide the IPC infrastructure execution.
 
 | File Name | Description | Core Purpose | Process |
 |-----------|-----------|--------------|----------|
-| `qnet_utils.c` | IPC implementation | Executes logic for setting up Qnet channels, binding ports, and safely handling message transmission errors. | TODO |
+| `qnet_utils.c` | IPC implementation | Executes logic for setting up Qnet channels, binding ports, and safely handling message transmission errors. | Partial — `ipc_attach_name()` lookup table only |
