@@ -121,49 +121,58 @@ sequenceDiagram
 
     actor Op as Control Room Operator
     participant C1 as Central Controller
-    participant Lx as Each Arterial Controller
+    participant L1 as L1
+    participant L3 as L3
+    participant L5 as L5
     participant Sig as Locally Owned Signals
 
     Op->>C1: submit SET_TIMING_PROFILE(profile)
     C1->>C1: validate profile structure and target chain
 
-    loop for each Lx in the selected arterial chain, independently and concurrently
-        C1->>Lx: SET_TIMING_PROFILE(parameters, assigned offset)
-        Lx->>Lx: validate local timing and safety bounds
-        alt parameters are valid
-            Lx-->>C1: ACK(accepted, pending safe boundary)
-            Lx->>Lx: wait for next safe phase boundary
-            Lx->>Sig: apply accepted timing and offset
-            Lx-->>C1: STATUS(profile active, phase state)
-        else parameters are invalid or unsafe
-            Lx-->>C1: NACK(reason)
-            Lx->>Lx: retain previous valid configuration
-        end
+    par L1 validates its offset independently
+        C1->>L1: SET_TIMING_PROFILE(parameters, offset 0 s)
+        L1->>L1: validate local timing and safety bounds
+        L1-->>C1: ACK(accepted, pending safe boundary) or NACK(reason)
+    and L3 validates its offset independently
+        C1->>L3: SET_TIMING_PROFILE(parameters, offset 21 s)
+        L3->>L3: validate local timing and safety bounds
+        L3-->>C1: ACK(accepted, pending safe boundary) or NACK(reason)
+    and L5 validates its offset independently
+        C1->>L5: SET_TIMING_PROFILE(parameters, offset 45 s)
+        L5->>L5: validate local timing and safety bounds
+        L5-->>C1: ACK(accepted, pending safe boundary) or NACK(reason)
     end
 
-    Note over C1,Sig: worked example on R1 - L1 offset 0 s, L3 offset 21 s, L5 offset 45 s cumulative (TC-01, TC-02)
+    Note over C1,Sig: R2 chain (L2 → L4 → L6) follows the same pattern with its own offsets (TC-01, TC-02)
+
+    opt a controller returned ACK
+        Note over C1,Sig: that controller waits for its next safe phase boundary, applies the accepted timing and offset, then reports STATUS(profile active, phase state)
+    end
+
+    opt a controller returned NACK
+        Note over C1: that controller retains its previous valid configuration
+    end
 
     C1-->>Op: display per-controller results
 
     opt a controller's profile is missing or goes stale
-        Lx->>Lx: continue standalone fixed or sensor-driven timing without waiting for C1
+        Note over L1,L5: the affected controller continues standalone fixed or sensor-driven timing without waiting for C1
     end
 
     opt railway pre-emption disrupts a coordinated intersection
-        Lx->>Lx: suspend only the conflicting coordinated movement for the restriction
-        Lx->>Lx: recover coordination through the next valid timing profile, no separate resynchronisation state
+        Note over L1,L5: the affected controller suspends only the conflicting coordinated movement for the restriction, then recovers coordination through the next valid timing profile, no separate resynchronisation state
     end
 
     opt operator requests a mode change
         Op->>C1: submit SET_MODE(mode)
-        C1->>Lx: SET_MODE(mode)
-        Lx->>Lx: validate request and wait for safe boundary
+        C1->>L1: SET_MODE(mode)
+        L1->>L1: validate request and wait for safe boundary
         alt request accepted
-            Lx-->>C1: ACK(accepted, pending safe boundary)
-            Lx->>Sig: apply selected mode at safe boundary
-            Lx-->>C1: STATUS(mode active)
+            L1-->>C1: ACK(accepted, pending safe boundary)
+            L1->>Sig: apply selected mode at safe boundary
+            L1-->>C1: STATUS(mode active)
         else request rejected
-            Lx-->>C1: NACK(reason)
+            L1-->>C1: NACK(reason)
         end
     end
 ```
