@@ -378,8 +378,8 @@ sequenceDiagram
         Lx-->>C1: NACK(reason)
         C1-->>Op: display rejection
     else pedestrian clearance is active and can be safely deferred
-        Lx-->>C1: ACK(accepted, pending clearance)
-        Note over Lx,C1: ACK meets the Central command-response deadline (Section 21), only activation is deferred
+        Lx-->>C1: ACK_ACCEPTED_PENDING
+        Note over C1,Lx: ACK is returned within 1 s, while only activation is deferred (PA-12)        
         Ped-->>Lx: clearance complete
         Lx->>Lx: revalidate the retained request
 
@@ -425,7 +425,7 @@ sequenceDiagram
             Lx-->>C1: STATUS(override discarded, condition no longer valid)
         end
     else request is accepted without delay
-        Lx-->>C1: ACK(accepted, pending safe boundary)
+        Lx-->>C1: ACK_ACCEPTED_PENDING
         Lx->>Sig: complete vehicle minimums and clearances
         Lx->>Sig: activate requested through-movement
         Lx-->>C1: STATUS(override active)
