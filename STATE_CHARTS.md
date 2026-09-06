@@ -272,6 +272,12 @@ stateDiagram-v2
         detectable transition.
     end note
 
+    note left of OPEN
+        SC-04B hands control back here once both gates are
+        confirmed OPEN or a fault is verified repaired — OPEN in
+        SC-04A and SC-04B is the same state, not two separate ones.
+    end note
+
     note right of CLOSED
         Continued in SC-04B: train occupancy tracking and safe
         reopening once every active occupancy window has elapsed.
@@ -298,6 +304,7 @@ stateDiagram-v2
     direction LR
 
     [*] --> CLOSED : entering from SC-04A once both gates are confirmed CLOSED
+    [*] --> FAULT : entering from SC-04A after a closure-stage fault (gate confirmation missing or contradictory)
 
     CLOSED --> CLOSED : TRAIN_APPROACHING(other direction) / register occupancy window and set relevant train signal to PROCEED
     CLOSED --> TRAIN_PRESENT : expected arrival time reached [gates remain confirmed CLOSED] / mark occupancy window active

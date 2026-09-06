@@ -36,6 +36,8 @@ LEGEND
 
 **Reading the diagram:** travelling North to South down the left column encounters `I1` then `I2` (linked by `R3`, crossing the railway at `RC1`) — the Pass-minimum slice. The middle column is `I3`/`I4` (linked by `R4`, crossing at `RC2`) — the committed HD extension. The right column is `I5`/`I6` (linked by `R5`, crossing at `RC3`) — optional/stretch scope. The two horizontal rows, `R1` (North) and `R2` (South), are the two arterials, each linking three intersections in a row — these are the roads used for green-wave coordination (Section 20 of the specification).
 
+**Reference site:** the physical layout is contextually referenced against the Mai Chí Thọ – Đồng Văn Cống intersection (part of the An Phu Intersection, Thu Duc City, Ho Chi Minh City) — used only as a Vietnamese urban-arterial reference, not reproduced quantitatively (NU-01, PROJECT_SPECIFICATION.vi.md Mục 5b). Inter-intersection arterial spacing (`I1-I3`, `I3-I5`, `I2-I4`, `I4-I6`) is an independently-set PoC parameter in the **320-400 m** range (TC-01) — not measured at the reference site.
+
 ---
 
 ## Diagram 2 — Core Lane Layout (2 lanes, permissive, right-hand traffic)
@@ -77,7 +79,8 @@ CORE RULE (every approach, every intersection):
 LEGEND
   [V]  Vehicle signal head          [Ps] Pedestrian signal (per side)
   [Pb] Pedestrian push-button       [S]  Vehicle presence sensor (at stop line)
-  [Q]  Advance/queue sensor (only on an approach feeding a railway crossing)
+  [Q]  Advance/queue sensor (only on an approach feeding a railway
+       crossing; positioned 60-80 m upstream of the stop line, CC-01)
 
                         NORTH approach
                   [V][S]     [Pb][Ps]
@@ -100,6 +103,8 @@ LEGEND
 ```
 
 `Lx` owns and controls every device shown at all four approaches. If an approach leads to a railway crossing, `Lx` additionally receives status (one-way, read-only) from that crossing's `RLx` — see Diagram 4.
+
+On the physical kerb-side pole, `[V]` and `[Ps]` are mounted on a single shared pole per approach to save sidewalk space and consolidate wiring, with `[Pb]` mounted directly below `[Ps]` — a hardware-placement detail, not a control-logic grouping.
 
 ---
 

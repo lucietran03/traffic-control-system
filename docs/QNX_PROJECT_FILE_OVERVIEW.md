@@ -17,7 +17,7 @@ These headers guarantee that all distributed processes interpret Qnet payloads a
 |-----------|---------|-----------|--------------|----------|
 | `sys_types.h` | `app/shared/includes` | Global enumerations and bitmasks | Defines traffic modes (`PEAK_FIXED`), signal aspects, crossing states (`WARNING, CLOSED`), and hardware fault flags. | Done |
 | `ipc_msg.h` | `app/shared/includes` | Qnet message structures | Standardizes payloads for status updates, `SET_MODE`, and `HEARTBEAT` exchanges. | Done |
-| `qnet_utils.h` | `app/shared/includes` | IPC utility prototypes | Defines the `traffic/<id>` attach-point naming convention (`ipc_attach_name()`). Wrappers for `name_attach()`/`MsgSend()`/`MsgReceive()` not yet written. | Partial |
+| `qnet_utils.h` | `app/shared/includes` | IPC utility prototypes | Defines the `traffic/<id>` attach-point naming convention (`ipc_attach_name()`/`ipc_attach()`), the two-thread IPC pattern (`ipc_server_run()`, `ipc_client_post()`/`ipc_client_thread_main()`), and `SIGEV_PULSE` timer setup (`ipc_timer_arm()`). | Done |
 | `c_*.h` | `app/central/includes` | Cental node prototypes | Exposes supervisor mode engine limits, watchdog timeouts, and HMI display formatting functions. | TODO |
 | `lx_*.h` | `app/intersection/includes` | Intersection prototypes | Defines FSM states, 90-second timer bounds, and collision interlock definitions. | TODO |
 | `rlx_*.h` | `app/railway/includes` | Railway node prototypes | Defines the 45-second warning budget, overlapping occupancy window limits, and gate-confirmed-closed constraints. | TODO |
@@ -29,7 +29,7 @@ These files govern network-wide monitoring, configuration distribution, and the 
 
 | File Name | Description | Core Purpose | Process |
 |-----------|-----------|--------------|----------|
-| `c_main.c` | Central entry point | Initializes the `C1` node, attaches the Qnet name, and launches all supervisory threads. | TODO |
+| `c_main.c` | Central entry point | Initializes the `C1` node, attaches the Qnet name, and launches all supervisory threads. | Partial — two-thread IPC wiring (`ipc_attach`/`ipc_server_run`/client queue) done; business logic hooks (mode engine, watchdog, HMI, logger) are TODO |
 | `c_server.c` | IPC receive loop | Captures state transitions, fault reports, and heartbeats from the 9 local controllers | TODO |
 | `c_mode_eng.c` | Coordination engine | Computes green-wave offsets and issues bounded `REQUEST_OVERRIDE` commands without directly actuating lights. | TODO |
 | `c_watchdog_mon.c` | Network monitor | Tracks 1-second heartbeats and flags unreachable controllers as `DEGRADED_LOCAL`. | TODO |
@@ -45,15 +45,13 @@ These files manage the autonomous traffic logic, pedestrian latching, and locali
 
 | File Name | Description | Core Purpose | Process |
 |-----------|-----------|--------------|----------|
-| `lx_main.c` | Intersection entry point | Loads the specific ID configuration (e.g., `L1` vs `L2`) and spawns local control threads. | TODO |
+| `lx_main.c` | Intersection entry point | Loads the specific ID configuration (e.g., `L1` vs `L2`) and spawns local control threads. | Partial — ID selection via argv + two-thread IPC wiring done; FSM/sensor/signal hooks are TODO |
 | `lx_sensor.c` | Hardware input handler | Debounces keyboard-simulated inputs for vehicle presence, queue detection, and pedestrian push-buttons. | TODO |
 | `lx_timer.c` | Phase timing manager | Maintains local timing for fixed cycles, 4-second extensions, and mandatory yellow/all-red clearance intervals. | TODO |
 | `lx_fsm.c` | Traffic logic controller | Executes state machines for phase selection, railway pre-emption overlays, and queue drain rules. | TODO |
 | `lx_signal.c` | Hardware output driver | Actuates signal states while enforcing the hardcoded collision interlock. | TODO |
 | `lx_comm.c` | IPC and heartbeat task | Receives direct `CROSSING_STATUS` from railways, processes Central commands, and sends heartbeats. | TODO |
 | `lx_watchdog.c` | Failsafe supervisor | Supervises the `Lx` process and forces a `FLASHING_RED` safe road state if the software hangs. | TODO |
-
-## 5. Shared Logic & Project Documentation
 
 ## 4. Railway Level Crossing Controller (`RL1-RL3`)
 *Base Path / Location*: `app/railway/src`
@@ -62,7 +60,7 @@ These files implement the safety-critical barrier control, flashing warnings, an
 
 | File Name | Description | Core Purpose | Process |
 |-----------|-----------|--------------|----------|
-| `rlx_main.c` | Railway entry point | Initializes the crossing controller and its isolated safety threads. | TODO |
+| `rlx_main.c` | Railway entry point | Initializes the crossing controller and its isolated safety threads. | Partial — ID selection via argv + two-thread IPC wiring done; FSM/gate/sensor hooks are TODO |
 | `rlx_sensor.c` | Train approach handler | Captures directional binary train-approach events to trigger pre-emption. | TODO |
 | `rlx_timer.c` | Safety timing manager | Tracks the 45-second warning budget, gate closure deadlines, and overlapping train occupancy windows. | TODO |
 | `rlx_fsm.c` | Railway safety logic | Executes state machines and enforces the gate-confirmed-closed-before-proceed invariant. | TODO |
@@ -78,4 +76,4 @@ These files provide the IPC infrastructure execution.
 
 | File Name | Description | Core Purpose | Process |
 |-----------|-----------|--------------|----------|
-| `qnet_utils.c` | IPC implementation | Executes logic for setting up Qnet channels, binding ports, and safely handling message transmission errors. | Partial — `ipc_attach_name()` lookup table only |
+| `qnet_utils.c` | IPC implementation | Executes logic for setting up Qnet channels, binding ports, and safely handling message transmission errors. | Done |

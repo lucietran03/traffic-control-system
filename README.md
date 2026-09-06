@@ -39,7 +39,7 @@ The system utilizes a strict distributed hierarchy to guarantee real-time safety
 
 ### Critical Design Principles
 - **Safety & Intersection Logic**: Modules managing the hardware conflict matrix, 90-second phase cycles, and 45-second railway warning budgets must never block waiting for Central communication.  
-- **Supervisory Logic**: The Central controller is strictly for monitoring, configuring, and requesting bounded overrides; it must never directly actuate a physical signal or boom gate.
+- **Supervisory Logic**: The Central controller is strictly for monitoring, persistent event logging, configuring, and requesting bounded overrides; it must never directly actuate a physical signal or boom gate.
 
 ## Repository Structure
 
@@ -106,7 +106,7 @@ Once compiled and transferred to the `/tmp` directory of your target VMs, the pr
 
 ## Deployment Topologies
 
-Depending on hardware availability, the system supports three deployment cases:  
+The system comprises **10 logical QNX controller nodes** (`C1`, `L1-L6`, `RL1-RL3`). A logical controller is **not required to map one-to-one with a physical computer or QNX node** — the 10 logical controllers can be redistributed across however many physical machines are actually available. Depending on hardware availability, the system supports three deployment cases:  
 1. **Single Computer (Virtual Network)**: 3 VMs (`VM_x86_Target01, 02, 03`) running locally via VirtualBox Internal Network (`qnet-lab`).  
 2. **Two Computers (Bridged LAN)**: Split load where PC A hosts Central/Intersections, and PC B hosts the Railway nodes over a bridged physical network.  
 3. **Three Computers (True Distributed)**: High-resiliency setup mapping one VM per physical PC across the same subnet.
