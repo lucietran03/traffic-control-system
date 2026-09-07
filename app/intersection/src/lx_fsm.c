@@ -377,6 +377,10 @@ void lx_fsm_init(lx_fsm_t *fsm, controller_id_t self_id)
     fsm->drain_active = 0;
     fsm->drain_extending = 0;
     fsm->drain_extension_total_ms = 0;
+    /* Judgment call: no crossing report has arrived yet at cold start, so
+     * assume open (the safe/uninformed default - matches RLx's own
+     * cold-start resting state, rlx_fsm_init()'s RLX_OPEN). */
+    fsm->last_crossing_state = CROSSING_OPEN;
     fsm->supervisory = SUPERVISORY_NORMAL_OPERATION;
     fsm->override_substate = OVR_NONE;
     fsm->override_target_movement = 0;
@@ -389,6 +393,7 @@ void lx_fsm_init(lx_fsm_t *fsm, controller_id_t self_id)
     fsm->active_profile_id = 0;
     fsm->assigned_offset_ms = 0;
     fsm->offset_apply_pending = 0;
+    fsm->offset_extra_hold_ms = 0;
     fsm->faults = FAULT_NONE;
     lx_signal_show_phase(fsm->self_id, fsm->phase);
     pthread_mutex_unlock(&fsm->lock);
@@ -570,6 +575,14 @@ static void lx_fsm_apply_offset_locked(lx_fsm_t *fsm)
     int32_t         error_ms;
     uint32_t        fixed_dur;
 
+    /* Audit hardening: reset unconditionally, before either early return
+     * below, so this is a real invariant of the function ("no stale
+     * offset_extra_hold_ms can ever survive a call to this function")
+     * rather than something that only happens to hold today because of
+     * how lx_fsm_advance_phase_locked()/lx_fsm_on_phase_timer() currently
+     * call it. */
+    fsm->offset_extra_hold_ms = 0;
+
     if (fsm->mode != MODE_PEAK_FIXED || fsm->phase != PHASE_ARTERIAL_GREEN) {
         return;
     }
@@ -598,18 +611,43 @@ static void lx_fsm_apply_offset_locked(lx_fsm_t *fsm)
          * comes sooner. */
         fsm->green_elapsed_ms += (uint32_t)error_ms;
     } else if (error_ms < 0) {
-        /* started too early -> lengthen remaining green. */
-        uint32_t delay = (uint32_t)(-error_ms);
-        fsm->green_elapsed_ms = (delay < fsm->green_elapsed_ms) ? (fsm->green_elapsed_ms - delay) : 0;
+        /*
+         * Started too early -> lengthen remaining green, so the NEXT
+         * start comes later. Verifier-audit fix: this function is only
+         * ever called with fsm->green_elapsed_ms == 0 (right after
+         * lx_fsm_advance_phase_locked() resets it, its one call site) -
+         * green_elapsed_ms is unsigned and can't represent "negative
+         * elapsed time", so the old `green_elapsed_ms - delay` here was a
+         * permanent no-op (0 - delay always took the "clamp to 0" branch,
+         * identical to no correction at all). Every "started too early"
+         * case was silently uncorrectable - only "too late" ever worked.
+         * Fixed by holding this green open `delay` ms PAST its ordinary
+         * duration instead of trying to fake negative elapsed time - see
+         * offset_extra_hold_ms's use in lx_fsm_on_phase_timer()'s
+         * PHASE_ARTERIAL_GREEN/MODE_PEAK_FIXED exit check.
+         */
+        fsm->offset_extra_hold_ms = (uint32_t)(-error_ms);
+        return; /* nothing to clamp below - green_elapsed_ms is still 0 */
     }
 
-    /* Never let the correction itself appear to already satisfy (or
-     * exceed) the fixed duration - that belongs to the ordinary tick
-     * check next time lx_fsm_on_phase_timer() runs, not to this one-time
-     * adjustment. */
+    /*
+     * Re-audit finding: a large "too late" error_ms (up to
+     * LX_CYCLE_LENGTH_MS/2 = 45000) could push green_elapsed_ms to within
+     * a second or two of fixed_dur, leaving almost no real green time
+     * visible before the very next tick exits to yellow - correct per the
+     * wall-clock math, but a jarring, borderline-unsafe-looking result in
+     * practice. Guarantee at least LX_MIN_GREEN_MS of real green remains
+     * after any correction, same floor already used for OFF_PEAK_SENSOR's
+     * minimum-green guard (lx_timer.h) - re-purposed here as a universal
+     * "never show a token green" floor, not specific to that mode.
+     */
     fixed_dur = lx_timer_peak_green_duration_ms(fsm->phase);
-    if (fixed_dur > 0 && fsm->green_elapsed_ms >= fixed_dur) {
-        fsm->green_elapsed_ms = fixed_dur - 1;
+    if (fixed_dur > 0) {
+        uint32_t max_elapsed_after_correction =
+            (fixed_dur > LX_MIN_GREEN_MS) ? (fixed_dur - LX_MIN_GREEN_MS) : 0;
+        if (fsm->green_elapsed_ms > max_elapsed_after_correction) {
+            fsm->green_elapsed_ms = max_elapsed_after_correction;
+        }
     }
 }
 
@@ -657,6 +695,19 @@ void lx_fsm_on_set_mode(lx_fsm_t *fsm, const set_mode_payload_t *payload, ipc_re
     if (fsm->supervisory == SUPERVISORY_FAULT_SAFE) {
         reply->result = RESULT_NACK;
         reply->reason = NACK_REASON_FAULT_ACTIVE;
+    } else if (payload->mode != (uint32_t)MODE_PEAK_FIXED && payload->mode != (uint32_t)MODE_OFF_PEAK_SENSOR) {
+        /* Re-audit finding: UC-07's "validates the request against
+         * supported ranges" step had no code counterpart here - an
+         * out-of-range value was silently accepted and, since every
+         * runtime check is `if (mode == MODE_PEAK_FIXED) {...} else
+         * {...}`, would have behaved like OFF_PEAK_SENSOR instead of
+         * being rejected. c_operator.c already only offers 0/1, so this
+         * NACK is unreachable from the operator console today, but this
+         * FSM (not the console) is the documented authoritative
+         * validator - the wire contract has no guarantee the sender is
+         * always a well-behaved operator. */
+        reply->result = RESULT_NACK;
+        reply->reason = NACK_REASON_OUT_OF_RANGE;
     } else if ((operating_mode_t)payload->mode == fsm->mode) {
         /*
          * Judgment call: SC-01A says reply ACK if "genuinely idle", but
@@ -783,9 +834,16 @@ void lx_fsm_on_crossing_status(lx_fsm_t *fsm, const crossing_status_payload_t *p
     pthread_mutex_lock(&fsm->lock);
     lx_fsm_check_fault_locked(fsm);
 
-    /* FAULT_SAFE always wins - a crossing update while faulted is
-     * recorded nowhere else in this FSM and does not change supervisory
-     * authority (SC-03A). */
+    /* Re-audit fix: record this unconditionally, even while FAULT_SAFE,
+     * so lx_fsm_on_request_fault_clear() knows whether the crossing is
+     * still closed and must resume SUPERVISORY_RAILWAY_PREEMPTION rather
+     * than always NORMAL_OPERATION - see the field's doc comment in
+     * lx_fsm.h. */
+    fsm->last_crossing_state = (crossing_state_t)payload->state;
+
+    /* FAULT_SAFE always wins - a crossing update while faulted does not
+     * change supervisory authority (SC-03A); last_crossing_state above is
+     * still kept current for when the fault clears. */
     if (fsm->supervisory != SUPERVISORY_FAULT_SAFE) {
         crossing_state_t state = (crossing_state_t)payload->state;
 
@@ -965,8 +1023,14 @@ void lx_fsm_on_phase_timer(lx_fsm_t *fsm)
             break;
         }
         if (fsm->mode == MODE_PEAK_FIXED) {
-            /* TL-02: fixed duration, no sensor influence. */
-            if (fsm->green_elapsed_ms >= lx_timer_peak_green_duration_ms(fsm->phase)) {
+            /* TL-02: fixed duration, no sensor influence - except for a
+             * one-shot TC-02/TC-03 offset_extra_hold_ms extension (see its
+             * doc comment in lx_fsm.h), which holds this specific green
+             * past its ordinary duration to correct a too-early start.
+             * Consumed (reset to 0) the moment this exit actually fires,
+             * so it only ever affects the one green it was computed for. */
+            if (fsm->green_elapsed_ms >= lx_timer_peak_green_duration_ms(fsm->phase) + fsm->offset_extra_hold_ms) {
+                fsm->offset_extra_hold_ms = 0;
                 lx_fsm_advance_phase_locked(fsm);
             }
         } else {
@@ -1123,7 +1187,24 @@ void lx_fsm_on_request_fault_clear(lx_fsm_t *fsm, ipc_reply_t *reply)
     reply->reason = NACK_REASON_NONE;
     fsm->faults = FAULT_NONE;
     if (fsm->supervisory == SUPERVISORY_FAULT_SAFE) {
-        fsm->supervisory = SUPERVISORY_NORMAL_OPERATION;
+        /*
+         * Re-audit fix (safety-relevant): resume whichever supervisory
+         * state the last-known crossing report actually implies, not
+         * unconditionally NORMAL_OPERATION - a fault entered (or still
+         * active) while a railway crossing was closed must not clear
+         * into a state that lets a connector-facing green be served
+         * toward a crossing that may still be closed. RLx will still
+         * (re-)broadcast CROSSING_STATUS on its own next state change,
+         * but that is not guaranteed to arrive before this clear takes
+         * effect, so this FSM must not rely on it. Any OTHER supervisory
+         * value (RAILWAY_PREEMPTION being the only real possibility -
+         * CENTRAL_OVERRIDE is already always terminated before reaching
+         * FAULT_SAFE, see lx_fsm_check_fault_locked()) falls back to
+         * NORMAL_OPERATION.
+         */
+        fsm->supervisory = (fsm->last_crossing_state != CROSSING_OPEN)
+                                ? SUPERVISORY_RAILWAY_PREEMPTION
+                                : SUPERVISORY_NORMAL_OPERATION;
     }
     reply->result = RESULT_ACK;
     pthread_mutex_unlock(&fsm->lock);

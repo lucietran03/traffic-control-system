@@ -81,7 +81,7 @@ trước, rồi `rlx_main`, rồi `lx_main`. Với môi trường (C), export
 | `o` | `REQUEST_OVERRIDE` (nhập Lx, `target_movement` 0=arterial/1=connector, `duration_ms`) |
 | `r` | `RENEW_OVERRIDE` (nhập Lx, `extend_duration_ms`, 0 = giữ nguyên thời lượng cũ) |
 | `c` | `CANCEL_OVERRIDE` (nhập Lx) |
-| `f` | `REQUEST_FAULT_CLEAR` cho một RLx (nhập RLx 1-3) |
+| `f` | `REQUEST_FAULT_CLEAR` (chọn node type 0=Lx 1-6 hoặc 1=RLx 1-3 - nay nhắm được cả Lx, xem `lx_fsm_on_request_fault_clear()`/TC-SC03A-6 Phần 2) |
 
 ### 0.4 Cách đọc log
 
@@ -362,17 +362,17 @@ gian mô phỏng cổng di chuyển) và tick railway = 1000 ms/lần
 - **Các bước**: Không tương tác gì thêm, chờ RL1 tự nhiên đi hết `WARNING→CLOSING→CLOSED→TRAIN_PRESENT→OPENING→OPEN` (~51s không có train thứ hai) → RL1 broadcast `CROSSING_STATUS(OPEN)`.
 - **Kết quả mong đợi**: Ngay khi L1 nhận `CROSSING_OPEN`, SUPERVISORY chuyển `1 → 3` (NORMAL_OPERATION) trong `lx_fsm_on_crossing_status()`. `drain_pending` **không** được set (vì `fsm->queue_warning_active==0`) — lần `CONNECTOR_GREEN` kế tiếp phải có thời lượng bình thường (30s cho PEAK_FIXED), không kéo dài thêm — xác nhận không có log gia hạn nào và `CONNECTOR_YELLOW` xuất hiện đúng 30s sau `CONNECTOR_GREEN`.
 
-### TC-SC03A-6: NORMAL_OPERATION/CENTRAL_OVERRIDE → FAULT_SAFE qua watchdog; và lỗ hổng đã biết khi thoát FAULT_SAFE
-- **Loại**: Positive (vào FAULT_SAFE) + Negative/Known gap (ra khỏi FAULT_SAFE)
-- **Liên quan**: SC-03A, `NORMAL_OPERATION --> FAULT_SAFE`, `CENTRAL_OVERRIDE --> FAULT_SAFE`, `FAULT_SAFE --> NORMAL_OPERATION : verified repair and accepted local fault-clear request`
+### TC-SC03A-6: NORMAL_OPERATION/CENTRAL_OVERRIDE → FAULT_SAFE qua watchdog; và khôi phục qua REQUEST_FAULT_CLEAR
+- **Loại**: Positive (vào FAULT_SAFE, và - kể từ khi `MSG_REQUEST_FAULT_CLEAR` được nối dây cho Lx - ra khỏi FAULT_SAFE cũng là Positive, không còn là Known gap)
+- **Liên quan**: SC-03A, `NORMAL_OPERATION --> FAULT_SAFE`, `CENTRAL_OVERRIDE --> FAULT_SAFE`, `FAULT_SAFE --> NORMAL_OPERATION : verified repair and accepted local fault-clear request`, `lx_fsm_on_request_fault_clear()`
 - **Môi trường**: (B)
 - **Chuẩn bị/Các bước — Phần 1 (từ CENTRAL_OVERRIDE)**:
   1. Đưa L1 vào CENTRAL_OVERRIDE (như TC-SC03A-2).
   2. Tạm dừng tiến trình `lx_main 1` bằng `kill -STOP <pid>` trong >2s rồi `kill -CONT <pid>` để kích watchdog thật (`lx_watchdog_thread`).
   3. Quan sát log `Lx: WATCHDOG - no phase-timer activity for 2 s, reporting fault (PA-10)`, sau đó `Lx 1: override cleared/expired - running safe clearance sequence` (override bị terminate **trước** khi vào FAULT_SAFE — đây là compliance-audit fix trong `lx_fsm_report_watchdog_trip()`/`lx_fsm_check_fault_locked()`), rồi `Lx 1: FAULT_SAFE - holding safe outputs (all-red/dark)`.
 - **Kết quả mong đợi Phần 1**: SUPERVISORY L1: `2 → 0` trực tiếp (không qua `3`), OVERRIDE về `0`.
-- **Các bước — Phần 2 (thử khôi phục)**: Không có phím/console nào trên `lx_main`/`c_operator` gọi tới `lx_fsm_local_fault_clear()` — hàm này tồn tại trong `lx_fsm.c`/`lx_fsm.h` nhưng **không được gọi ở bất kỳ đâu** trong `lx_main.c`/`lx_sensor.c` (khác hẳn RLx có phím `f` và `MSG_REQUEST_FAULT_CLEAR`). Thử mọi phím trên `lx_sensor.c` (`a A c C 1 2 3 4 w W`) và mọi lệnh operator liên quan tới L1.
-- **Kết quả mong đợi Phần 2 (Known gap)**: L1 **vẫn ở FAULT_SAFE vô thời hạn** — không có cách nào qua giao diện hiện có (bàn phím hay IPC) để đưa L1 trở lại NORMAL_OPERATION. Đây là một lỗ hổng chức năng đã biết, cần ghi vào biên bản test là **FAIL/GAP** cho riêng nhánh `FAULT_SAFE -> NORMAL_OPERATION` của Lx (khác với RLx, xem SC-04B TC-SC04B-4 — RLx có đường hồi phục hoạt động qua `MSG_REQUEST_FAULT_CLEAR`/phím `f`). Khuyến nghị: thêm một verb `MSG_REQUEST_FAULT_CLEAR` cho Lx hoặc nối `lx_fsm_local_fault_clear()` vào một phím demo tương tự RLx trước khi coi UC liên quan là hoàn thành.
+- **Các bước — Phần 2 (khôi phục qua REQUEST_FAULT_CLEAR)**: **Cập nhật (đã sửa, không còn là known gap)** — `MSG_REQUEST_FAULT_CLEAR` nay được `lx_main.c`'s `on_request()` xử lý cho cả Lx (gọi `lx_fsm_on_request_fault_clear()`), và `c_operator.c`'s phím `f` hỏi `node type` (0=Lx, 1=RLx) trước khi hỏi số hiệu — nhập `f` → `0` → `1` để nhắm L1. Trên C1: `f` → node type `0` → Lx number `1`.
+- **Kết quả mong đợi Phần 2**: `central_log.txt`: `C1: REQUEST_FAULT_CLEAR to 1 -> ACK`. `lx_fsm_on_request_fault_clear()` là unconditional/idempotent (không có điều kiện vật lý nào phải re-verify, khác RLx's `gates_confirmed_open()`): luôn ACK, xóa `fsm->faults`, và SUPERVISORY L1 rời `FAULT_SAFE`. Re-audit fix an toàn liên quan (xem `last_crossing_state` trong `lx_fsm.h`): nếu `fsm->last_crossing_state != CROSSING_OPEN` tại thời điểm clear (crossing kề bên vẫn đang đóng/đang có tàu), SUPERVISORY phải resume `RAILWAY_PREEMPTION` (`1`), **không phải** `NORMAL_OPERATION` (`3`) — verify biến thể này bằng cách lặp lại Phần 1 trong khi RL1 đang WARNING/CLOSED (railway pre-emption active) trước khi trip watchdog, rồi clear fault trong khi crossing vẫn chưa OPEN: SUPERVISORY L1 sau ACK phải là `1`, không phải `3`, và CONNECTOR_GREEN vẫn bị suppress cho tới khi RL1 thật sự báo `OPEN`.
 
 ### TC-SC03A-7 (Critical regression, CC-03): Drain-phase chỉ được cấp đúng một lần cho mỗi lần railway mở lại
 - **Loại**: Positive / Regression
@@ -606,7 +606,7 @@ gian mô phỏng cổng di chuyển) và tick railway = 1000 ms/lần
 
 | Gap | Chart | Vị trí trong code | Ảnh hưởng |
 |---|---|---|---|
-| Không có đường phục hồi `FAULT_SAFE -> NORMAL_OPERATION` cho Lx qua bàn phím/IPC | SC-03A | `lx_fsm_local_fault_clear()` (lx_fsm.c) định nghĩa nhưng không được gọi ở đâu trong `lx_main.c`/`lx_sensor.c` | Một khi Lx vào FAULT_SAFE (watchdog trip), nó kẹt vĩnh viễn trong bản build hiện tại — xem TC-SC03A-6 |
+| ~~Không có đường phục hồi `FAULT_SAFE -> NORMAL_OPERATION` cho Lx qua bàn phím/IPC~~ (ĐÃ SỬA) | SC-03A | `MSG_REQUEST_FAULT_CLEAR` nay được `lx_main.c`'s `on_request()` xử lý, gọi `lx_fsm_on_request_fault_clear()`; `c_operator.c`'s phím `f` hỏi node type (0=Lx/1=RLx) | Không còn là gap — xem TC-SC03A-6 Phần 2. Re-audit fix bổ sung: resume đúng `RAILWAY_PREEMPTION` thay vì luôn `NORMAL_OPERATION` nếu crossing kề bên vẫn chưa `OPEN` tại thời điểm clear (`fsm->last_crossing_state`) |
 | Nhánh `FAULT --> OPEN` của RLx không đạt được `RESULT_ACK` bằng bất kỳ chuỗi thao tác nào | SC-04B | `rlx_fsm_on_fault_clear()` yêu cầu `gates_confirmed_open()==1`, nhưng mọi đường vào FAULT (`enter_fault()`) đều ép gate đóng và không gì tự mở lại gate khi đang FAULT | Xem TC-SC04B-4 biến thể |
 | `WARNING --> FAULT` (diagnostic timeout 60s) không thể kích hoạt | SC-04A | `RLX_WARNING_TO_CLOSING_MS` (5s) luôn bắn trước, reset `state_elapsed_ms`; sự kiện mô phỏng rời rạc không thể hiện sensor "kẹt active liên tục" | Dead code theo chính comment trong `rlx_fsm.c` |
 | `CLOSED/TRAIN_PRESENT --> FAULT` do gate mâu thuẫn không thể kích hoạt qua demo hiện có | SC-04B | `rlx_gate.c` chỉ đổi trạng thái confirm qua lệnh do chính `rlx_fsm.c` phát ra | Cần thêm API demo nếu muốn test thật |

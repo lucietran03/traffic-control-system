@@ -60,7 +60,7 @@ typedef struct {
  *   o = REQUEST_OVERRIDE (clear-route) for an Lx    (UC-08, SD-07)
  *   r = RENEW_OVERRIDE for an Lx                    (UC-08, SD-07)
  *   c = CANCEL_OVERRIDE for an Lx                   (UC-08, SD-07)
- *   f = REQUEST_FAULT_CLEAR for an RLx              (UC-06 alt 7.1, SD-06)
+ *   f = REQUEST_FAULT_CLEAR for an Lx or RLx         (UC-06 alt 7.1, SD-06, SC-03A)
  *   h / ? = show the help menu again
  *   q = stop operator console (this thread only)
  */

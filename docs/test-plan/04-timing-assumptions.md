@@ -234,7 +234,7 @@ thực, không phải giả định sai. Các test case DP-TIME-xx bên dưới 
 
 ### DP-TIME-03: Positive — đường duy nhất đang hoạt động: SET_MODE thủ công qua operator console
 - **Loại**: Positive
-- **Liên quan**: DP-01 (2 mode tồn tại và chuyển được), qua lệnh `MSG_SET_MODE` (`lx_fsm_on_set_mode`, `lx_fsm.c:651+`), operator console phím `m` (`c_operator.c`).
+- **Liên quan**: DP-01 (2 mode tồn tại và chuyển được), qua lệnh `MSG_SET_MODE` (`lx_fsm_on_set_mode`, `lx_fsm.c:689+` - đã dịch xuống sau các fix TC-02/TC-03 phía trên trong file), operator console phím `m` (`c_operator.c`).
 - **Môi trường**: (B) hoặc (C)
 - **Chuẩn bị**: `C1` và `L1` đang chạy, `L1` ở `MODE_PEAK_FIXED` (mặc định).
 - **Các bước**: Trên console `C1`, nhấn `m`, chọn `L1`, chọn mode `1` (OFF_PEAK_SENSOR). Quan sát `central_log.txt`.

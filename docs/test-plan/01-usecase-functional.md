@@ -69,7 +69,9 @@ code — không tự bịa thêm phím):
 - **C1 operator console** (`c_operator.c`, chạy trong tiến trình `c_main`):
   `m` = `SET_MODE`, `t` = broadcast `SET_TIMING_PROFILE` cho R1/R2, `o` =
   `REQUEST_OVERRIDE`, `r` = `RENEW_OVERRIDE`, `c` = `CANCEL_OVERRIDE`, `f` =
-  `REQUEST_FAULT_CLEAR` (chỉ nhắm RLx), `h`/`?` = help, `q` = dừng console.
+  `REQUEST_FAULT_CLEAR` (nhắm được cả Lx lẫn RLx - `handle_request_fault_clear()`
+  hỏi `node type` trước: 0=Lx 1-6, 1=RLx 1-3; wired tới
+  `lx_fsm_on_request_fault_clear()` ở phía Lx), `h`/`?` = help, `q` = dừng console.
   Mỗi lệnh chữ cái sẽ in ra 1-2 prompt nhập số theo đúng thứ tự đã cài
   trong `handle_*()` tương ứng — được ghi chính xác trong từng test case.
 
@@ -668,6 +670,13 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
   command aborted" — hàm return **trước** dòng cập nhật
   `last_commanded_mode` (xem thứ tự code trong `handle_set_mode()`), nên
   không có "Operator: SET_MODE..." nào được log và L2 không nhận gì.
+  Lưu ý: đây chỉ là pre-check phía Central (console) - `lx_fsm_on_set_mode()`
+  ở phía Lx nay (re-audit fix) cũng tự validate `payload->mode` độc lập và
+  trả `NACK_REASON_OUT_OF_RANGE` cho giá trị ngoài {0,1}, đúng UC-07 main
+  flow bước 3 "validates the request against supported ranges" - Lx là
+  validator có thẩm quyền, không phải `c_operator.c`'s pre-filter; xem
+  `03-protocol-contract.md` TC-MSG-8b để test riêng nhánh đó qua test_client
+  (bắt buộc, vì console không cho gửi giá trị sai).
 
 ### TC-UC07-4: Edge — SET_MODE với mode trùng mode hiện tại được ACK ngay lập tức (không PENDING)
 - **Loại**: Edge case

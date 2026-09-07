@@ -258,8 +258,12 @@ Mỗi test case ghi rõ môi trường cần dùng:
   của Lx nên vốn đã tuần tự — bug chỉ có thể phát sinh nếu có đường gọi
   song song nào khác được thêm vào sau này) để đảm bảo cái đến sau luôn thấy
   đúng trạng thái do cái đến trước để lại.
-- **Liên quan**: `lx_fsm_on_request_override()` dòng 686-696
-  (`NACK_REASON_OUT_OF_RANGE` khi đã `SUPERVISORY_CENTRAL_OVERRIDE`).
+- **Liên quan**: `lx_fsm_on_request_override()` (bắt đầu dòng 731 trong
+  `lx_fsm.c` hiện tại), nhánh `NACK_REASON_OUT_OF_RANGE` ở dòng 747 khi đã
+  `SUPERVISORY_CENTRAL_OVERRIDE` - lưu ý: đây là một cách dùng
+  `NACK_REASON_OUT_OF_RANGE` khác với nhánh mode-validation mới thêm ở
+  `lx_fsm_on_set_mode()` (dòng 710) - hai nhánh khác hàm, chỉ trùng tên
+  reason code.
 - **Môi trường**: (B) nhiều node cùng máy (1 `c_main` + 1 `lx_main`) để có
   đường IPC thật qua `ipc_client_post()`/`MsgSend()`, không phải gọi hàm C
   trực tiếp.
@@ -453,7 +457,9 @@ Mỗi test case ghi rõ môi trường cần dùng:
   ghi đè liên tục — đúng thiết kế chỉ giá trị **cuối cùng** được áp dụng,
   nhưng cần xác nhận không có giá trị trung gian nào "lọt" vào do thứ tự xử
   lý sai.
-- **Liên quan**: `lx_fsm_on_set_mode()` dòng 651-678,
+- **Liên quan**: `lx_fsm_on_set_mode()` dòng 689-729 trong `lx_fsm.c`
+  hiện tại (đã dịch xuống sau khi TC-02/TC-03's `offset_extra_hold_ms`
+  fix thêm code vào `lx_fsm_apply_offset_locked()` phía trên),
   `lx_fsm_advance_phase_locked()` dòng 239-242, 306-309.
 - **Môi trường**: (B) `c_main` + 1 `lx_main`.
 - **Chuẩn bị**: Lx đang ở giữa `PHASE_ARTERIAL_GREEN` (còn nhiều giây trước

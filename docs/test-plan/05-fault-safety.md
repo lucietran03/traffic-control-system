@@ -342,13 +342,25 @@ trên máy QNX thật.
 
 **Phát hiện khi đọc code**: `app/intersection/src/lx_sensor.c` chỉ có
 các phím `a/A/c/C/1/2/3/4/w/W/h/?/q` - hoàn toàn không có phím nào gọi
-tới bất kỳ hàm nào raise fault tại Lx. `lx_fsm_local_fault_clear()` (bản
-tương đương "demo shim" của RLx's `f` key) tồn tại trong `lx_fsm.c`
-nhưng **không được gọi ở bất kỳ đâu** trong `lx_sensor.c`/`lx_main.c`
-hiện tại - tức là ngay cả việc xóa lỗi cục bộ tại Lx cũng chưa được nối
-dây vào UI, nói gì đến việc raise lỗi. Con đường DUY NHẤT hiện có để Lx
+tới bất kỳ hàm nào raise fault tại Lx. Con đường DUY NHẤT hiện có để Lx
 vào `SUPERVISORY_FAULT_SAFE` là qua `lx_fsm_report_watchdog_trip()`,
 được gọi từ `lx_watchdog_thread()` khi watchdog thật sự trip (xem Nhóm 5).
+
+**Cập nhật (test-plan finding đã được sửa)**: mục này từng ghi nhận rằng
+`lx_fsm_local_fault_clear()` tồn tại nhưng không được gọi ở bất kỳ đâu -
+tức Lx không có đường thoát khỏi `FAULT_SAFE` nào khác ngoài khởi động
+lại tiến trình. Điều đó không còn đúng: `MSG_REQUEST_FAULT_CLEAR` nay
+được `lx_main.c`'s `on_request()` xử lý, gọi `lx_fsm_on_request_fault_
+clear()` (`lx_fsm.c`/`lx_fsm.h`), và `c_operator.c`'s phím `f` hỏi
+`node type` (0=Lx, 1=RLx) trước khi hỏi số hiệu, nên có thể nhắm một Lx
+trực tiếp từ console C1. Khác với RLx's `rlx_fsm_on_fault_clear()` (yêu
+cầu `gates_confirmed_open()==1`), hàm phía Lx không có điều kiện vật lý
+nào phải re-verify - nó unconditional/idempotent: luôn ACK, xóa
+`fsm->faults`, và chỉ đổi `supervisory` nếu đang thực sự `FAULT_SAFE`.
+Một fix an toàn liên quan (re-audit finding, xem `last_crossing_state`
+trong `lx_fsm.h`): việc clear này resume đúng `RAILWAY_PREEMPTION`
+(không phải luôn `NORMAL_OPERATION`) nếu crossing kề bên vẫn chưa
+`CROSSING_OPEN` tại thời điểm clear - xem TC-FAULT-14b/14c bên dưới.
 
 ### TC-FAULT-11: Xác nhận không tồn tại phím trigger fault trực tiếp cho Lx
 - **Loại**: Edge case (structural) - **chỉ review code, không có bước
@@ -427,6 +439,48 @@ vào `SUPERVISORY_FAULT_SAFE` là qua `lx_fsm_report_watchdog_trip()`,
   đang `FAULT_SAFE`, cập nhật đó KHÔNG làm thay đổi `fsm->supervisory`
   (không thoát khỏi FAULT_SAFE, không vào RAILWAY_PREEMPTION). Đây là
   hành vi đúng theo thiết kế, không phải bug - ghi nhận qua review code.
+
+### TC-FAULT-14b: REQUEST_FAULT_CLEAR đưa Lx thoát FAULT_SAFE về NORMAL_OPERATION (đã sửa - không còn known gap)
+- **Loại**: Positive
+- **Liên quan**: SC-03A, `lx_fsm_on_request_fault_clear()` (`lx_fsm.c`)
+- **Môi trường**: (B), phụ thuộc TC-FAULT-16/17 để trip watchdog Lx trước.
+- **Chuẩn bị**: L1 đang `SUPERVISORY_FAULT_SAFE` (watchdog trip qua Nhóm 5),
+  và không có RLx kề nào đang pre-empt (`last_crossing_state ==
+  CROSSING_OPEN`, ví dụ chưa từng nhận `CROSSING_STATUS` non-OPEN, hoặc
+  RL1 đã báo lại `OPEN` trước khi trip).
+- **Các bước**: Tại C1: `f` -> node type `0` (Lx) -> Lx number `1`.
+- **Kết quả mong đợi**: `central_log.txt`: `C1: REQUEST_FAULT_CLEAR to 1 ->
+  ACK`. `fsm->faults` về `FAULT_NONE`, SUPERVISORY L1 chuyển `FAULT_SAFE
+  -> NORMAL_OPERATION`. Không có nhánh NACK nào cho verb này ở phía Lx
+  (khác RLx) - luôn ACK, kể cả khi gọi lại lần nữa lúc đã hết fault
+  (idempotent).
+
+### TC-FAULT-14c: REQUEST_FAULT_CLEAR trong lúc crossing kề bên vẫn đóng - resume RAILWAY_PREEMPTION, không phải NORMAL_OPERATION (re-audit fix, an toàn)
+- **Loại**: Positive (safety-relevant regression case)
+- **Liên quan**: SC-03A, CC-02, `last_crossing_state` (`lx_fsm.h`) - trước
+  bản vá này, `lx_fsm_on_request_fault_clear()` luôn resume
+  `NORMAL_OPERATION` vô điều kiện, có thể cho phép green hướng về một
+  crossing vẫn còn đóng nếu fault xảy ra (hoặc còn active) trong lúc
+  railway pre-emption đang suppress intersection đó.
+- **Môi trường**: (B), cần cả `rlx_main` kề và watchdog trip được ở Lx
+  (phụ thuộc Nhóm 5).
+- **Chuẩn bị**: Đưa L1 vào `RAILWAY_PREEMPTION` thật (RL1 kề L1 ở
+  WARNING/CLOSED, gửi `CROSSING_STATUS` khác `CROSSING_OPEN`), rồi trip
+  watchdog Lx trong khi vẫn đang pre-empt (SUPERVISORY chuyển thẳng
+  `RAILWAY_PREEMPTION -> FAULT_SAFE`; `lx_fsm_on_crossing_status()` vẫn
+  cập nhật `fsm->last_crossing_state` vô điều kiện dù đang `FAULT_SAFE` -
+  xem TC-FAULT-14 ở trên).
+- **Các bước**: Tại C1: `f` -> `0` -> `1`, **trước khi** RL1 kịp báo
+  `OPEN` trở lại.
+- **Kết quả mong đợi**: `C1: REQUEST_FAULT_CLEAR to 1 -> ACK`, nhưng
+  SUPERVISORY L1 sau đó phải là `RAILWAY_PREEMPTION`, **không phải**
+  `NORMAL_OPERATION` - CONNECTOR_GREEN (hướng crossing) vẫn bị suppress
+  cho tới khi L1 thực sự nhận `CROSSING_STATUS(OPEN)` từ RL1.
+  **Nếu không trip watchdog được qua runtime**: verify bằng review code
+  `lx_fsm_on_request_fault_clear()` trong `lx_fsm.c` (nhánh
+  `fsm->last_crossing_state != CROSSING_OPEN ? SUPERVISORY_RAILWAY_
+  PREEMPTION : SUPERVISORY_NORMAL_OPERATION`), ghi rõ "verified by code
+  review only".
 
 ---
 
@@ -616,12 +670,13 @@ thử toàn hệ thống.
 | 1. RC-06 gate confirm | TC-01, TC-02, TC-03 | - | - |
 | 2. Fault ép đóng gate | TC-04 | - | - |
 | 3. REQUEST_FAULT_CLEAR | TC-05, TC-06, TC-08, TC-09 | TC-07, TC-10 | - |
-| 4. FAULT_SAFE tại Lx | - | TC-12, TC-13 (phụ thuộc Nhóm 5) | TC-11, TC-14 |
+| 4. FAULT_SAFE tại Lx | TC-14b (phụ thuộc Nhóm 5 để trip trước) | TC-12, TC-13, TC-14c (phụ thuộc Nhóm 5) | TC-11, TC-14 |
 | 5. Watchdog trip | (phủ định) TC-16 | TC-17, TC-18 | TC-15 |
 | 6. Stuck-sensor | TC-19, TC-20, TC-21 | - | - |
 
-21 test case, phần lớn (13/21) chạy được hoàn toàn qua bàn phím trên máy
-QNX thật không cần công cụ gì thêm; 5 test case cần debugger (ghi rõ
-caveat nếu không khả thi); 2 test case là review-code thuần túy do bản
-chất kiến trúc hiện tại (Lx không có phím trigger fault) không cho phép
-runtime; 1 test case (TC-16) là phản chứng có chủ đích.
+23 test case (bổ sung TC-FAULT-14b/14c sau khi `MSG_REQUEST_FAULT_CLEAR`
+được nối dây cho Lx), phần lớn (14/23) chạy được hoàn toàn qua bàn phím
+trên máy QNX thật không cần công cụ gì thêm; 6 test case cần debugger
+(ghi rõ caveat nếu không khả thi); 2 test case là review-code thuần túy
+do bản chất kiến trúc hiện tại (Lx không có phím trigger fault) không
+cho phép runtime; 1 test case (TC-16) là phản chứng có chủ đích.

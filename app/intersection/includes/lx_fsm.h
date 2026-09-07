@@ -148,6 +148,23 @@ typedef struct {
     uint8_t                  drain_active;
     uint8_t                  drain_extending;
     uint32_t                 drain_extension_total_ms;
+    /*
+     * Re-audit finding (safety-relevant): lx_fsm_on_crossing_status()
+     * only changes `supervisory` while NOT already SUPERVISORY_FAULT_SAFE
+     * (a crossing update arriving mid-fault is otherwise dropped
+     * entirely - nothing else remembers it). Before lx_fsm_on_request_
+     * fault_clear() existed, that was harmless: FAULT_SAFE could only be
+     * entered by a watchdog trip, so there was no user-facing recovery
+     * path to lose track of anyway. Now that a fault CAN be cleared
+     * remotely, an unconditional "always resume NORMAL_OPERATION" would
+     * silently forget an active railway closure that started before (or
+     * during) the fault - green could be given toward a still-closed
+     * crossing. This field is updated on every crossing-status report,
+     * independent of `supervisory`, specifically so lx_fsm_on_request_
+     * fault_clear() can resume the CORRECT supervisory state instead of
+     * always NORMAL_OPERATION.
+     */
+    crossing_state_t         last_crossing_state;
     supervisory_state_t      supervisory;
     lx_override_substate_t   override_substate;
     uint32_t                 override_target_movement;
@@ -191,6 +208,18 @@ typedef struct {
      * already be running (which could otherwise truncate it).
      */
     uint8_t                  offset_apply_pending;
+    /*
+     * Verifier-audit fix (TC-02/TC-03): set by lx_fsm_apply_offset_locked()
+     * when this green started too EARLY relative to assigned_offset_ms -
+     * green_elapsed_ms can't represent "negative elapsed time" (unsigned,
+     * and always 0 at that function's one call site), so lengthening the
+     * remaining time has to be done by extending THIS green's exit
+     * threshold instead. Consumed once, by lx_fsm_on_phase_timer()'s
+     * PHASE_ARTERIAL_GREEN/MODE_PEAK_FIXED exit check, then reset to 0 by
+     * the next lx_fsm_apply_offset_locked() call (or left at 0 if no
+     * correction is ever applied).
+     */
+    uint32_t                 offset_extra_hold_ms;
     fault_flags_t            faults;
     pthread_mutex_t          lock;   /* protects this whole struct - taken by every lx_fsm_* function */
 } lx_fsm_t;

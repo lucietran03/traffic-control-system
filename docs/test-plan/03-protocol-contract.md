@@ -133,10 +133,14 @@ nào >= 90000, nên case biên phải dùng test_client.
 
 ## 2. MSG_SET_MODE (C1 -> Lx)
 
-Xử lý bởi `lx_fsm_on_set_mode()`. Chỉ 1 nhánh NACK
-(`NACK_REASON_FAULT_ACTIVE`); 2 nhánh tích cực: `RESULT_ACK` (mode gửi
-== mode hiện tại, coi như no-op) và `RESULT_ACK_PENDING` (mode khác,
-hoãn tới ranh giới ALL_RED kế tiếp - SC-01A).
+Xử lý bởi `lx_fsm_on_set_mode()`. 2 nhánh NACK
+(`NACK_REASON_FAULT_ACTIVE`, và - re-audit fix, xem TC-MSG-8b -
+`NACK_REASON_OUT_OF_RANGE` khi `payload->mode` không phải 0
+(`MODE_PEAK_FIXED`) hay 1 (`MODE_OFF_PEAK_SENSOR`), đúng yêu cầu UC-07
+main flow bước 3 "validates the request against supported ranges");
+2 nhánh tích cực: `RESULT_ACK` (mode gửi == mode hiện tại, coi như
+no-op) và `RESULT_ACK_PENDING` (mode khác, hoãn tới ranh giới ALL_RED
+kế tiếp - SC-01A).
 
 ### TC-MSG-5: SET_MODE với mode trùng mode hiện tại - ACK (no-op)
 - **Loại**: Positive
@@ -173,6 +177,29 @@ hoãn tới ranh giới ALL_RED kế tiếp - SC-01A).
 - **Chuẩn bị**: L1 ở `SUPERVISORY_FAULT_SAFE`.
 - **Các bước**: Tại C1: `m` -> `1` -> `1`.
 - **Kết quả mong đợi**: `central_log.txt`: `C1: SET_MODE to 1 -> NACK reason=FAULT_ACTIVE`.
+
+### TC-MSG-8b: SET_MODE với `mode` ngoài phạm vi hợp lệ (khác 0/1) - NACK OUT_OF_RANGE (UC-07 bước 3)
+- **Loại**: Negative (re-audit fix)
+- **Verb**: MSG_SET_MODE
+- **Liên quan**: `NACK_REASON_OUT_OF_RANGE`, UC-07 main flow bước 3 ("validates
+  the request against supported ranges"). `c_operator.c`'s `handle_set_mode()`
+  đã tự chặn giá trị khác 0/1 ngay tại console (`n != MODE_PEAK_FIXED &&
+  n != MODE_OFF_PEAK_SENSOR` -> "command aborted", không gửi gì đi) - nên
+  nhánh NACK này **không thể tái hiện qua bàn phím `c_operator`**, chỉ qua
+  test_client gửi thẳng một payload không hợp lệ, đúng như comment trong
+  `lx_fsm_on_set_mode()`: "this FSM (not the console) is the documented
+  authoritative validator - the wire contract has no guarantee the sender
+  is always a well-behaved operator".
+- **Môi trường**: (D) - bắt buộc, vì `c_operator.c`'s pre-check chặn y hệt
+  ngưỡng này trước khi gửi.
+- **Chuẩn bị**: L1 không có fault, đang `MODE_PEAK_FIXED`.
+- **Các bước**: test_client gửi trực tiếp tới L1 một
+  `ipc_request_t{verb=MSG_SET_MODE, sender_id=CTRL_C1, target_id=CTRL_L1,
+  payload.mode={mode=2}}` (bất kỳ giá trị nào khác 0/1).
+- **Kết quả mong đợi**: reply `result=RESULT_NACK`,
+  `reason=NACK_REASON_OUT_OF_RANGE`; `fsm->mode`/`fsm->mode_change_pending`
+  không đổi (yêu cầu bị từ chối hoàn toàn, không âm thầm rơi vào nhánh
+  `else` như hành vi cũ trước re-audit fix).
 
 ---
 
@@ -410,11 +437,21 @@ nếu `override_substate` là `OVR_ACTIVE` **hoặc** `OVR_PENDING_CLEARANCE`
 
 ---
 
-## 6. MSG_REQUEST_FAULT_CLEAR (C1 -> RLx)
+## 6. MSG_REQUEST_FAULT_CLEAR (C1 -> RLx / Lx)
 
-Xử lý bởi `rlx_fsm_on_fault_clear()`. `NACK_REASON_UNKNOWN_TARGET` nếu
+Xử lý bởi `rlx_fsm_on_fault_clear()` ở RLx. `NACK_REASON_UNKNOWN_TARGET` nếu
 `state != RLX_FAULT`; nếu đang `RLX_FAULT`: `RESULT_ACK` nếu
 `rlx_gate_poll_open()==1`, ngược lại `NACK_REASON_FAULT_ACTIVE`.
+
+**Cập nhật (test-plan finding đã được sửa)**: verb này ban đầu chỉ tài liệu
+hóa là C1->RLx; `lx_fsm_local_fault_clear()` tồn tại ở phía Lx nhưng không
+verb/case nào gọi tới nó, nên gửi `MSG_REQUEST_FAULT_CLEAR` tới một Lx từng
+trả về `RESULT_ERROR` (xem TC-MSG-33 cũ). Việc này đã được nối dây: `lx_main.c`'s
+`on_request()` nay có case `MSG_REQUEST_FAULT_CLEAR` gọi
+`lx_fsm_on_request_fault_clear()` (`lx_fsm.h`/`lx_fsm.c`), và `c_operator.c`'s
+`handle_request_fault_clear()` hỏi `node type` (0=Lx, 1=RLx) trước khi hỏi số
+hiệu, nên phím `f` tại C1 nay nhắm được cả hai loại node. TC-MSG-33 dưới đây
+phản ánh hành vi hiện tại thay vì `RESULT_ERROR` cũ.
 
 **Phát hiện quan trọng**: đọc kỹ `enter_fault()` (`rlx_fsm.c`) cho thấy
 mọi đường vào `RLX_FAULT` đều gọi `rlx_gate_command_close()` (không
@@ -453,14 +490,23 @@ build hiện tại (xem TC-MSG-32).
 - **Các bước (sau khi có bản vá)**: Vào FAULT như TC-MSG-31 -> bấm phím DEMO-ONLY mới để mở cổng -> đợi 3s -> C1: `f` -> `1`.
 - **Kết quả mong đợi (sau khi có bản vá)**: `central_log.txt`: `C1: REQUEST_FAULT_CLEAR to 7 -> ACK`; RL1 trở lại `RLX_OPEN`, `faults=FAULT_NONE`, các cửa sổ occupancy được xóa.
 
-### TC-MSG-33: REQUEST_FAULT_CLEAR gửi tới một Lx (sai loại node) - RESULT_ERROR (edge case)
-- **Loại**: Edge case / Negative
+### TC-MSG-33: REQUEST_FAULT_CLEAR gửi tới một Lx đang FAULT_SAFE - ACK (đã sửa, không còn RESULT_ERROR)
+- **Loại**: Positive (trước đây là Edge case/Negative "RESULT_ERROR" - hành vi đó đã lỗi thời, xem mục 6's "Cập nhật")
 - **Verb**: MSG_REQUEST_FAULT_CLEAR
-- **Liên quan**: không có `nack_reason_t` - đây là `RESULT_ERROR` (verb không được node đích nhận dạng), theo nhánh `default:` trong `lx_main.c`'s `on_request()`
-- **Môi trường**: (D) - `c_operator.c`'s phím `f` chỉ cho phép nhập số RLx (1-3) qua `parse_rlx()`, không thể nhắm tới Lx.
-- **Chuẩn bị**: `lx_main 1` đang chạy bình thường.
-- **Các bước**: test_client gửi `ipc_request_t{verb=MSG_REQUEST_FAULT_CLEAR, sender_id=CTRL_C1, target_id=CTRL_L1}` thẳng tới L1.
-- **Kết quả mong đợi**: reply `result=RESULT_ERROR` (L1's `on_request()` rơi vào `default:` vì không có case nào xử lý `MSG_REQUEST_FAULT_CLEAR` tại Lx). `reply->reason` không có ý nghĩa (chỉ hợp lệ khi `result==RESULT_NACK` theo comment trong `ipc_msg.h`) - không cần kiểm tra.
+- **Liên quan**: `lx_fsm_on_request_fault_clear()` (`lx_fsm.c`) - nay có case riêng trong `lx_main.c`'s `on_request()`, không còn rơi vào `default:`. `c_operator.c`'s phím `f` hỏi node type (0=Lx, 1=RLx) qua `handle_request_fault_clear()`, nên có thể nhắm L1 trực tiếp từ console mà không cần test_client.
+- **Môi trường**: (B) C1 + L1 là đủ (không còn bắt buộc (D)/test_client cho case cơ bản này).
+- **Chuẩn bị**: Đưa L1 vào `SUPERVISORY_FAULT_SAFE` (ví dụ qua watchdog trip, xem TC-SC03A-6 Phần 1 của `02-state-machine-transition.md`), và đảm bảo `last_crossing_state==CROSSING_OPEN` (không có RLx kề nào đang pre-empt) để kỳ vọng resume đúng `NORMAL_OPERATION`.
+- **Các bước**: Tại C1: `f` -> node type `0` (Lx) -> Lx number `1`.
+- **Kết quả mong đợi**: `central_log.txt`: `C1: REQUEST_FAULT_CLEAR to 1 -> ACK`. `fsm->faults` về `FAULT_NONE`, SUPERVISORY L1 rời `FAULT_SAFE` về `NORMAL_OPERATION` (`3`). Hàm này không có nhánh NACK (unconditional/idempotent, khác `rlx_fsm_on_fault_clear()` - không có trạng thái vật lý nào phải re-verify ở Lx).
+
+### TC-MSG-33b: REQUEST_FAULT_CLEAR tới một Lx đang FAULT_SAFE trong lúc crossing kề bên vẫn đóng - resume RAILWAY_PREEMPTION, không phải NORMAL_OPERATION (re-audit fix, an toàn)
+- **Loại**: Positive (safety-relevant regression case)
+- **Verb**: MSG_REQUEST_FAULT_CLEAR
+- **Liên quan**: `last_crossing_state` (`lx_fsm.h`) - re-audit fix: một fault-clear xảy ra trong lúc crossing kề bên vẫn chưa `OPEN` không được phép âm thầm quên mất việc suppress đang có, kẻo cho phép green hướng về một crossing vẫn còn đóng.
+- **Môi trường**: (B) C1 + L1 + RL1.
+- **Chuẩn bị**: Đưa L1 vào `RAILWAY_PREEMPTION` thật (RL1 ở WARNING/CLOSED, gửi `CROSSING_STATUS` khác `CROSSING_OPEN` tới L1), sau đó trip watchdog để L1 vào `FAULT_SAFE` trong khi vẫn đang pre-empt (SUPERVISORY chuyển thẳng `1 -> 0`, `fsm->last_crossing_state` vẫn giữ giá trị non-OPEN gần nhất vì `lx_fsm_on_crossing_status()` cập nhật trường này vô điều kiện, kể cả khi đang FAULT_SAFE).
+- **Các bước**: Tại C1: `f` -> `0` (Lx) -> `1`, **trước khi** RL1 kịp báo `OPEN` trở lại.
+- **Kết quả mong đợi**: `C1: REQUEST_FAULT_CLEAR to 1 -> ACK`, nhưng SUPERVISORY L1 sau đó phải là `RAILWAY_PREEMPTION` (`1`), **không phải** `NORMAL_OPERATION` (`3`) - CONNECTOR_GREEN (hướng crossing) vẫn bị suppress cho tới khi L1 thực sự nhận `CROSSING_STATUS(OPEN)` từ RL1. Đây là hành vi ĐÚNG theo thiết kế mới (trước bản vá, code cũ luôn resume `NORMAL_OPERATION` vô điều kiện, có thể cho phép green hướng về crossing đang đóng).
 
 ---
 

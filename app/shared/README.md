@@ -31,9 +31,16 @@ The verbs that *do* cross a node boundary — confirmed by grepping every
 `->>`/`-->>` arrow in `SEQUENCE_DIAGRAMS.md` between distinct
 participants — are exactly the ones in `msg_type_t`:
 `C1 <-> Lx` (`SET_TIMING_PROFILE`, `SET_MODE`, `REQUEST_OVERRIDE`,
-`RENEW_OVERRIDE`, `CANCEL_OVERRIDE`, `HEARTBEAT`), `C1 <-> RLx`
-(`REQUEST_FAULT_CLEAR`, `FAULT_REPORT`, `HEARTBEAT`), and `RLx -> Lx` /
-`RLx -> C1` (`CROSSING_STATUS`).
+`RENEW_OVERRIDE`, `CANCEL_OVERRIDE`, `REQUEST_FAULT_CLEAR`, `HEARTBEAT`),
+`C1 <-> RLx` (`REQUEST_FAULT_CLEAR`, `FAULT_REPORT`, `HEARTBEAT`), and
+`RLx -> Lx` / `RLx -> C1` (`CROSSING_STATUS`).
+
+Re-audit note: `MSG_STATUS` is also declared in `msg_type_t` (`Lx/RLx ->
+C1`) and `c_main.c` fully implements the receiving side, but no sender for
+it exists anywhere today — every controller only ever sends the
+equivalent information via the periodic `MSG_HEARTBEAT` (which reuses the
+same `status_report_payload_t` shape). This is a known, accepted gap, not
+an oversight in this list.
 
 ## Why the envelope has fields beyond "type / sender / content / result"
 

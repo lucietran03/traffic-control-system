@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Traffic Control System — Live Dashboard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Traffic Control System <span class="subtitle">— live network view</span></h1>
+    <div id="conn-status" class="conn-status conn-unknown">connecting…</div>
+  </header>
+
+  <main>
+    <section id="overview-panel">
+      <h2>Network overview <span class="hint">(click a node for details)</span></h2>
+      <svg id="overview-svg" viewBox="0 0 900 480" preserveAspectRatio="xMidYMid meet"></svg>
+    </section>
+
+    <aside id="detail-panel">
+      <div id="detail-empty">
+        <h2>Legend</h2>
+        <ul class="legend">
+          <li><span class="dot green"></span> Normal operation</li>
+          <li><span class="dot amber"></span> Railway warning / transitional</li>
+          <li><span class="dot purple"></span> Central override active</li>
+          <li><span class="dot red"></span> Fault-safe / crossing fault</li>
+          <li><span class="dot grey"></span> Unavailable (no heartbeat)</li>
+        </ul>
+        <p class="hint">Select any intersection (L1–L6) or railway crossing
+        (RL1–RL3) on the left to see its live signal state, sensor status,
+        and active faults here.</p>
+        <p class="hint">This view is <strong>read-only</strong> — all
+        simulated input (vehicle demand, pedestrian requests, train
+        approach, operator commands) still happens on each node's own
+        keyboard, exactly as before. This dashboard only observes.</p>
+      </div>
+
+      <div id="detail-content" class="hidden">
+        <h2 id="detail-title">—</h2>
+        <svg id="detail-svg" viewBox="0 0 260 260"></svg>
+        <table id="detail-table"></table>
+        <div id="detail-faults"></div>
+        <div id="detail-sensors"></div>
+      </div>
+    </aside>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

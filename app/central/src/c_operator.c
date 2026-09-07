@@ -105,7 +105,7 @@ static void print_help(void)
     printf("  o = REQUEST_OVERRIDE (clear-route) for an Lx   (UC-08 / SD-07)\n");
     printf("  r = RENEW_OVERRIDE for an Lx                   (UC-08 / SD-07)\n");
     printf("  c = CANCEL_OVERRIDE for an Lx                  (UC-08 / SD-07)\n");
-    printf("  f = REQUEST_FAULT_CLEAR for an RLx             (UC-06 alt 7.1 / SD-06)\n");
+    printf("  f = REQUEST_FAULT_CLEAR for an Lx or RLx       (UC-06 alt 7.1 / SD-06, SC-03A)\n");
     printf("  h or ? = show this help                        q = stop operator console (this thread only)\n");
 }
 
@@ -215,6 +215,16 @@ static void handle_request_override(c_operator_args_t *args)
         return;
     }
     if (read_long("  target movement (0=arterial, 1=connector): ", &n) != READ_OK) {
+        return;
+    }
+    if (n != (long)OVERRIDE_MOVEMENT_ARTERIAL && n != (long)OVERRIDE_MOVEMENT_CONNECTOR) {
+        /* Re-audit finding: this used to store n verbatim - sys_types.h's
+         * override_movement_t doc comment says only these two values are
+         * ever placed in target_movement. Lx's guards only ever test
+         * "== OVERRIDE_MOVEMENT_CONNECTOR" (see lx_fsm.c), so an
+         * out-of-range value silently fell back to arterial instead of
+         * being rejected here at the source. */
+        printf("c_operator: %ld is not a valid target movement (0 or 1) - command aborted\n", n);
         return;
     }
     payload.target_movement = (uint32_t)n;

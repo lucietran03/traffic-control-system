@@ -177,7 +177,8 @@ stateDiagram-v2
     NORMAL_OPERATION --> FAULT_SAFE : local hardware conflict or watchdog trip / set FLASHING_RED and DONT_WALK
     CENTRAL_OVERRIDE --> FAULT_SAFE : local hardware conflict or watchdog trip / cancel or terminate override, apply safe outputs
     RAILWAY_PREEMPTION --> FAULT_SAFE : local hardware conflict or watchdog trip / apply safe outputs
-    FAULT_SAFE --> NORMAL_OPERATION : verified repair and accepted local fault-clear request / resume normal operation
+    FAULT_SAFE --> NORMAL_OPERATION : verified repair and accepted local fault-clear request [adjacent crossing reports OPEN] / resume normal operation
+    FAULT_SAFE --> RAILWAY_PREEMPTION : verified repair and accepted local fault-clear request [adjacent crossing still not OPEN] / resume railway suppression
 
     note right of CENTRAL_OVERRIDE
         A railway or fault interruption applies regardless of
@@ -189,6 +190,16 @@ stateDiagram-v2
         Once the crossing reopens, control always returns to
         NORMAL_OPERATION — an override interrupted by a train
         is never automatically resumed afterward.
+    end note
+
+    note left of FAULT_SAFE
+        A fault-clear request never assumes the crossing has
+        reopened just because the fault itself is resolved: it
+        resumes whichever supervisory state the last-known
+        crossing report implies, so a fault that interrupted (or
+        outlasted) an active railway closure cannot silently drop
+        back to NORMAL_OPERATION while the crossing is still
+        unavailable (re-audit fix, RC-02/CC-02).
     end note
 ```
 
