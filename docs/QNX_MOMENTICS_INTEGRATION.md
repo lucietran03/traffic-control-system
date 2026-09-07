@@ -1,6 +1,9 @@
 # QNX MOMENTICS 8.0.3 Intergration
 This document provides a clear, step-by-step guide for integrating the distributed Traffic Control System source code (`.c` and `.h` files) into the QNX Momentics IDE(version 8.0.3) for QNX Software Development Platform 7.1, building the project, and preparing it for target deployment.
 
+> *ALTERNATIVE: COMMAND-LINE BUILD*
+>> This repo also ships a versioned `Makefile` at the repo root, which builds all three binaries with a single `make` command from a QNX SDP shell/terminal (no IDE project setup required) - see step 4 below and `docs/QNX_DEPLOYMENT_RUN_GUIDE.md`. The manual IDE setup described in this document still works and is not being replaced; use whichever workflow your team prefers. The `Makefile` also has a `make check-syntax` target that host-compiles (no QNX SDP needed) as a quick sanity check - see the comments at the top of the `Makefile` for details.
+
 The system consists of three independent executable applications:
 
 - Central Controller (`c_main`)
@@ -63,6 +66,20 @@ Create the following lauch targets
 | 4.1 | Build Project | Right-click the project name in the Project Explorer and select Build Project. |
 | 4.2 | Monitor Output | Watch the `Console` view for the compiler output. If issues arise, check the `Problems` tab for readable error mapping linked directly to specific `.c` or `.h` files. |
 | 4.3 | Locate Binaries | Upon success, executable binaries (`c_main, lx_main, rlx_main`) are generated in the Binaries folder under `build/x86_64-debug/`. |
+
+### 4.4 Command-line alternative (`make`)
+
+Instead of steps 2-4 above, from a terminal with the QNX SDP environment sourced (`qcc` on `PATH`), you can build all three binaries directly from the repo root:
+
+```
+make            # builds build/bin/c_main, build/bin/lx_main, build/bin/rlx_main
+make central    # or build just one of the three
+make clean      # remove build output
+```
+
+This produces the same three binaries as the IDE build, without needing a Momentics workspace/project at all. See the comment block at the top of the repo-root `Makefile` for exactly how sources/includes map to each target, and for the `-V` toolchain target spec (`QNX_TARGET_SPEC`, currently `-Vgcc_ntox86_64` per section 2.2 above) - confirm/adjust that value against your own QNX SDP install with `qcc -V`.
+
+If `qcc` is not on `PATH`, `make`/`make all`/`make central`/etc. fail immediately with an explanatory message rather than a confusing compiler error. On a machine without any QNX SDP install at all, `make check-syntax` runs a host `gcc`/`clang` syntax-only pass instead (see the `Makefile` comments) - useful as an early sanity check, but it is **not** a substitute for a real build against QNX headers/libs.
 
 ## 5. Result
 

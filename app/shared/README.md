@@ -191,26 +191,101 @@ is stale.
 Each node calls `name_attach()` **once** at startup with its own name;
 every peer that needs to talk to it calls `name_open()` on that same
 string. There is one channel per node, not one per message type — the
-`type` field inside `ipc_request_t` (see `ipc_msg.h`) tells the receiver
+`verb` field inside `ipc_request_t` (see `ipc_msg.h`) tells the receiver
 which verb it's looking at, so `C1` doesn't need ten different channels
-to talk to ten peers, and neither does any `Lx`/`RLx`.
+to talk to ten peers, and neither does any `Lx`/`RLx`. (`ipc_request_t.hdr.type`
+is a different field entirely — part of the pulse-compatible header, used
+only for `_IO_CONNECT`/pulse detection inside `ipc_server_run()`, and
+explicitly zeroed by `ipc_client_post()` so it never collides with verb
+dispatch.)
 
 `ipc_attach_name(controller_id_t)` is the one function that knows this
 mapping; nothing else should hardcode a `"c1"`/`"l3"`/`"rl2"` string.
 
-What this does **not** cover yet: which physical Qnet node (VM/hostname)
-each of these ten names actually lives on. That depends on the chosen
-deployment topology (1, 2, or 3 computers — see
-`docs/QNX_DEPLOYMENT_RUN_GUIDE.md`) and hasn't been decided in code yet;
-resolving a peer's `/net/<node>/dev/name/local/traffic/<suffix>` path is
-a separate, still-open piece of work.
+### Cross-node resolution: `NAME_FLAG_ATTACH_GLOBAL` + `TRAFFIC_NODE_MAP`
 
-## Known follow-up
+An earlier version of this codebase called `name_attach(NULL, path, 0)`
+and `name_open(path, 0)` with flags `0`, which QNX Neutrino resolves in
+the **node-local** namespace only (`/dev/name/local/...`). That's fine
+when every controller runs in one process/one node, but it silently
+breaks the moment `c_main`/`lx_main`/`rlx_main` run on separate Qnet
+nodes — exactly the multi-VM topologies
+`docs/QNX_DEPLOYMENT_RUN_GUIDE.md` documents — because a node-local name
+is never visible to `name_open()` calls originating on a different node.
+`name_open()` just returns `-1` (handled gracefully by
+`ipc_client_thread_main()`'s `send_ok` path), so the failure mode was
+messages silently never arriving, not a crash.
 
-`docs/QNX_PROJECT_FILE_OVERVIEW.md` still describes this contract using
-`SET_OPERATION_MODE` and `MSG_HEARTBEAT` as if those were different from
-the spec's `SET_MODE`/`HEARTBEAT` verbs — that doc predates this header
-and hasn't been reconciled with it yet. The header here uses `MSG_`-
-prefixed C enum identifiers (`MSG_SET_MODE`, `MSG_HEARTBEAT`) purely as
-normal C naming convention; they map 1:1 to the spec's `SET_MODE` /
-`HEARTBEAT` verbs, not to a separately-invented name.
+Fix, now implemented in `qnet_utils.c`:
+
+- **Attach side (`ipc_attach()`)**: registers with `NAME_FLAG_ATTACH_GLOBAL`
+  instead of `0`, i.e. under `/dev/name/global/traffic/<suffix>`. Per QNX
+  Neutrino name-service semantics, a global-namespace name is *still*
+  found by a plain, prefix-less `name_open()` from a process on the same
+  node — global vs. local only changes whether *other* nodes can see the
+  name via Qnet, not whether the owning node can still see its own name
+  the old way. **Existing single-machine/same-node setups need no change
+  and keep working exactly as before.**
+- **Open side (`ipc_client_thread_main()`, via the internal
+  `build_open_path()` helper)**: consults the `TRAFFIC_NODE_MAP`
+  environment variable — a comma-separated `<suffix>=<qnet-nodename>`
+  list, parsed once (cached) on first use — to decide whether a target
+  controller lives on a different node:
+  - **Suffix absent from the map (including `TRAFFIC_NODE_MAP` unset
+    entirely, the default)**: resolves as "same node as the caller",
+    identical to the pre-fix `name_open("traffic/<suffix>", 0)` call.
+    Zero risk to the current test setup.
+  - **Suffix present in the map**: builds
+    `/net/<nodename>/dev/name/global/traffic/<suffix>` instead — QNX's
+    standard Qnet path for reaching a name registered with
+    `NAME_FLAG_ATTACH_GLOBAL` on another node. (The
+    `/net/<nodename>/dev/name/<namespace>/<name>` shape itself is not
+    invented here — it mirrors the *local*-namespace example
+    `Lecture/lap_6/Lab_06_Task1b_client_602.c` hardcodes,
+    `/net/VM_x86_Target01/dev/name/local/thang`, with `local` swapped for
+    `global` to match the namespace `ipc_attach()` now registers into.)
+
+Both `build_path()` (the attach-name convention) and `build_open_path()`
+(the client's resolution logic) are internal to `qnet_utils.c`;
+`build_open_path()` always calls `build_path()` first and only wraps its
+output, so the naming convention itself is defined in exactly one place.
+
+Example mapping for the deployment guide's "one VM per role" topology
+(Case 1/Case 3 — one node runs `c_main`, one runs all of `lx_main`'s
+`L1`-`L6` instances, one runs all of `rlx_main`'s `RL1`-`RL3` instances):
+
+```sh
+export TRAFFIC_NODE_MAP="c1=VM_x86_Target01,\
+l1=VM_x86_Target02,l2=VM_x86_Target02,l3=VM_x86_Target02,\
+l4=VM_x86_Target02,l5=VM_x86_Target02,l6=VM_x86_Target02,\
+rl1=VM_x86_Target03,rl2=VM_x86_Target03,rl3=VM_x86_Target03"
+```
+
+Set this (with real Qnet node names — whatever `ls /net` on a target
+shows for its peers, per `docs/QNX_DEPLOYMENT_RUN_GUIDE.md`) in the shell
+that launches each binary, before running it — every controller_id_t
+`ipc_client_post()` might target should be covered on every node's own
+copy of the variable, since it only affects that process's own outgoing
+`name_open()` calls, not what it attaches as. See
+`docs/QNX_DEPLOYMENT_RUN_GUIDE.md` for the full walkthrough.
+
+**Judgment call / not verified on real hardware:** `NAME_FLAG_ATTACH_GLOBAL`'s
+exact numeric value is defined by the real QNX SDP `<sys/neutrino.h>`,
+which isn't available on this development machine — `qnet_utils.c` only
+ever uses the symbolic macro name, never a hardcoded value, so this is
+safe on an actual QNX target. The host-only syntax-check stub
+(`tools/host_syntax_stubs/sys/neutrino.h`, used by `make check-syntax`) fakes a plausible value
+(`0x2`) purely so a non-QNX compiler can typecheck the `.c` file; that
+stub value is never linked into a real binary. This whole cross-node path
+is otherwise unverified end-to-end since no QNX SDP toolchain exists in
+this environment — test it early on real multi-VM hardware.
+
+## Naming note
+
+The header here uses `MSG_`-prefixed C enum identifiers (`MSG_SET_MODE`,
+`MSG_HEARTBEAT`) purely as normal C naming convention; they map 1:1 to the
+spec's `SET_MODE` / `HEARTBEAT` verbs, not to a separately-invented name.
+(`docs/QNX_PROJECT_FILE_OVERVIEW.md` previously described this contract
+using the older `SET_OPERATION_MODE`/`MSG_HEARTBEAT`-as-distinct-verb
+wording; that doc has since been reconciled to use `SET_MODE`/`HEARTBEAT`
+consistently with this header, so no discrepancy remains.)
