@@ -8,16 +8,16 @@ test.
 
 ## Danh sách file
 
-| # | File | Phạm vi | Số test case |
-|---|---|---|---|
-| 1 | [01-usecase-functional.md](01-usecase-functional.md) | UC-01..10 (usecase.md) — hành vi đầu-cuối theo từng use case | 43 |
-| 2 | [02-state-machine-transition.md](02-state-machine-transition.md) | SC-01A/B/C, SC-02, SC-03A/B, SC-04A/B, SC-05 (STATE_CHARTS.md) — từng transition | 42 |
-| 3 | [03-protocol-contract.md](03-protocol-contract.md) | 10 verb trong `ipc_msg.h` — mọi outcome ACK/ACK_PENDING/NACK(reason)/ERROR | 47 |
-| 4 | [04-timing-assumptions.md](04-timing-assumptions.md) | Giá trị số/thời gian trong `system_assumptions_tables.md` (TC/TL/RC/PA/DP/CC) | 31 |
-| 5 | [05-fault-safety.md](05-fault-safety.md) | Watchdog, FAULT_SAFE, RC-06/09/10 gate fault | 23 |
-| 6 | [06-concurrency-race.md](06-concurrency-race.md) | Race condition, input dồn dập, regression cho bug đã sửa | 20 |
-| 7 | [07-cross-node-integration.md](07-cross-node-integration.md) | Hành vi xuyên node qua Qnet thật (đa VM) | 19 |
-| | **Tổng** | | **225** |
+| # | File | Phạm vi | Loại test | Công cụ / phương pháp | Số case |
+|---|---|---|---|---|---|
+| 1 | [01-usecase-functional.md](01-usecase-functional.md) | UC-01..10 (usecase.md) — hành vi đầu-cuối theo từng use case | Functional / black-box | Bàn phím (`lx_sensor.c`/`rlx_sensor.c`/`c_operator.c`) + quan sát console/log | 43 |
+| 2 | [02-state-machine-transition.md](02-state-machine-transition.md) | SC-01A/B/C, SC-02, SC-03A/B, SC-04A/B, SC-05 (STATE_CHARTS.md) — từng transition | State-machine transition | Bàn phím + quan sát trạng thái qua console/`c_hmi`; 1 số case cần chờ đúng mốc thời gian | 42 |
+| 3 | [03-protocol-contract.md](03-protocol-contract.md) | 10 verb trong `ipc_msg.h` — mọi outcome ACK/ACK_PENDING/NACK(reason)/ERROR | Protocol / contract | Phần lớn qua `c_operator.c` (bàn phím); 1 số case sai định dạng cần **tool `test_client` riêng (chưa xây)** | 47 |
+| 4 | [04-timing-assumptions.md](04-timing-assumptions.md) | Giá trị số/thời gian trong `system_assumptions_tables.md` (TC/TL/RC/PA/DP/CC) | Timing / performance | Đồng hồ bấm giờ tay hoặc đọc timestamp trong `central_log.txt` (không có đồng hồ chung, hệ thống dùng tick 100ms) | 31 |
+| 5 | [05-fault-safety.md](05-fault-safety.md) | Watchdog, FAULT_SAFE, RC-06/09/10 gate fault | Fault-injection / safety | Bàn phím (phím `x`/`r`/`f` demo); 1 số case cần **debugger (gdb)** để mô phỏng treo thread hoặc gọi hàm trực tiếp không có UI | 23 |
+| 6 | [06-concurrency-race.md](06-concurrency-race.md) | Race condition, input dồn dập, regression cho bug đã sửa | Concurrency / race | Bàn phím thao tác cực nhanh (nên script hóa nếu có thể), **lặp lại nhiều lần (N≥5-10)** để tăng khả năng bắt lỗi | 20 |
+| 7 | [07-cross-node-integration.md](07-cross-node-integration.md) | Hành vi xuyên node qua Qnet thật (đa VM) | Integration / distributed | Nhiều VM QNX thật qua SSH + biến môi trường `TRAFFIC_NODE_MAP`, quan sát log đồng thời trên nhiều máy | 19 |
+| | **Tổng** | | | | **225** |
 
 ## Quy ước môi trường (dùng chung mọi file)
 

@@ -1,0 +1,991 @@
+{
+  "test_cases": [
+    {
+      "id": "TC-MSG-1",
+      "title": "SET_TIMING_PROFILE broadcast to R1 chain (L1/L3/L5) - ACK",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "L3", "binary": "lx_main", "args": ["3"]},
+        {"node_id": "L5", "binary": "lx_main", "args": ["5"]}
+      ],
+      "setup_wait_ms": 800,
+      "steps": [
+        {"after_ms": 0,   "node_id": "C1", "send": "t"},
+        {"after_ms": 200, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: SET_TIMING_PROFILE to 1 -> ACK$", "within_ms": 3000,
+         "description": "lx_fsm_on_set_timing_profile() ACKs L1's offset (0ms, well under LX_CYCLE_LENGTH_MS)"},
+        {"node_id": "C1", "pattern": "C1: SET_TIMING_PROFILE to 3 -> ACK$", "within_ms": 3000,
+         "description": "ACK for L3 (offset 21000ms, R1_CHAIN)"},
+        {"node_id": "C1", "pattern": "C1: SET_TIMING_PROFILE to 5 -> ACK$", "within_ms": 3000,
+         "description": "ACK for L5 (offset 45000ms, R1_CHAIN)"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-2",
+      "title": "SET_TIMING_PROFILE while Lx is FAULT_SAFE - NACK FAULT_ACTIVE",
+      "type": "negative",
+      "environment": "D",
+      "skip": true,
+      "skip_reason": "Requires L1 in SUPERVISORY_FAULT_SAFE. lx_sensor.c (confirmed by reading the current source) has no demo fault-injection key (unlike rlx_sensor.c's x/f) - the only real way to trip PA-10 is kill -STOP/-CONT on lx_main's PID for >=2s (see docs/test-plan/02-state-machine-transition.md TC-SC03A-6), which is an OS signal, not a stdin keystroke the steps[].send schema can express.",
+      "nodes": [],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-3",
+      "title": "offset_ms at upper boundary (>= LX_CYCLE_LENGTH_MS) - NACK STALE_OR_UNSAFE_PROFILE",
+      "type": "edge",
+      "environment": "D",
+      "skip": true,
+      "skip_reason": "c_operator.c's 't' command only ever broadcasts the fixed R1_CHAIN/R2_CHAIN offsets (0/19000/21000/42000/45000ms) - none >= LX_CYCLE_LENGTH_MS (90000). Reaching lx_fsm_on_set_timing_profile()'s offset_ms=90000 boundary requires the not-yet-built test_client to hand-craft the payload directly to L1.",
+      "nodes": [],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-4",
+      "title": "offset_ms just under upper boundary (LX_CYCLE_LENGTH_MS - 1) - ACK",
+      "type": "edge",
+      "environment": "D",
+      "skip": true,
+      "skip_reason": "Same reasoning as TC-MSG-3 - c_operator.c cannot submit an arbitrary offset_ms=89999; only the not-yet-built test_client can send a hand-crafted SET_TIMING_PROFILE payload directly to L1.",
+      "nodes": [],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-5",
+      "title": "SET_MODE with mode == current mode - ACK (no-op)",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,   "node_id": "C1", "send": "m"},
+        {"after_ms": 100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 200, "node_id": "C1", "send": "0\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: SET_MODE to 1 -> ACK$", "within_ms": 2000,
+         "description": "L1 cold-starts at MODE_PEAK_FIXED(0); requesting the same mode is a no-op ACK, not ACK_PENDING"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-6",
+      "title": "SET_MODE to a different mode - ACK_PENDING",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,   "node_id": "C1", "send": "m"},
+        {"after_ms": 100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 200, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: SET_MODE to 1 -> ACK_PENDING", "within_ms": 2000,
+         "description": "L1 is MODE_PEAK_FIXED; requesting OFF_PEAK_SENSOR defers to the next ALL_RED boundary per SC-01A, replying ACK_PENDING immediately"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-7",
+      "title": "Cancel a pending mode-change by re-requesting the current mode before the boundary",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,    "node_id": "C1", "send": "m"},
+        {"after_ms": 100,  "node_id": "C1", "send": "1\n"},
+        {"after_ms": 200,  "node_id": "C1", "send": "1\n"},
+        {"after_ms": 1000, "node_id": "C1", "send": "m"},
+        {"after_ms": 1100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 1200, "node_id": "C1", "send": "0\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: SET_MODE to 1 -> ACK_PENDING", "within_ms": 2000,
+         "description": "first request (OFF_PEAK_SENSOR) is deferred"},
+        {"node_id": "C1", "pattern": "C1: SET_MODE to 1 -> ACK$", "within_ms": 3000,
+         "description": "second request re-asks for PEAK_FIXED, which now equals fsm->mode again (mode_change_pending never applied yet, since PHASE_ARTERIAL_GREEN's 48s duration keeps this well before the next ALL_RED boundary) - lx_fsm_on_set_mode() treats it as a no-op ACK, clearing mode_change_pending"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-8",
+      "title": "SET_MODE while Lx is FAULT_SAFE - NACK FAULT_ACTIVE",
+      "type": "negative",
+      "environment": "D",
+      "skip": true,
+      "skip_reason": "Same fault-injection blocker as TC-MSG-2 - lx_sensor.c has no demo key to force SUPERVISORY_FAULT_SAFE, and forcing the real PA-10 watchdog requires kill -STOP/-CONT on lx_main's PID, outside the stdin-only steps[].send model.",
+      "nodes": [],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-8b",
+      "title": "SET_MODE with mode outside 0/1 - NACK OUT_OF_RANGE (UC-07 step 3)",
+      "type": "negative",
+      "environment": "D",
+      "skip": true,
+      "skip_reason": "c_operator.c's handle_set_mode() rejects any mode != 0/1 client-side ('not a valid mode ... command aborted') before ever sending it - lx_fsm_on_set_mode()'s NACK_REASON_OUT_OF_RANGE branch is unreachable from the console. Requires the not-yet-built test_client to send a raw mode=2 payload directly to L1.",
+      "nodes": [],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-9",
+      "title": "REQUEST_OVERRIDE valid, no conflict - ACK",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,   "node_id": "C1", "send": "o"},
+        {"after_ms": 100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 200, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 300, "node_id": "C1", "send": "30000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 2000,
+         "description": "L1 at NORMAL_OPERATION with no fault/preemption/ped-clearance - lx_fsm_on_request_override() ACKs immediately (OVR_ACTIVE)"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-10",
+      "title": "REQUEST_OVERRIDE while pedestrian clearance is running - ACK_PENDING (SC-03B)",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,   "node_id": "L1", "send": "1"},
+        {"after_ms": 300, "node_id": "C1", "send": "o"},
+        {"after_ms": 400, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 500, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 600, "node_id": "C1", "send": "20000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK_PENDING", "within_ms": 3000,
+         "description": "L1 is mid WALK/FLASHING_DONT_WALK (ped side 0 pressed at t=0, 10s total per LX_WALK_MS+LX_FLASHING_DONT_WALK_MS) when the override for the same-side-compatible arterial movement arrives - lx_fsm_on_request_override() queues OVR_PENDING_CLEARANCE and replies ACK_PENDING, never NACK_REASON_PEDESTRIAN_ACTIVE (which is dead code - see doc appendix)"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-11",
+      "title": "REQUEST_OVERRIDE while another override is already active - NACK OUT_OF_RANGE",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,    "node_id": "C1", "send": "o"},
+        {"after_ms": 100,  "node_id": "C1", "send": "1\n"},
+        {"after_ms": 200,  "node_id": "C1", "send": "0\n"},
+        {"after_ms": 300,  "node_id": "C1", "send": "30000\n"},
+        {"after_ms": 1000, "node_id": "C1", "send": "o"},
+        {"after_ms": 1100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 1200, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 1300, "node_id": "C1", "send": "10000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 2000,
+         "description": "first override (arterial, 30s) is accepted and still active"},
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> NACK reason=OUT_OF_RANGE", "within_ms": 3000,
+         "description": "lx_fsm_on_request_override() rejects a second REQUEST_OVERRIDE while SUPERVISORY_CENTRAL_OVERRIDE is already active - use RENEW_OVERRIDE instead (no dedicated reason code exists)"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-12",
+      "title": "REQUEST_OVERRIDE duration_ms=0 - rejected by Central pre-check (never forwarded)",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,   "node_id": "C1", "send": "o"},
+        {"after_ms": 100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 200, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 300, "node_id": "C1", "send": "0\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "Operator: REQUEST_OVERRIDE\\(target=1, movement=0, duration_ms=0\\) rejected by Central pre-check, reason=INVALID_DURATION - not forwarded to the controller", "within_ms": 2000,
+         "description": "c_mode_eng_validate_override_request() rejects duration_ms==0 at Central, before ipc_client_post() is ever called - no C1: REQUEST_OVERRIDE to 1 -> ... line should ever appear for this request"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-13",
+      "title": "REQUEST_OVERRIDE duration_ms=300001 - rejected by Central pre-check (never forwarded)",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,   "node_id": "C1", "send": "o"},
+        {"after_ms": 100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 200, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 300, "node_id": "C1", "send": "300001\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "Operator: REQUEST_OVERRIDE\\(target=1, movement=0, duration_ms=300001\\) rejected by Central pre-check, reason=INVALID_DURATION - not forwarded to the controller", "within_ms": 2000,
+         "description": "same Central pre-check as TC-MSG-12, upper bound"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-14",
+      "title": "REQUEST_OVERRIDE duration_ms=0 sent straight to Lx, bypassing Central - real Lx-side NACK INVALID_DURATION",
+      "type": "negative",
+      "environment": "D",
+      "skip": true,
+      "skip_reason": "c_operator.c's Central-side pre-check (c_mode_eng_validate_override_request()) rejects duration_ms==0 before ever forwarding it, so lx_fsm_on_request_override()'s own real NACK_REASON_INVALID_DURATION branch can never be reached from the console. Requires the not-yet-built test_client to send directly to L1, bypassing Central entirely.",
+      "nodes": [],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-15",
+      "title": "REQUEST_OVERRIDE while Lx is under RAILWAY_PREEMPTION - NACK RAILWAY_CONFLICT",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,    "node_id": "RL1", "send": "0"},
+        {"after_ms": 2500, "node_id": "C1", "send": "o"},
+        {"after_ms": 2600, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 2700, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 2800, "node_id": "C1", "send": "10000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> NACK reason=RAILWAY_CONFLICT", "within_ms": 6000,
+         "description": "RL1 OPEN->WARNING (rlx_fsm_simulate_train_approaching) broadcasts CROSSING_STATUS(WARNING) to L1 (adjacent per ADJACENCY[]) on its next 1s tick, putting L1 into SUPERVISORY_RAILWAY_PREEMPTION before the override request arrives"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-16",
+      "title": "REQUEST_OVERRIDE while Lx is FAULT_SAFE - NACK FAULT_ACTIVE",
+      "type": "negative",
+      "environment": "D",
+      "skip": true,
+      "skip_reason": "Same fault-injection blocker as TC-MSG-2/8 - no lx_sensor.c demo key exists to force SUPERVISORY_FAULT_SAFE without a real >=2s watchdog trip via kill -STOP/-CONT, which is outside the stdin-only steps[].send model.",
+      "nodes": [],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-17",
+      "title": "REQUEST_OVERRIDE duration_ms=1 - ACK (lower valid boundary, PA-11)",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,   "node_id": "C1", "send": "o"},
+        {"after_ms": 100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 200, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 300, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 2000,
+         "description": "duration_ms=1 is inside (0, 300000] - ACK; override then self-terminates on the very next 100ms phase-timer tick"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-18",
+      "title": "REQUEST_OVERRIDE duration_ms=300000 - ACK (upper valid boundary, PA-11)",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,   "node_id": "C1", "send": "o"},
+        {"after_ms": 100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 200, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 300, "node_id": "C1", "send": "300000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 2000,
+         "description": "duration_ms=300000 == LX_OVERRIDE_DURATION_CAP_MS - still accepted (300001 is rejected, see TC-MSG-13)"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-19",
+      "title": "RENEW_OVERRIDE valid on an ACTIVE override - ACK",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,    "node_id": "C1", "send": "o"},
+        {"after_ms": 100,  "node_id": "C1", "send": "1\n"},
+        {"after_ms": 200,  "node_id": "C1", "send": "0\n"},
+        {"after_ms": 300,  "node_id": "C1", "send": "30000\n"},
+        {"after_ms": 1000, "node_id": "C1", "send": "r"},
+        {"after_ms": 1100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 1200, "node_id": "C1", "send": "60000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 2000,
+         "description": "establishes the OVR_ACTIVE override this renewal targets"},
+        {"node_id": "C1", "pattern": "C1: RENEW_OVERRIDE to 1 -> ACK$", "within_ms": 3000,
+         "description": "override is SUPERVISORY_CENTRAL_OVERRIDE/OVR_ACTIVE - lx_fsm_on_renew_override() ACKs and restarts the countdown at 60000ms"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-20",
+      "title": "RENEW_OVERRIDE with no override in flight - NACK UNKNOWN_TARGET",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,   "node_id": "C1", "send": "r"},
+        {"after_ms": 100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 200, "node_id": "C1", "send": "5000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: RENEW_OVERRIDE to 1 -> NACK reason=UNKNOWN_TARGET", "within_ms": 2000,
+         "description": "L1 has never had an override (BR-7: c_operator.c warns but still forwards); lx_fsm_on_renew_override() NACKs since override_substate != OVR_ACTIVE"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-21",
+      "title": "RENEW_OVERRIDE while override is OVR_PENDING_CLEARANCE (not yet active) - NACK UNKNOWN_TARGET",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,    "node_id": "L1", "send": "1"},
+        {"after_ms": 300,  "node_id": "C1", "send": "o"},
+        {"after_ms": 400,  "node_id": "C1", "send": "1\n"},
+        {"after_ms": 500,  "node_id": "C1", "send": "0\n"},
+        {"after_ms": 600,  "node_id": "C1", "send": "20000\n"},
+        {"after_ms": 1500, "node_id": "C1", "send": "r"},
+        {"after_ms": 1600, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 1700, "node_id": "C1", "send": "0\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK_PENDING", "within_ms": 3000,
+         "description": "override is queued behind the pedestrian clearance started at t=0 (10s WALK+FDW window)"},
+        {"node_id": "C1", "pattern": "C1: RENEW_OVERRIDE to 1 -> NACK reason=UNKNOWN_TARGET", "within_ms": 4000,
+         "description": "renew is sent while still OVR_PENDING_CLEARANCE (well before the 10s ped clearance completes) - lx_fsm_on_renew_override() requires override_substate == OVR_ACTIVE exactly, so PENDING_CLEARANCE also NACKs"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-22",
+      "title": "RENEW_OVERRIDE extend_duration_ms=300001 - NACK INVALID_DURATION",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,    "node_id": "C1", "send": "o"},
+        {"after_ms": 100,  "node_id": "C1", "send": "1\n"},
+        {"after_ms": 200,  "node_id": "C1", "send": "0\n"},
+        {"after_ms": 300,  "node_id": "C1", "send": "30000\n"},
+        {"after_ms": 1000, "node_id": "C1", "send": "r"},
+        {"after_ms": 1100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 1200, "node_id": "C1", "send": "300001\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 2000,
+         "description": "override active"},
+        {"node_id": "C1", "pattern": "C1: RENEW_OVERRIDE to 1 -> NACK reason=INVALID_DURATION", "within_ms": 3000,
+         "description": "extend_duration_ms=300001 exceeds LX_OVERRIDE_DURATION_CAP_MS - existing expiry is retained unchanged"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-23",
+      "title": "RENEW_OVERRIDE extend_duration_ms=0 - ACK, resets to the ORIGINAL duration",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,    "node_id": "C1", "send": "o"},
+        {"after_ms": 100,  "node_id": "C1", "send": "1\n"},
+        {"after_ms": 200,  "node_id": "C1", "send": "0\n"},
+        {"after_ms": 300,  "node_id": "C1", "send": "20000\n"},
+        {"after_ms": 5300, "node_id": "C1", "send": "r"},
+        {"after_ms": 5400, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 5500, "node_id": "C1", "send": "0\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 2000,
+         "description": "override active with duration_ms=20000"},
+        {"node_id": "C1", "pattern": "C1: RENEW_OVERRIDE to 1 -> ACK$", "within_ms": 7000,
+         "description": "sent ~5s later (remaining_ms has drifted down from 20000); extend_duration_ms=0 means 'reset to override_duration_ms' (20000), not 'extend by 0' or 'set remaining to 0' - lx_fsm_on_renew_override()'s special-case semantics"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-24",
+      "title": "RENEW_OVERRIDE extend_duration_ms=300000 - ACK (upper valid boundary)",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,    "node_id": "C1", "send": "o"},
+        {"after_ms": 100,  "node_id": "C1", "send": "1\n"},
+        {"after_ms": 200,  "node_id": "C1", "send": "0\n"},
+        {"after_ms": 300,  "node_id": "C1", "send": "30000\n"},
+        {"after_ms": 1000, "node_id": "C1", "send": "r"},
+        {"after_ms": 1100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 1200, "node_id": "C1", "send": "300000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 2000,
+         "description": "override active"},
+        {"node_id": "C1", "pattern": "C1: RENEW_OVERRIDE to 1 -> ACK$", "within_ms": 3000,
+         "description": "extend_duration_ms=300000 == LX_OVERRIDE_DURATION_CAP_MS - accepted"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-25",
+      "title": "RENEW_OVERRIDE extend_duration_ms=1 - ACK (explicit 1ms renewal, not the 0=keep-original case)",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,    "node_id": "C1", "send": "o"},
+        {"after_ms": 100,  "node_id": "C1", "send": "1\n"},
+        {"after_ms": 200,  "node_id": "C1", "send": "0\n"},
+        {"after_ms": 300,  "node_id": "C1", "send": "30000\n"},
+        {"after_ms": 1000, "node_id": "C1", "send": "r"},
+        {"after_ms": 1100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 1200, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 2000,
+         "description": "override active"},
+        {"node_id": "C1", "pattern": "C1: RENEW_OVERRIDE to 1 -> ACK$", "within_ms": 3000,
+         "description": "extend_duration_ms=1 is a real 1ms renewal (distinct from TC-MSG-23's 0='keep original'); override_duration_ms/remaining_ms become 1, terminating on the next tick"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-26",
+      "title": "CANCEL_OVERRIDE on an ACTIVE override - ACK",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,    "node_id": "C1", "send": "o"},
+        {"after_ms": 100,  "node_id": "C1", "send": "1\n"},
+        {"after_ms": 200,  "node_id": "C1", "send": "0\n"},
+        {"after_ms": 300,  "node_id": "C1", "send": "60000\n"},
+        {"after_ms": 1000, "node_id": "C1", "send": "c"},
+        {"after_ms": 1100, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 2000,
+         "description": "override active, long duration to leave room for the cancel"},
+        {"node_id": "C1", "pattern": "C1: CANCEL_OVERRIDE to 1 -> ACK$", "within_ms": 3000,
+         "description": "lx_fsm_on_cancel_override() ACKs and runs safe clearance back to NORMAL_OPERATION"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-27",
+      "title": "CANCEL_OVERRIDE on an OVR_PENDING_CLEARANCE override (not yet active) - ACK",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,    "node_id": "L1", "send": "1"},
+        {"after_ms": 300,  "node_id": "C1", "send": "o"},
+        {"after_ms": 400,  "node_id": "C1", "send": "1\n"},
+        {"after_ms": 500,  "node_id": "C1", "send": "0\n"},
+        {"after_ms": 600,  "node_id": "C1", "send": "20000\n"},
+        {"after_ms": 1500, "node_id": "C1", "send": "c"},
+        {"after_ms": 1600, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK_PENDING", "within_ms": 3000,
+         "description": "override queued behind ped clearance (10s window from t=0)"},
+        {"node_id": "C1", "pattern": "C1: CANCEL_OVERRIDE to 1 -> ACK$", "within_ms": 4000,
+         "description": "unlike RENEW_OVERRIDE (TC-MSG-21), lx_fsm_on_cancel_override() accepts both OVR_ACTIVE and OVR_PENDING_CLEARANCE - cancel fully discards the queued override before it ever activates"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-28",
+      "title": "CANCEL_OVERRIDE with no override in flight - NACK UNKNOWN_TARGET",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,   "node_id": "C1", "send": "c"},
+        {"after_ms": 100, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: CANCEL_OVERRIDE to 1 -> NACK reason=UNKNOWN_TARGET", "within_ms": 2000,
+         "description": "L1 is NORMAL_OPERATION, override_substate == OVR_NONE"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-29",
+      "title": "Two near-simultaneous CANCEL_OVERRIDE to the same Lx (race/idempotency)",
+      "type": "edge",
+      "environment": "D",
+      "skip": true,
+      "skip_reason": "Requires two independent test_client processes sending MSG_CANCEL_OVERRIDE to L1 within milliseconds of each other to race lx_fsm_t's own mutex. c_operator.c reads stdin on a single thread (c_operator_reader_thread) - two 'c' keypresses from one process can never be truly concurrent - and the not-yet-built test_client tool doesn't exist to run as two independent racing processes.",
+      "nodes": [],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-30",
+      "title": "REQUEST_FAULT_CLEAR when RLx is not in FAULT - NACK UNKNOWN_TARGET",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,   "node_id": "C1", "send": "f"},
+        {"after_ms": 100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 200, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: REQUEST_FAULT_CLEAR to 7 -> NACK reason=UNKNOWN_TARGET", "within_ms": 2000,
+         "description": "RL1 (numeric CTRL_RL1=7) cold-starts RLX_OPEN, not RLX_FAULT - rlx_fsm_on_fault_clear() NACKs"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-31",
+      "title": "REQUEST_FAULT_CLEAR while RLx is FAULT but gate not confirmed open - NACK FAULT_ACTIVE",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,     "node_id": "RL1", "send": "x"},
+        {"after_ms": 200,   "node_id": "RL1", "send": "0"},
+        {"after_ms": 21000, "node_id": "C1",  "send": "f"},
+        {"after_ms": 21100, "node_id": "C1",  "send": "1\n"},
+        {"after_ms": 21200, "node_id": "C1",  "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "gate FAILED TO CONFIRM", "within_ms": 21000,
+         "description": "x arms the next gate motion to fail confirmation (RC-06 demo); 0 triggers TRAIN_APPROACHING dir0 -> WARNING -> (5s) CLOSING -> (15s deadline) enter_fault(FAULT_GATE_CONFIRM_MISSING)"},
+        {"node_id": "C1", "pattern": "C1: REQUEST_FAULT_CLEAR to 7 -> NACK reason=FAULT_ACTIVE", "within_ms": 24000,
+         "description": "enter_fault() re-issued rlx_gate_command_close() (not armed to fail this time), so 3s later gates confirm CLOSED, not OPEN - rlx_gate_poll_open()==0 keeps the NACK"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-32",
+      "title": "REQUEST_FAULT_CLEAR -> ACK once the gate is confirmed open (demo repair path)",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,     "node_id": "RL1", "send": "x"},
+        {"after_ms": 200,   "node_id": "RL1", "send": "0"},
+        {"after_ms": 21000, "node_id": "RL1", "send": "r"},
+        {"after_ms": 21300, "node_id": "C1",  "send": "f"},
+        {"after_ms": 21400, "node_id": "C1",  "send": "1\n"},
+        {"after_ms": 21500, "node_id": "C1",  "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "Gate mechanism simulated as physically repaired - now confirmed OPEN", "within_ms": 22000,
+         "description": "the current rlx_sensor.c ('r' key -> rlx_gate_force_confirmed_open()) already implements the fix the test-plan .md proposed as a future patch - it forces g_confirmed_open=1 synchronously while state is still RLX_FAULT, which the .md (written before this key existed) said was otherwise unreachable"},
+        {"node_id": "C1", "pattern": "C1: REQUEST_FAULT_CLEAR to 7 -> ACK$", "within_ms": 24000,
+         "description": "rlx_fsm_on_fault_clear() re-checks rlx_gate_poll_open() live and now sees 1 - ACK, RL1 returns to RLX_OPEN"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-33",
+      "title": "REQUEST_FAULT_CLEAR to an Lx that is FAULT_SAFE - ACK",
+      "type": "positive",
+      "environment": "D",
+      "skip": true,
+      "skip_reason": "Requires L1 already in SUPERVISORY_FAULT_SAFE - same blocker as TC-MSG-2/8/16: lx_sensor.c has no demo fault key, and the documented working method (docs/test-plan/02-state-machine-transition.md TC-SC03A-6) is kill -STOP/-CONT on lx_main's PID for >=2s, an OS signal outside the stdin-only steps[].send automation model.",
+      "nodes": [],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-33b",
+      "title": "REQUEST_FAULT_CLEAR to a FAULT_SAFE Lx while the adjacent crossing is still closed - resumes RAILWAY_PREEMPTION, not NORMAL_OPERATION",
+      "type": "positive",
+      "environment": "D",
+      "skip": true,
+      "skip_reason": "Same FAULT_SAFE fault-injection blocker as TC-MSG-33, plus requires orchestrating a real watchdog trip while RAILWAY_PREEMPTION is already active - both preconditions need kill -STOP/-CONT on lx_main's PID, outside the stdin-only steps[].send automation model.",
+      "nodes": [],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-34",
+      "title": "MSG_STATUS valid to C1 - ACK",
+      "type": "positive",
+      "environment": "D",
+      "skip": true,
+      "skip_reason": "Confirmed by grepping lx_comm.c/rlx_comm.c: no sender in the current codebase ever transmits MSG_STATUS (only HEARTBEAT/FAULT_REPORT/CROSSING_STATUS are sent). Producing this verb on the wire requires the not-yet-built test_client.",
+      "nodes": [],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-35",
+      "title": "MSG_STATUS with role mismatched to sender_id - still ACK (robustness)",
+      "type": "edge",
+      "environment": "D",
+      "skip": true,
+      "skip_reason": "Same as TC-MSG-34 (no real sender for MSG_STATUS exists) plus requires deliberately mismatching payload.status.role vs sender_id, which only a hand-crafted test_client payload can do.",
+      "nodes": [],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-36",
+      "title": "MSG_FAULT_REPORT when RLx actually enters FAULT - ACK",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,   "node_id": "RL1", "send": "x"},
+        {"after_ms": 200, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "FAULT_REPORT from 7: fault_code=0x00000001 severity=1 detail=\"RLx fault - see fault_code bitmask\"", "within_ms": 23000,
+         "description": "RLx auto-sends MSG_FAULT_REPORT the instant enter_fault() runs (rlx_fsm_take_fault_report_pending(), same tick as the CLOSING deadline miss ~20s in); c_main.c's on_request() always ACKs and prints this line directly (no NACK branch exists for this verb)"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-37",
+      "title": "MSG_FAULT_REPORT with a non-null-terminated detail[64] - memory-safety robustness check",
+      "type": "edge",
+      "environment": "D",
+      "skip": true,
+      "skip_reason": "rlx_comm_send_fault_report() always strncpy()s and force-terminates the last byte with '\\0' - no real code path can produce a non-terminated detail string. Requires the not-yet-built test_client to hand-craft a malformed payload.",
+      "nodes": [],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-38",
+      "title": "CROSSING_STATUS(WARNING) to adjacent Lx - ACK, Lx enters RAILWAY_PREEMPTION",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "L1\\s+INTERSECTION\\s+\\d+\\s+\\d+\\s+-\\s+1\\s", "within_ms": 5000,
+         "description": "c_hmi_render()'s network table (1Hz) shows L1's SUPERVISORY column = 1 (SUPERVISORY_RAILWAY_PREEMPTION) once L1's next HEARTBEAT reports it, after RL1 OPEN->WARNING broadcasts CROSSING_STATUS to adjacent L1/L2 (ADJACENCY[]) and C1 - lx_fsm_on_crossing_status() always ACKs (RC-02: Lx never rejects)"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-39",
+      "title": "CROSSING_STATUS to C1 - ACK, C1 updates last_reported_crossing_state",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "RL1\\s+RAILWAY\\s+\\d+\\s+-\\s+1\\s", "within_ms": 5000,
+         "description": "c_server_record_crossing_status() sets last_reported_crossing_state=CROSSING_WARNING(1) for RL1's row, and resets missed_heartbeat_ticks/marked_unavailable; c_main.c's on_request() case MSG_CROSSING_STATUS always ACKs"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-40",
+      "title": "No duplicate CROSSING_STATUS broadcast when the wire-visible state does not change (dedup)",
+      "type": "edge",
+      "environment": "B",
+      "skip": true,
+      "skip_reason": "Verifying dedup requires proving a SECOND CROSSING_STATUS broadcast does NOT happen when RL1's internal state changes WARNING->CLOSING (both map to the same wire value CROSSING_WARNING, per map_to_crossing_state()) - runner.py's checks[] can only assert a pattern's presence within a window, never its absence over a window. This is exactly the class of check the tool's README flags as needing a human/other-tool judgment a regex can't replace.",
+      "nodes": [],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-41",
+      "title": "CROSSING_STATUS with state outside the valid enum range - still ACK, treated as not-OPEN (robustness)",
+      "type": "edge",
+      "environment": "D",
+      "skip": true,
+      "skip_reason": "rlx_comm.c never produces a state value outside crossing_state_t's 0-3 range - reaching this requires the not-yet-built test_client to hand-craft payload.crossing_status.state=999 directly to L1.",
+      "nodes": [],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-42",
+      "title": "HEARTBEAT 1Hz from Lx - continuous ACK, L1 stays AVAILABLE",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 4000,
+      "steps": [],
+      "checks": [
+        {"node_id": "C1", "pattern": "L1\\s+INTERSECTION.*\\bAVAILABLE\\b", "within_ms": 3000,
+         "description": "setup_wait_ms=4000 lets PA-07's 3-tick (3s) missed-heartbeat threshold pass before the check clock (t0) starts; L1's HEARTBEAT (1Hz) keeps resetting missed_heartbeat_ticks/marked_unavailable via c_server_record_status(), so the check would FAIL (see UNAVAILABLE in TC-MSG-43) if HEARTBEAT handling were broken - it only passes because ACK processing keeps working past the 3s mark"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-43",
+      "title": "3 consecutive missed heartbeats - Lx marked UNAVAILABLE (PA-07)",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [
+        {"node_id": "C1", "pattern": "Controller 1 marked UNAVAILABLE - missed 3 consecutive heartbeats", "within_ms": 6000,
+         "description": "Equivalent automation of 'kill lx_main 1 mid-run': L1 is simply never started, so c_mode_eng.controllers[0] (CTRL_L1=1) never receives a proof-of-life - c_watchdog_mon_tick()'s 1Hz counter reaches exactly 3 missed ticks and edge-triggers marked_unavailable=1/this log line, identical counting logic to a genuinely-killed process (missed_heartbeat_ticks starts at 0 either way)"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-44",
+      "title": "HEARTBEAT from RLx - role=ROLE_RAILWAY, mode/signal_phase=0 not misinterpreted",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 2000,
+      "steps": [],
+      "checks": [
+        {"node_id": "C1", "pattern": "RL1\\s+RAILWAY\\s+0\\s+-\\s+0\\s", "within_ms": 3000,
+         "description": "rlx_fsm_fill_status() only fills role/crossing_state/faults for ROLE_RAILWAY - mode stays 0 and c_hmi_render() renders RL1's PHASE column as '-' (role != ROLE_INTERSECTION), confirming mode=0/signal_phase=0 are not misread as meaningful MODE_PEAK_FIXED/PHASE_ARTERIAL_GREEN values; crossing_state=0 (CROSSING_OPEN, RL1's cold-start state) appears in its own column"}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-MSG-45",
+      "title": "HEARTBEAT with role outside the valid enum range - still ACK (negative/robustness)",
+      "type": "negative",
+      "environment": "D",
+      "skip": true,
+      "skip_reason": "No path in lx_comm.c/rlx_comm.c ever produces a role outside {ROLE_CENTRAL, ROLE_INTERSECTION, ROLE_RAILWAY} - reaching payload.heartbeat.summary.role=99 requires the not-yet-built test_client to hand-craft the payload directly to C1.",
+      "nodes": [],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 300
+    }
+  ]
+}

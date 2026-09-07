@@ -1,0 +1,520 @@
+{
+  "_comment": "Converts docs/test-plan/07-cross-node-integration.md's TC-XNODE-01..19. That file's whole premise is >=2 genuinely separate QNX VMs over real Qnet - by definition every one of these cases starts life as environment (C). Per tools/test-automation/README.md's scope note, this runner only launches local subprocesses on one machine, which reproduces environment (B) (unset TRAFFIC_NODE_MAP => build_open_path() takes the same-node, no-'/net/'-prefix branch for every target - see app/shared/src/qnet_utils.c). Each case below was individually re-examined against the real source (app/shared/src/qnet_utils.c, app/railway/src/rlx_comm.c, app/central/src/c_watchdog_mon.c, app/central/src/c_hmi.c, app/central/src/c_operator.c, app/intersection/src/lx_fsm.c, app/railway/src/rlx_fsm.c) to decide whether its core assertion is actually about being on separate machines (skip) or is really about IPC/FSM behavior that happens to be identical whether the peer process is local or remote (automate as B). Two further tool limits (not just environment scope) drove several skips: (1) the case schema has no per-node environment-variable field, so TRAFFIC_NODE_MAP cannot differ between nodes in one run - every subprocess shares the invoking shell's environment; (2) 'nodes' are all launched together before setup_wait_ms, and 'steps' can only send scripted stdin - there is no primitive to kill a specific node mid-run or to start a new one partway through a case.",
+  "test_cases": [
+    {
+      "id": "TC-XNODE-01",
+      "title": "SKIP: SET_TIMING_PROFILE R1 offset chain across 3 independently-clocked VMs",
+      "type": "positive",
+      "environment": "C",
+      "skip": true,
+      "skip_reason": "Per the test plan's own section 0, this case's entire point is verifying lx_fsm_apply_offset_locked()'s wall-clock (CLOCK_REALTIME) offset math against THREE INDEPENDENT VM clocks with no NTP/time-sync in this codebase - 'day khong phai loi, nhung phai kiem tra va ghi nhan do lech dong ho giua cac VM truoc khi danh gia ket qua'. Run as local subprocesses there is exactly one shared clock, so the one variable this test exists to exercise (independent clock drift) is trivially absent - a same-machine run would only re-verify the offset arithmetic itself, which is already covered by the internal-FSM test-plan files this one explicitly cross-references (TC-01..TC-05). Genuinely needs >=3 separate VMs.",
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "L3", "binary": "lx_main", "args": ["3"]},
+        {"node_id": "L5", "binary": "lx_main", "args": ["5"]}
+      ],
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "TC-XNODE-02",
+      "title": "SKIP: SET_TIMING_PROFILE R2 offset chain across 3 independently-clocked VMs",
+      "type": "positive",
+      "environment": "C",
+      "skip": true,
+      "skip_reason": "Same reasoning as TC-XNODE-01 (chain R2 instead of R1: L2/L4/L6, offsets 0/19000/42000ms) - the test exists specifically to measure offset accuracy against independent VM wall clocks, which a single-machine run cannot represent at all.",
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L2", "binary": "lx_main", "args": ["2"]},
+        {"node_id": "L4", "binary": "lx_main", "args": ["4"]},
+        {"node_id": "L6", "binary": "lx_main", "args": ["6"]}
+      ],
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "TC-XNODE-03",
+      "title": "Same-machine approximation: SET_TIMING_PROFILE broadcast when one target (L5) is not running - graceful per-target failure",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "notes": "Only the doc's steps 1-2 (broadcast while L5 is down, confirm L1/L3 still ACK and L5's send fails gracefully) are automated. Steps 3-4 (start L5 AFTER the broadcast, confirm it does NOT retroactively receive the missed profile) need a node that starts partway through an already-running case - runner.py launches every entry in 'nodes' together before setup_wait_ms, with no 'start this node N ms later' primitive, so that half cannot be scripted here regardless of environment.",
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "L3", "binary": "lx_main", "args": ["3"]}
+      ],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 0,   "node_id": "C1", "send": "t"},
+        {"after_ms": 300, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: SET_TIMING_PROFILE to 1 -> ACK", "within_ms": 3000,
+         "description": "L1 (controller id 1) is up and ACKs - the R1 chain's other real targets are unaffected by L5's absence."},
+        {"node_id": "C1", "pattern": "C1: SET_TIMING_PROFILE to 3 -> ACK", "within_ms": 3000,
+         "description": "L3 (controller id 3) ACKs likewise."},
+        {"node_id": "C1", "pattern": "C1: SET_TIMING_PROFILE to 5 send failed \\(peer unreachable or send error\\)", "within_ms": 3000,
+         "description": "L5 (controller id 5) was never started in this run - ipc_client_thread_main()'s name_open() fails and on_command_reply() logs this exact graceful-failure line (app/shared/src/qnet_utils.c / app/central/src/c_comm.c); Central must not crash and the two ACKs above must still land."}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-XNODE-04",
+      "title": "Same-machine approximation: REQUEST_OVERRIDE arterial on L2 - real light change end-to-end",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "notes": "The override's effect is pure IPC + FSM logic (lx_fsm_on_request_override()/lx_fsm_advance_phase_locked()) with no location-dependent code path, so a local subprocess reproduces the real mechanism exactly - only the 'genuinely different physical machine' aspect is not exercised.",
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L2", "binary": "lx_main", "args": ["2"]}
+      ],
+      "setup_wait_ms": 800,
+      "steps": [
+        {"after_ms": 0,   "node_id": "C1", "send": "o"},
+        {"after_ms": 300, "node_id": "C1", "send": "2\n"},
+        {"after_ms": 600, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 900, "node_id": "C1", "send": "60000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "Operator: REQUEST_OVERRIDE\\(target=2, movement=0, duration_ms=60000\\) submitted", "within_ms": 1500,
+         "description": "operator command accepted by Central's own pre-check (c_mode_eng_validate_override_request())."},
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 2 -> ACK", "within_ms": 2500,
+         "description": "plain ACK (not ACK_PENDING) since L2 has no ped clearance running at cold start."},
+        {"node_id": "L2", "pattern": "Lx 2: SIGNAL -> ALL RED \\((A to B|B to A)\\)", "within_ms": 58000,
+         "description": "lx_fsm_init() always starts in PHASE_ARTERIAL_GREEN, so this fresh process deterministically hits its first ALL_RED boundary at 48000+4000=52000ms (LX_PEAK_ARTERIAL_GREEN_MS+LX_YELLOW_MS, lx_timer.h) after launch - padded to 58s."},
+        {"node_id": "L2", "pattern": "Lx 2: SIGNAL -> ARTERIAL GREEN", "within_ms": 62000,
+         "description": "forced by override_target_movement==ARTERIAL at the PHASE_ALL_RED_A_TO_B boundary (lx_fsm.c's lx_fsm_advance_phase_locked()) - proves the cross-process command actually changed a simulated light, not just an ACK at the IPC layer."}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-XNODE-05",
+      "title": "Same-machine approximation: REQUEST_OVERRIDE connector on L4",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "notes": "Same location-independence reasoning as TC-XNODE-04. Caveat: at the FIRST ALL_RED_A_TO_B boundary the ordinary (non-override) cycle would ALSO advance to CONNECTOR_GREEN next (see lx_fsm_advance_phase_locked()'s default case), so this first-boundary check alone cannot by itself distinguish 'the override forced it' from 'the cycle would have done it anyway'. The genuinely distinguishing evidence is the SECOND boundary (~88s later, PHASE_ALL_RED_B_TO_A) where an active connector override suppresses the normal hand-back to ARTERIAL_GREEN and repeats CONNECTOR_GREEN instead - but runner.py's wait_for_pattern() always returns the EARLIEST matching line for a given pattern, so a second check for the same string cannot target that later occurrence. Documented as a checking-tool limitation rather than attempted.",
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L4", "binary": "lx_main", "args": ["4"]}
+      ],
+      "setup_wait_ms": 800,
+      "steps": [
+        {"after_ms": 0,   "node_id": "C1", "send": "o"},
+        {"after_ms": 300, "node_id": "C1", "send": "4\n"},
+        {"after_ms": 600, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 900, "node_id": "C1", "send": "60000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "Operator: REQUEST_OVERRIDE\\(target=4, movement=1, duration_ms=60000\\) submitted", "within_ms": 1500,
+         "description": "target_movement=1 (connector) correctly reaches Central's own log before it is even sent on the wire."},
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 4 -> ACK", "within_ms": 2500,
+         "description": "L4 ACKs immediately (no ped clearance in progress at cold start)."},
+        {"node_id": "L4", "pattern": "Lx 4: SIGNAL -> ALL RED \\((A to B|B to A)\\)", "within_ms": 58000,
+         "description": "same deterministic first-boundary timing as TC-XNODE-04 (~52s after L4 launch)."},
+        {"node_id": "L4", "pattern": "Lx 4: SIGNAL -> CONNECTOR GREEN", "within_ms": 62000,
+         "description": "confirms target_movement=CONNECTOR was decoded correctly end-to-end (different phase than TC-XNODE-04's ARTERIAL result) - see this case's 'notes' for the first-vs-second-boundary caveat."}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-XNODE-06",
+      "title": "Same-machine approximation: REQUEST_OVERRIDE NACKed by real railway preemption (RL1 -> L1)",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "notes": "Uses a real rlx_main process (not a mock) to genuinely drive L1 into SUPERVISORY_RAILWAY_PREEMPTION via a real CROSSING_STATUS send over local Qnet name resolution - the doc's requirement for 'RL1 that thuc su gui CROSSING_STATUS qua Qnet' is satisfied by the real IPC path, just not a real network. Cannot assert the doc's negative claim 'no new SIGNAL line appears on L1' - runner.py's checks can only assert a pattern DOES appear within a window, never that one is absent; the NACK log plus the precondition checks below are the achievable evidence.",
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "L2", "binary": "lx_main", "args": ["2"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 0,    "node_id": "RL1", "send": "0"},
+        {"after_ms": 3000, "node_id": "C1",  "send": "o"},
+        {"after_ms": 3300, "node_id": "C1",  "send": "1\n"},
+        {"after_ms": 3600, "node_id": "C1",  "send": "0\n"},
+        {"after_ms": 3900, "node_id": "C1",  "send": "60000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "^RL1\\s+RAILWAY\\s+\\S+\\s+-\\s+1\\b", "within_ms": 3000,
+         "description": "precondition sanity: c_hmi.c's CROSSING_STATE column for RL1 shows 1 (CROSSING_WARNING) - rlx_fsm_simulate_train_approaching() moves RLX_OPEN->RLX_WARNING immediately on the '0' keypress, broadcast on the next 1s IPC_PULSE_RAILWAY_WARNING tick."},
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\S+\\s+\\S+\\s+-\\s+1\\b", "within_ms": 3000,
+         "description": "precondition sanity: L1's SUPERVISORY column shows 1 (SUPERVISORY_RAILWAY_PREEMPTION) BEFORE the override is attempted, confirming lx_fsm_on_crossing_status() applied preemption from the real CROSSING_STATUS message."},
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> NACK reason=RAILWAY_CONFLICT", "within_ms": 6000,
+         "description": "lx_fsm_on_request_override()'s SUPERVISORY_RAILWAY_PREEMPTION branch rejects with NACK_REASON_RAILWAY_CONFLICT - Central's own pre-check (c_mode_eng_validate_override_request()) does not know about railway state, so this NACK genuinely comes from L1, proving the rejection is real, not a Central-side short-circuit."}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-XNODE-07",
+      "title": "Same-machine approximation: REQUEST_OVERRIDE arriving during active pedestrian clearance on L3 - ACK_PENDING then deferred apply",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "notes": "Same first-boundary-coincidence caveat as TC-XNODE-05 applies to the final CONNECTOR GREEN check (movement=1 was also the doc's own choice for this case).",
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L3", "binary": "lx_main", "args": ["3"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,   "node_id": "L3", "send": "1"},
+        {"after_ms": 200, "node_id": "C1", "send": "o"},
+        {"after_ms": 400, "node_id": "C1", "send": "3\n"},
+        {"after_ms": 600, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 800, "node_id": "C1", "send": "60000\n"}
+      ],
+      "checks": [
+        {"node_id": "L3", "pattern": "Lx 3: PED SIGNAL side 0 -> WALK", "within_ms": 1000,
+         "description": "pedestrian button side 0 is compatible with L3's default PHASE_ARTERIAL_GREEN (lx_fsm_ped_service_tick_locked()), so ped_clearance_active becomes 1 almost immediately."},
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 3 -> ACK_PENDING", "within_ms": 2500,
+         "description": "the override request (sent ~800ms in, well inside the ~10s ped clearance window) arrives while ped_clearance_active is still 1, so lx_fsm_on_request_override() replies ACK_PENDING, not plain ACK - distinct from TC-XNODE-04/05."},
+        {"node_id": "L3", "pattern": "Lx 3: PED SIGNAL side 0 -> DONT_WALK", "within_ms": 12000,
+         "description": "LX_WALK_MS(6000)+LX_FLASHING_DONT_WALK_MS(4000)=10000ms total clearance (lx_timer.h), padded to 12s; clearance completes normally, unaffected by the pending override."},
+        {"node_id": "L3", "pattern": "Lx 3: SIGNAL -> CONNECTOR GREEN", "within_ms": 62000,
+         "description": "override_substate flips OVR_PENDING_CLEARANCE->OVR_ACTIVE once ped_clearance_active drops, but the visible light change still waits for the next ALL_RED boundary (~52-54s after L3 launch) - appears well after the DONT_WALK line above, not immediately after ACK_PENDING."}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-XNODE-08",
+      "title": "Same-machine approximation: RENEW_OVERRIDE then CANCEL_OVERRIDE on L2",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "notes": "Faster than TC-XNODE-04/05/07: lx_fsm_on_request_override() sets override_substate=OVR_ACTIVE synchronously on ACK (not deferred), so RENEW_OVERRIDE's OVR_ACTIVE precondition is already true well before any ALL_RED boundary, and lx_fsm_on_cancel_override() -> lx_fsm_terminate_override_locked() prints the clearance line immediately too, not at a boundary. No multi-minute wait needed for this one.",
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L2", "binary": "lx_main", "args": ["2"]}
+      ],
+      "setup_wait_ms": 800,
+      "steps": [
+        {"after_ms": 0,    "node_id": "C1", "send": "o"},
+        {"after_ms": 300,  "node_id": "C1", "send": "2\n"},
+        {"after_ms": 600,  "node_id": "C1", "send": "0\n"},
+        {"after_ms": 900,  "node_id": "C1", "send": "15000\n"},
+        {"after_ms": 2000, "node_id": "C1", "send": "r"},
+        {"after_ms": 2300, "node_id": "C1", "send": "2\n"},
+        {"after_ms": 2600, "node_id": "C1", "send": "30000\n"},
+        {"after_ms": 3500, "node_id": "C1", "send": "c"},
+        {"after_ms": 3800, "node_id": "C1", "send": "2\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 2 -> ACK", "within_ms": 1500,
+         "description": "initial override ACK, override_substate becomes OVR_ACTIVE immediately."},
+        {"node_id": "C1", "pattern": "C1: RENEW_OVERRIDE to 2 -> ACK", "within_ms": 3500,
+         "description": "renew succeeds because OVR_ACTIVE is already true - no boundary wait required (lx_fsm_on_renew_override())."},
+        {"node_id": "C1", "pattern": "Operator: CANCEL_OVERRIDE\\(target=2\\) submitted", "within_ms": 4200,
+         "description": "operator-side log before the cancel is even sent on the wire."},
+        {"node_id": "C1", "pattern": "C1: CANCEL_OVERRIDE to 2 -> ACK", "within_ms": 4800,
+         "description": "lx_fsm_on_cancel_override() ACKs since override_substate is OVR_ACTIVE."},
+        {"node_id": "L2", "pattern": "Lx 2: override cleared/expired - running safe clearance sequence", "within_ms": 5200,
+         "description": "lx_fsm_terminate_override_locked() runs synchronously inside the CANCEL_OVERRIDE handler, not deferred to a boundary - real evidence the cancel took effect on the device, not just at the ACK layer."}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-XNODE-09",
+      "title": "Same-machine approximation: SET_MODE on L6, reflected via next heartbeat/status table",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "notes": "Deviates from the manual doc's literal 'mode 0 (PEAK_FIXED)' input: lx_fsm_init() already sets fsm->mode=MODE_PEAK_FIXED, so commanding mode 0 would be a same-value no-op (ACK immediately, per lx_fsm_on_set_mode()'s 'already in effect' branch) with nothing observable changing in c_hmi.c's MODE column. Commanding mode 1 (OFF_PEAK_SENSOR) is the only way to produce a real, checkable transition, matching the test's actual intent ('xac nhan trang thai mode thay doi that'). Also deviates on the expected ACK: a genuine mode change is deferred to the next ALL_RED boundary and replies ACK_PENDING, not plain ACK (lx_fsm.c ~line 711-726) - the manual doc's 'ACK' expectation appears to assume the default mode differs from PEAK_FIXED, which this codebase's cold-start does not.",
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L6", "binary": "lx_main", "args": ["6"]}
+      ],
+      "setup_wait_ms": 800,
+      "steps": [
+        {"after_ms": 0,   "node_id": "C1", "send": "m"},
+        {"after_ms": 300, "node_id": "C1", "send": "6\n"},
+        {"after_ms": 600, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "Operator: SET_MODE\\(target=6, mode=OFF_PEAK_SENSOR\\) submitted", "within_ms": 1000,
+         "description": "operator-side log confirms the intended mode value before the wire send."},
+        {"node_id": "C1", "pattern": "C1: SET_MODE to 6 -> ACK_PENDING", "within_ms": 2000,
+         "description": "genuine mode change (0->1) is deferred to the next ALL_RED boundary, so the reply is ACK_PENDING not ACK - see this case's 'notes'."},
+        {"node_id": "C1", "pattern": "^L6\\s+INTERSECTION\\s+1\\b", "within_ms": 62000,
+         "description": "c_hmi.c's MODE column for L6 flips to 1 once L6's next heartbeat (after the ALL_RED_A_TO_B boundary, ~52-54s after L6's launch, applies fsm->pending_mode) reports the new mode - c_server_record_status() updates this on receipt, and c_hmi_render() redraws every 1s."}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-XNODE-10",
+      "title": "Same-machine approximation: REQUEST_FAULT_CLEAR on RL2 after a real gate-confirm-missing fault",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "notes": "Uses the real fault-injection and fault-clear FSM paths (rlx_gate.c/rlx_fsm.c), not a mock - RC-09's 'RLx re-verifies live gate state, Central cannot bypass it' is genuinely exercised because rlx_gate_force_confirmed_open() ('r') must run before the clear request or rlx_fsm_on_fault_clear() would NACK with FAULT_ACTIVE.",
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "RL2", "binary": "rlx_main", "args": ["2"]}
+      ],
+      "setup_wait_ms": 800,
+      "steps": [
+        {"after_ms": 0,     "node_id": "RL2", "send": "x"},
+        {"after_ms": 300,   "node_id": "RL2", "send": "0"},
+        {"after_ms": 24000, "node_id": "RL2", "send": "r"},
+        {"after_ms": 25000, "node_id": "C1",  "send": "f"},
+        {"after_ms": 25300, "node_id": "C1",  "send": "1\n"},
+        {"after_ms": 25600, "node_id": "C1",  "send": "2\n"}
+      ],
+      "checks": [
+        {"node_id": "RL2", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 24000,
+         "description": "sequence: 'x' arms the next gate motion to fail confirmation; '0' (train approaching) takes RLX_OPEN->RLX_WARNING immediately, then RLX_WARNING->RLX_CLOSING at RLX_WARNING_TO_CLOSING_MS=5000ms, commanding gates down (armed to fail); RLX_CLOSING_DEADLINE_MS=15000ms later with no confirmation raises FAULT_GATE_CONFIRM_MISSING (bit 0x1) - roughly 300+5000+15000=~20300ms after test start, padded to 24s for 1s-tick slack."},
+        {"node_id": "C1", "pattern": "FAULT_REPORT from 8: fault_code=0x00000001", "within_ms": 25000,
+         "description": "RL2's controller id is 8 (CTRL_RL2); rlx_comm_send_fault_report() fires on the same tick the fault latches."},
+        {"node_id": "C1", "pattern": "Operator: REQUEST_FAULT_CLEAR\\(target=8\\) submitted", "within_ms": 27000,
+         "description": "operator command targets RL2 (controller id 8)."},
+        {"node_id": "C1", "pattern": "C1: REQUEST_FAULT_CLEAR to 8 -> ACK", "within_ms": 29000,
+         "description": "ACK only because 'r' (rlx_gate_force_confirmed_open(), sent before the clear request) makes gates_confirmed_open() true at the moment rlx_fsm_on_fault_clear() re-checks live gate state (RC-09/RC-10) - without it this would NACK with FAULT_ACTIVE."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-XNODE-11",
+      "title": "Same-machine approximation: RL1 CROSSING_STATUS reaches all 3 recipients (L1, L2, C1)",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "notes": "This is the canonical case that only needs multiple roles running together, not separate machines: rlx_comm_broadcast_crossing_status_if_changed() fires 3 independent ipc_client_post() calls regardless of where the 3 targets live - local Qnet name resolution (name_attach/name_open/MsgSend, no /net/ prefix since TRAFFIC_NODE_MAP is unset) exercises the exact same code path a real cross-VM send would, just without an actual network hop.",
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "L2", "binary": "lx_main", "args": ["2"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 0, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "^RL1\\s+RAILWAY\\s+\\S+\\s+-\\s+1\\b", "within_ms": 3000,
+         "description": "C1 received RL1's CROSSING_STATUS (state=1/CROSSING_WARNING) directly - c_hmi.c's CROSSING_STATE column for RL1."},
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\S+\\s+\\S+\\s+-\\s+1\\b", "within_ms": 4000,
+         "description": "L1 received its own CROSSING_STATUS copy and applied SUPERVISORY_RAILWAY_PREEMPTION (value 1), reported on L1's next heartbeat - all 3 recipients must show up, per the test plan's stricter 'if only 1 or 2 of 3 react, FAIL' bar."},
+        {"node_id": "C1", "pattern": "^L2\\s+INTERSECTION\\s+\\S+\\s+\\S+\\s+-\\s+1\\b", "within_ms": 4000,
+         "description": "L2 (RL1's other adjacent Lx per the ADJACENCY table in rlx_comm.c: RL1->{L1,L2}) likewise shows SUPERVISORY=1 - confirms the third of the three required recipients."}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-XNODE-12",
+      "title": "Same-machine approximation: RL1 CROSSING_STATUS when L2 is not running - graceful 2-of-3 delivery",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "notes": "Only the doc's first half (send while L2 is down; confirm graceful per-target failure and that L1/C1 are unaffected) is automated. The second half (start L2 late, confirm it only gets the NEXT state change and never backfills the missed one) needs a node that starts partway through an already-running case, which runner.py's schema cannot express (see TC-XNODE-03's note) - flagged as a tool gap, not attempted.",
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 0, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "RLx: message to 2 failed to send", "within_ms": 3000,
+         "description": "on_reply_log_failure() in rlx_comm.c prints exactly this when name_open() fails for L2 (controller id 2, never started) - the doc explicitly warns not to confuse this with the separate 'CROSSING_STATUS to N dropped - outgoing queue full or stopping' message, which is a different failure mode (queue full, not peer absent)."},
+        {"node_id": "C1", "pattern": "^RL1\\s+RAILWAY\\s+\\S+\\s+-\\s+1\\b", "within_ms": 3000,
+         "description": "C1 still received the CROSSING_STATUS fine - one failed target does not affect the other two ipc_client_post() calls."},
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\S+\\s+\\S+\\s+-\\s+1\\b", "within_ms": 4000,
+         "description": "L1 (the other adjacent Lx) also received it and applied preemption normally."}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-XNODE-13",
+      "title": "Same-machine approximation: watchdog marks a down Lx (L4) UNAVAILABLE after 3 missed heartbeats (PA-07)",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "notes": "Approximates 'kill a running L4 mid-test' as 'L4 never starts at all', since runner.py has no mid-test process-kill primitive (nodes are only ever terminate()'d together at cleanup, never individually during a run). This is a faithful approximation of the watchdog logic itself: c_watchdog_mon_tick() only cares about missed_heartbeat_ticks reaching 3, with no distinction between 'never sent one' and 'stopped sending after being up' - the exact log line and 3-tick timing are identical either way.",
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "L2", "binary": "lx_main", "args": ["2"]},
+        {"node_id": "L3", "binary": "lx_main", "args": ["3"]},
+        {"node_id": "L5", "binary": "lx_main", "args": ["5"]},
+        {"node_id": "L6", "binary": "lx_main", "args": ["6"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]},
+        {"node_id": "RL2", "binary": "rlx_main", "args": ["2"]},
+        {"node_id": "RL3", "binary": "rlx_main", "args": ["3"]}
+      ],
+      "setup_wait_ms": 1500,
+      "steps": [],
+      "checks": [
+        {"node_id": "C1", "pattern": "Controller 4 marked UNAVAILABLE - missed 3 consecutive heartbeats \\(PA-07\\)", "within_ms": 5000,
+         "description": "c_watchdog_mon_tick() runs every 1s (IPC_PULSE_HEARTBEAT_TICK); L4 (controller id 4) never sends a heartbeat in this run, so missed_heartbeat_ticks reaches 3 at ~3s after C1's own tick timer arms - padded to 5s."},
+        {"node_id": "C1", "pattern": "^L1\\s.*\\bAVAILABLE\\b", "within_ms": 6000,
+         "description": "a healthy Lx stays AVAILABLE - one absent controller does not cascade. (Uses \\bAVAILABLE\\b, not a bare substring match, since 'UNAVAILABLE' also contains the literal text 'AVAILABLE'.)"},
+        {"node_id": "C1", "pattern": "^RL1\\s.*\\bAVAILABLE\\b", "within_ms": 6000,
+         "description": "a healthy RLx likewise stays AVAILABLE, proving the distributed system as a whole tolerates one down node."}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-XNODE-14",
+      "title": "SKIP: kill a live RL2 mid-WARNING, L3/L4 freeze in preemption",
+      "type": "edge",
+      "environment": "C",
+      "skip": true,
+      "skip_reason": "Requires RL2 to first be alive and broadcasting WARNING (so L3/L4 genuinely enter SUPERVISORY_RAILWAY_PREEMPTION), THEN be killed mid-run while L3/L4 keep running, to observe that they hold their last-known preemption state rather than reopening. runner.py has no mid-test process-kill primitive - 'steps' can only send scripted stdin to an already-running node, and every node is only ever terminate()'d together at cleanup. Even disregarding that tool gap, the doc frames this as inherently needing separate VMs.",
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L3", "binary": "lx_main", "args": ["3"]},
+        {"node_id": "L4", "binary": "lx_main", "args": ["4"]},
+        {"node_id": "RL2", "binary": "rlx_main", "args": ["2"]}
+      ],
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "TC-XNODE-15",
+      "title": "SKIP: restart a previously-down/killed L4, observe recovery to AVAILABLE on first heartbeat",
+      "type": "positive",
+      "environment": "C",
+      "skip": true,
+      "skip_reason": "This is a direct continuation of TC-XNODE-13 (restart a node that was already marked UNAVAILABLE) and requires STARTING a node partway through an already-running case. runner.py launches every entry in a case's 'nodes' array together, before setup_wait_ms, with no primitive to add/start a node mid-run - so the restart-and-recover sequence itself cannot be scripted here regardless of environment.",
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L4", "binary": "lx_main", "args": ["4"]}
+      ],
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "TC-XNODE-16",
+      "title": "SKIP: TRAFFIC_NODE_MAP pointing at a Qnet node name that doesn't exist",
+      "type": "negative",
+      "environment": "C",
+      "skip": true,
+      "skip_reason": "Needs C1 to run with a deliberately-wrong TRAFFIC_NODE_MAP (l4=<nonexistent node>) while every other node, including the real L4 it is misconfigured to reach, runs with a correct/default map. The case schema has no per-node environment-variable field - every subprocess in a run shares the single environment of the process invoking runner.py - so C1 and L4 cannot be given two different TRAFFIC_NODE_MAP values within one case file. Even setting that aside, a locally-invalid Qnet node name only proves name_open() fails on a bad path (already covered indirectly by TC-XNODE-03/12's 'peer not running' failures); the deployment-specific 'wrong hostname on a real Qnet network' scenario this test documents genuinely needs separate VMs to be meaningful.",
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L4", "binary": "lx_main", "args": ["4"]}
+      ],
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "TC-XNODE-17",
+      "title": "SKIP: TRAFFIC_NODE_MAP missing an entry for a peer that is genuinely remote",
+      "type": "negative",
+      "environment": "C",
+      "skip": true,
+      "skip_reason": "The entire point is that a MISSING entry makes build_open_path() take the same-node path (no '/net/' prefix, app/shared/src/qnet_utils.c) even though the real peer is on another machine - it only fails because the peer genuinely is not local. Run on one machine (which is exactly what an absent TRAFFIC_NODE_MAP entry already defaults to for every other case in this file), that same-node path is CORRECT and would succeed, inverting this negative test into a false pass. Cannot be approximated locally by construction - needs a real separate VM for the peer.",
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L4", "binary": "lx_main", "args": ["4"]}
+      ],
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "TC-XNODE-18",
+      "title": "Same-machine approximation: full 10-node smoke test, all roles launched together (reverse-order intent not exercisable by this tool)",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "notes": "The manual case's real target is a deliberately-staggered startup order (Lx up to 5s before RLx, RLx up to 5s before C1) to prove no node depends on another existing first. runner.py launches every entry in 'nodes' back-to-back in a tight loop with no inter-node delay and no way to control WHEN each one starts relative to the others - so the reordering itself is not exercised. What IS genuinely verified, matching the spirit of this case (and the multi-role-smoke-test pattern this whole file's automatable subset boils down to), is the bottom-line claim: every one of the 9 non-C1 controllers name_attach()es and heartbeats independently and the system converges to 9/9 AVAILABLE with a working operator command, none of which requires any particular launch order.",
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "L2", "binary": "lx_main", "args": ["2"]},
+        {"node_id": "L3", "binary": "lx_main", "args": ["3"]},
+        {"node_id": "L4", "binary": "lx_main", "args": ["4"]},
+        {"node_id": "L5", "binary": "lx_main", "args": ["5"]},
+        {"node_id": "L6", "binary": "lx_main", "args": ["6"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]},
+        {"node_id": "RL2", "binary": "rlx_main", "args": ["2"]},
+        {"node_id": "RL3", "binary": "rlx_main", "args": ["3"]}
+      ],
+      "setup_wait_ms": 1500,
+      "steps": [
+        {"after_ms": 3000, "node_id": "C1", "send": "m"},
+        {"after_ms": 3300, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 3600, "node_id": "C1", "send": "0\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "^L1\\s.*\\bAVAILABLE\\b", "within_ms": 5000, "description": "L1 up and reporting."},
+        {"node_id": "C1", "pattern": "^L2\\s.*\\bAVAILABLE\\b", "within_ms": 5000, "description": "L2 up and reporting."},
+        {"node_id": "C1", "pattern": "^L3\\s.*\\bAVAILABLE\\b", "within_ms": 5000, "description": "L3 up and reporting."},
+        {"node_id": "C1", "pattern": "^L4\\s.*\\bAVAILABLE\\b", "within_ms": 5000, "description": "L4 up and reporting."},
+        {"node_id": "C1", "pattern": "^L5\\s.*\\bAVAILABLE\\b", "within_ms": 5000, "description": "L5 up and reporting."},
+        {"node_id": "C1", "pattern": "^L6\\s.*\\bAVAILABLE\\b", "within_ms": 5000, "description": "L6 up and reporting."},
+        {"node_id": "C1", "pattern": "^RL1\\s.*\\bAVAILABLE\\b", "within_ms": 5000, "description": "RL1 up and reporting."},
+        {"node_id": "C1", "pattern": "^RL2\\s.*\\bAVAILABLE\\b", "within_ms": 5000, "description": "RL2 up and reporting."},
+        {"node_id": "C1", "pattern": "^RL3\\s.*\\bAVAILABLE\\b", "within_ms": 5000, "description": "RL3 up and reporting - all 9/9 controllers AVAILABLE regardless of launch-loop order."},
+        {"node_id": "C1", "pattern": "Operator: SET_MODE\\(target=1, mode=PEAK_FIXED\\) submitted", "within_ms": 3500,
+         "description": "a normal operator command still works once the system is up."},
+        {"node_id": "C1", "pattern": "C1: SET_MODE to 1 -> ACK", "within_ms": 4500,
+         "description": "mode 0 is a same-value no-op against L1's cold-start default (MODE_PEAK_FIXED), so this ACKs immediately (lx_fsm_on_set_mode()) rather than deferring to a boundary - fine for this smoke check, which only needs to prove the command path works end-to-end."}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-XNODE-19",
+      "title": "Same-machine approximation: full 10-node smoke test with SET_TIMING_PROFILE broadcast (reverse/interleaved-order intent not exercisable by this tool)",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "notes": "Same launch-order caveat as TC-XNODE-18 - runner.py cannot stagger or interleave node start times, so this is mechanically identical to TC-XNODE-18's smoke test; kept as a separate case (per the test plan's own separate ID) with a different final validation step (a 3-target broadcast instead of a single SET_MODE) to match the doc's distinct step 5.",
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "L2", "binary": "lx_main", "args": ["2"]},
+        {"node_id": "L3", "binary": "lx_main", "args": ["3"]},
+        {"node_id": "L4", "binary": "lx_main", "args": ["4"]},
+        {"node_id": "L5", "binary": "lx_main", "args": ["5"]},
+        {"node_id": "L6", "binary": "lx_main", "args": ["6"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]},
+        {"node_id": "RL2", "binary": "rlx_main", "args": ["2"]},
+        {"node_id": "RL3", "binary": "rlx_main", "args": ["3"]}
+      ],
+      "setup_wait_ms": 1500,
+      "steps": [
+        {"after_ms": 3000, "node_id": "C1", "send": "t"},
+        {"after_ms": 3300, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "^L1\\s.*\\bAVAILABLE\\b", "within_ms": 5000, "description": "L1 up and reporting."},
+        {"node_id": "C1", "pattern": "^L2\\s.*\\bAVAILABLE\\b", "within_ms": 5000, "description": "L2 up and reporting."},
+        {"node_id": "C1", "pattern": "^L3\\s.*\\bAVAILABLE\\b", "within_ms": 5000, "description": "L3 up and reporting."},
+        {"node_id": "C1", "pattern": "^L4\\s.*\\bAVAILABLE\\b", "within_ms": 5000, "description": "L4 up and reporting."},
+        {"node_id": "C1", "pattern": "^L5\\s.*\\bAVAILABLE\\b", "within_ms": 5000, "description": "L5 up and reporting."},
+        {"node_id": "C1", "pattern": "^L6\\s.*\\bAVAILABLE\\b", "within_ms": 5000, "description": "L6 up and reporting."},
+        {"node_id": "C1", "pattern": "^RL1\\s.*\\bAVAILABLE\\b", "within_ms": 5000, "description": "RL1 up and reporting."},
+        {"node_id": "C1", "pattern": "^RL2\\s.*\\bAVAILABLE\\b", "within_ms": 5000, "description": "RL2 up and reporting."},
+        {"node_id": "C1", "pattern": "^RL3\\s.*\\bAVAILABLE\\b", "within_ms": 5000, "description": "RL3 up and reporting - all 9/9 AVAILABLE regardless of launch-loop order."},
+        {"node_id": "C1", "pattern": "Operator: SET_TIMING_PROFILE broadcast \\(chain=R1, profile_id=\\d+\\) submitted", "within_ms": 3800,
+         "description": "chain R1 broadcast accepted."},
+        {"node_id": "C1", "pattern": "C1: SET_TIMING_PROFILE to 1 -> ACK", "within_ms": 4800, "description": "L1 (id 1) ACKs - SET_TIMING_PROFILE's reply is synchronous, not deferred to a boundary (lx_fsm_on_set_timing_profile())."},
+        {"node_id": "C1", "pattern": "C1: SET_TIMING_PROFILE to 3 -> ACK", "within_ms": 4800, "description": "L3 (id 3) ACKs."},
+        {"node_id": "C1", "pattern": "C1: SET_TIMING_PROFILE to 5 -> ACK", "within_ms": 4800, "description": "L5 (id 5) ACKs - all 3 R1-chain targets confirm the system works end-to-end regardless of the order all 10 processes happened to launch in."}
+      ],
+      "cleanup_wait_ms": 300
+    }
+  ]
+}

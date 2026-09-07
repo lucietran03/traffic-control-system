@@ -1,0 +1,893 @@
+{
+  "_source_doc": "docs/test-plan/04-timing-assumptions.md",
+  "_notes": [
+    "The .md file's own footer says 'Tong: 31 test case' but the document body actually contains 32 distinct '### XX-TIME-NN' headers (TC-TIME-01..05=5, TL-TIME-01..08=8, DP-TIME-01..03=3, CC-TIME-01..03=3, RC-TIME-01..06=6, PA-TIME-01..07=7; sum=32). All 32 are converted here - the footer count appears to be a pre-existing off-by-one in the source doc, not something to silently drop a case over.",
+    "Every check's within_ms is a single-sided upper bound only (see runner.py's wait_for_pattern: it returns success on the FIRST matching line found at or after t0, up to the deadline). It can prove 'X happened by deadline D' but can never prove 'X did NOT happen earlier than D-epsilon' - so every doc test case phrased as an exact N-1/N boundary (e.g. 'not before 7.9s') is only half-testable here. Where that matters it is called out explicitly in the relevant check's description.",
+    "Because lx_signal.c/rlx_signal.c/rlx_gate.c print plain printf with NO timestamp, and runner.py's dump_log() writes only text (no per-line timestamps) either, a human reviewing results/<id>/*.log after a run still cannot recover exact wall-clock gaps between two lines from the dumped file alone - only the pass/fail verdict of each within_ms check is authoritative. Where a case needs tighter precision than that, its check description says so explicitly per the task brief.",
+    "Every fresh lx_main process prints its very first 'SIGNAL -> ARTERIAL GREEN' synchronously inside lx_fsm_init(), essentially at t=0 of the process's life - this reliably happens before t0 (t0 is set only after setup_wait_ms has elapsed), so it is excluded from every check (checks only see lines with timestamp >= t0). This is relied on throughout this file: the first ARTERIAL GREEN/CONNECTOR GREEN/etc. pattern a check actually observes is always the NEXT (post-startup) occurrence, never the boot-time one - this is what makes many of these single-pattern checks unambiguous despite the tool having no 'Nth occurrence' primitive."
+  ],
+  "test_cases": [
+    {
+      "id": "TC-TIME-01",
+      "title": "Offset R1 -- L1 -> L3 = 21s (SKIPPED: needs real cross-VM independent clocks)",
+      "type": "positive",
+      "environment": "C",
+      "skip": true,
+      "skip_reason": "This test's entire point is verifying lx_fsm_apply_offset_locked() (app/intersection/src/lx_fsm.c:569-650) correctly realigns green-wave starts using each node's own clock_gettime(CLOCK_REALTIME,...) when L1/L3 are independent processes with INDEPENDENT wall clocks that may have drifted apart (the doc's own env (C) requirement and its section 0.2 clock-sync warning). Running L1 and L3 as two subprocesses on this one machine (the tool's max is environment B) means they trivially share the exact same OS clock with zero drift by construction - the test would pass even if the offset code had a wall-clock-skew bug, because there is no skew to expose. That defeats the actual risk TC-01/TC-02 is checking. This is exactly the 'genuinely testing offset sync across REAL separate machines with independent clocks' case the tool cannot do; see docs/test-plan/07-cross-node-integration.md TC-XNODE-01 for the real cross-VM procedure. (TC-TIME-04 below still automates the OTHER half of TC-02/TC-03 - the 'never truncates an in-progress phase' deferred-apply behavior - which does not depend on cross-VM clock independence.)",
+      "nodes": [],
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "TC-TIME-02",
+      "title": "Offset R1 -- L3 -> L5 = 24s, L1 -> L5 = 45s (SKIPPED: needs real cross-VM independent clocks)",
+      "type": "positive",
+      "environment": "C",
+      "skip": true,
+      "skip_reason": "Same tool limitation as TC-TIME-01: this only exercises R1_L5_OFFSET_MS=45000/c_mode_eng.h:55 meaningfully when L1/L3/L5 run on genuinely independent clocks (environment C). On a single machine all three lx_main subprocesses share one clock, so the test cannot distinguish 'offset math is correct' from 'offset math would be correct even with a clock-skew bug, because there happens to be no skew here.'",
+      "nodes": [],
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "TC-TIME-03",
+      "title": "Offset R2 -- L2 -> L4 = 19s, L4 -> L6 = 23s (SKIPPED: needs real cross-VM independent clocks)",
+      "type": "positive",
+      "environment": "C",
+      "skip": true,
+      "skip_reason": "Same tool limitation as TC-TIME-01/02, applied to the R2 chain (R2_L4_OFFSET_MS=19000, R2_L6_OFFSET_MS=42000, c_mode_eng.h:57-58). Genuinely needs environment C (independent per-VM wall clocks) to be a meaningful test of lx_fsm_apply_offset_locked()'s clock-skew-correction behavior.",
+      "nodes": [],
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "TC-TIME-04",
+      "title": "Edge case -- SET_TIMING_PROFILE never truncates the ARTERIAL_GREEN phase already running when it arrives",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 2000, "node_id": "C1", "send": "t"},
+        {"after_ms": 2200, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {
+          "node_id": "C1",
+          "pattern": "C1: SET_TIMING_PROFILE to 1 -> ACK$",
+          "within_ms": 3000,
+          "description": "Confirms the R1 profile broadcast (chain=1, sent at t=2.0-2.2s while L1 is still well inside its FIRST ARTERIAL_GREEN, which is 48s long) was actually received and ACKed by L1 while that green phase was still running - this is what makes the next check's 'not truncated' claim meaningful rather than vacuous. c_comm.c's on_command_reply() logs this exact 'to <id> -> ACK' line (c_comm.c ~line 95)."
+        },
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW",
+          "within_ms": 48600,
+          "description": "TC-03/lx_fsm.c's compliance-audit fix (see lx_fsm_apply_offset_locked()'s long doc comment, lx_fsm.c:481-563): SET_TIMING_PROFILE only sets offset_apply_pending=1 (lx_fsm.c:683); the correction itself is deferred to the exact moment the NEXT fresh PHASE_ARTERIAL_GREEN begins (lx_fsm.c:339-344), so the green phase already showing when the message arrives must run its full, un-shortened LX_PEAK_ARTERIAL_GREEN_MS=48000ms (lx_timer.h:23). Caveat (tool limitation, not a weaker guarantee than the doc's): this check can only prove ARTERIAL YELLOW appears BY 48.6s, not that it failed to appear earlier - it cannot on its own rule out truncation. Combined with the ACK check above (profile accepted at ~2.2s while still ARTERIAL_GREEN) and the total absence of any 'FAULT'/error line in this run, a pass here is reasonably strong evidence of no truncation, but if genuine millisecond-level confirmation is required, a human should inspect results/TC-TIME-04/L1.log for the actual line ordering/count of intervening phase transitions (there should be none between the ACK and this line)."
+        },
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> ARTERIAL GREEN",
+          "within_ms": 135000,
+          "description": "The SECOND ARTERIAL_GREEN entry (first one is excluded from matching - it prints synchronously at process boot, before t0) is where the deferred offset correction from lx_fsm_apply_offset_locked() actually applies (a one-shot nudge of up to +/- LX_CYCLE_LENGTH_MS/2 = 45000ms, floored so at least LX_MIN_GREEN_MS=8000ms of real green always shows - see the function's step 6 comment). Nominal cycle length without any correction would put this ~90s after the first ARTERIAL_GREEN (48+4+2+30+4+2, lx_timer.h:81-82); this window (135000 = 90000+45000) covers the full theoretical worst-case correction magnitude on either side. Because this test runs on a single machine at an essentially arbitrary real wall-clock instant (not synchronized to any particular offset target), the EXACT correction size is not predictable from the case file alone - a human wanting the precise nudge value should read results/TC-TIME-04/L1.log's phase-transition timing directly."
+        }
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-TIME-05",
+      "title": "Negative/edge -- offset_ms=LX_CYCLE_LENGTH_MS (90000) NACKed, 89999 ACKed (SKIPPED: no way to send an arbitrary offset)",
+      "type": "negative",
+      "environment": "D",
+      "skip": true,
+      "skip_reason": "c_operator.c's handle_timing_profile() ('t' command) only ever sends the two hardcoded chain tables from c_mode_eng.c (R1: offsets 0/21000/45000; R2: offsets 0/19000/42000, c_mode_eng.h:53-58) via c_mode_eng_get_chain() - there is no operator-console path to submit an arbitrary custom offset_ms value like 89999/90000/90001. Exercising the NACK boundary at lx_fsm.c:663 (payload->offset_ms >= LX_CYCLE_LENGTH_MS) genuinely requires constructing a raw MSG_SET_TIMING_PROFILE request by hand, which is exactly the not-built 'test_client' tool the README calls out as environment D / out of scope for this keystroke-driven runner. Not something within_ms tuning can work around - the operator console simply cannot form this request.",
+      "nodes": [],
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "TL-TIME-01",
+      "title": "Positive -- OFF_PEAK_SENSOR min-green 8s honored with zero demand",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 200, "node_id": "C1", "send": "m"},
+        {"after_ms": 400, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 600, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {
+          "node_id": "C1",
+          "pattern": "C1: SET_MODE to 1 -> ACK",
+          "within_ms": 1600,
+          "description": "Confirms L1 accepted the OFF_PEAK_SENSOR switch (result may print as ACK or ACK_PENDING depending on whether L1 happens to already be at a phase boundary - lx_fsm.c:711-727 - either is fine here, the mode change is only actually CONSUMED at the next ALL_RED boundary regardless, per lx_fsm.c:239-241/306-308)."
+        },
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN",
+          "within_ms": 55000,
+          "description": "Deviates from the .md's literal env (A)/ARTERIAL-GREEN framing for tooling reasons, testing the IDENTICAL underlying assumption (LX_MIN_GREEN_MS, TL-01) via CONNECTOR_GREEN instead - see the next check's description for why. Deviates from doc's stated environment (A): a genuine SET_MODE requires C1, so this needs env (B), not (A) - the doc's env label appears optimistic here. Mode switch is submitted at ~0.2-0.6s while L1 is still deep in its first (PEAK_FIXED) ARTERIAL_GREEN (48s long); the pending mode is only applied at the ALL_RED_A_TO_B boundary (~52-54s process time, lx_fsm.c:236-242), so this first-ever CONNECTOR_GREEN line (no earlier occurrence exists in a fresh run) marks the first phase actually governed by OFF_PEAK_SENSOR rules. This window (55s) just confirms we got there; the load-bearing check is the next one."
+        },
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW",
+          "within_ms": 63000,
+          "description": "TL-01/LX_MIN_GREEN_MS=8000 (lx_timer.h:31), lx_timer_should_exit_green() (lx_timer.c:19-30): with zero connector demand ('c'/'C' never pressed) CONNECTOR_GREEN exits as soon as elapsed_ms>=8000 (checked every LX_EXTENSION_MS=4000 tick, lx_fsm.c:1117, and 8000 is itself a multiple of 4000) - own CONNECTOR_GREEN was chosen over ARTERIAL_GREEN specifically because it is the run's FIRST-EVER occurrence of both 'CONNECTOR GREEN' and 'CONNECTOR YELLOW', so there is no earlier confounding match the way there would be for a second/third 'ARTERIAL YELLOW' occurrence later in a long-running case. Expected: CONNECTOR GREEN at ~54s process time (~53.5s from t0) + 8s = ~61.5s from t0; window gives ~1.5s slack. Tool limitation: this can only prove the exit happened BY 63s, not that it did not fire before the real 8s mark (see TL-TIME-02 for the tightened boundary variant of this exact check)."
+        }
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TL-TIME-02",
+      "title": "Edge case -- min-green boundary 7.9s (must still be green) vs 8.0s (first valid exit point)",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 200, "node_id": "C1", "send": "m"},
+        {"after_ms": 400, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 600, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN",
+          "within_ms": 55000,
+          "description": "Same setup as TL-TIME-01 - see that case for the full timeline derivation."
+        },
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW",
+          "within_ms": 62600,
+          "description": "Same underlying event as TL-TIME-01's second check, but with the deadline tightened to ~62.6s (54s CONNECTOR_GREEN start + 8.0s min-green + 0.6s slack for tick granularity/process jitter only, vs TL-TIME-01's more generous 1.5s) to approximate the doc's 'N=8.0s is the first valid exit point' boundary as closely as the tool's one-sided within_ms allows. IMPORTANT tool-honesty note: this schema has no way to assert the doc's other half of the boundary ('must NOT exit at 7.9s') - wait_for_pattern only returns pass/fail against an upper deadline, it does not distinguish 'exited right on time at 8.0s' from 'exited early, e.g. at 3s, which would also satisfy this same within_ms'. A pass here is consistent with correct behavior but is not proof against an early-exit bug; a human wanting that guarantee must read the LX_MIN_GREEN_MS guard directly (lx_timer.c:22-24, `if (elapsed_ms < LX_MIN_GREEN_MS) return 0`) or add a temporary elapsed-time log line for a one-off manual run."
+        }
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TL-TIME-03",
+      "title": "Positive -- OFF_PEAK_SENSOR max-green 40s forces exit despite continuous demand",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 100, "node_id": "L1", "send": "c"},
+        {"after_ms": 200, "node_id": "C1", "send": "m"},
+        {"after_ms": 400, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 600, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN",
+          "within_ms": 55000,
+          "description": "Same timeline as TL-TIME-01. 'c' (connector approach: vehicle present) is pressed once at t=0.1s, well before this phase even starts, and is never cleared ('C') for the rest of the run - lx_sensor.c's 'c' just latches connector_vehicle_demand=1 until cleared, so continuous presence for the whole phase is guaranteed by construction, not by precise timing."
+        },
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW",
+          "within_ms": 95000,
+          "description": "TL-01/LX_MAX_GREEN_MS=40000 (lx_timer.h:32); lx_timer_should_exit_green() returns '!own_demand || maxed' (lx_timer.c:27-29) - with own_demand=1 held throughout, the ONLY way to exit is maxed=(elapsed_ms>=40000), checked at each 4000ms tick (40000 is itself a multiple of 4000). Expected: ~54s CONNECTOR_GREEN start + 40s = ~93.5s from t0; window gives 1.5s slack. This is the strongest of the min/max-green checks in this file because a FAILURE to cap at 40s would show up as this pattern simply never appearing within the deadline (a real, meaningful negative result), even though the tool still cannot prove it didn't happen too early."
+        }
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TL-TIME-04",
+      "title": "Edge case -- max-green boundary 39.9s (still green, demand present) vs 40.0s (forced exit)",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 100, "node_id": "L1", "send": "c"},
+        {"after_ms": 200, "node_id": "C1", "send": "m"},
+        {"after_ms": 400, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 600, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN",
+          "within_ms": 55000,
+          "description": "Same setup/timeline as TL-TIME-03."
+        },
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW",
+          "within_ms": 94600,
+          "description": "Same event as TL-TIME-03's second check, tightened to ~94.6s (54s + 40.0s + 0.6s tick/jitter slack) to approximate the 40.0s boundary as closely as a one-sided upper-bound check allows. As with TL-TIME-02, this tool structurally cannot verify the doc's 'still ARTERIAL/CONNECTOR GREEN at 39.9s despite demand' half of the boundary (no 'must not match before deadline' check type exists) - see lx_timer.c:27-29's `maxed = elapsed_ms >= LX_MAX_GREEN_MS` for the authoritative source if that half needs confirming by reading code instead."
+        }
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TL-TIME-05",
+      "title": "Positive -- ARTERIAL YELLOW clearance is 4s",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 300,
+      "steps": [],
+      "checks": [
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW",
+          "within_ms": 48400,
+          "description": "L1 boots straight into MODE_PEAK_FIXED/PHASE_ARTERIAL_GREEN (lx_fsm_init, lx_fsm.c:360/366) with no commands needed. This is the first-ever ARTERIAL YELLOW (the boot-time ARTERIAL_GREEN print itself is excluded, having happened before t0). LX_PEAK_ARTERIAL_GREEN_MS=48000 (lx_timer.h:23); 400ms slack covers the LX_PHASE_TICK_MS=100ms granularity plus setup_wait_ms/process-launch jitter."
+        },
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> ALL RED \\(A to B\\)",
+          "within_ms": 52700,
+          "description": "TL-01/LX_YELLOW_MS=4000 (lx_timer.h:27, checked at lx_fsm.c:944 `green_elapsed_ms >= LX_YELLOW_MS`). Chained with the check above per this tool's documented 'Known gap' workaround (README.md): both checks share the same t0, so a pass on both is consistent with the YELLOW phase having lasted close to 4s (48.0s+4.0s=52.0s nominal; this window's extra ~700ms covers tick granularity plus the previous check's own slack). This gap cannot be read back out of results/TL-TIME-05/L1.log afterward with any more precision than that, since lx_signal.c's printf lines carry no timestamp at all - the within_ms pass/fail here is the most precise timing evidence this tool can produce for this pair of events."
+        }
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TL-TIME-06",
+      "title": "Positive -- all-red clearance is 2s",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 300,
+      "steps": [],
+      "checks": [
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> ALL RED \\(A to B\\)",
+          "within_ms": 52700,
+          "description": "Same first-cycle event as TL-TIME-05's second check (48s ARTERIAL_GREEN + 4s ARTERIAL_YELLOW)."
+        },
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN",
+          "within_ms": 55000,
+          "description": "TL-01/LX_ALL_RED_MS=2000 (lx_timer.h:28, checked at lx_fsm.c:951 `green_elapsed_ms >= LX_ALL_RED_MS`). This is the first-ever CONNECTOR GREEN in a fresh run (no confounding earlier match), reached ~52s+2s=54s nominal. Chained with the check above the same way TL-TIME-05 chains its two checks - see that case's second check description for the same caveat about no timestamp being recoverable from the raw log afterward."
+        }
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TL-TIME-07",
+      "title": "Positive -- pedestrian WALK (6s) -> FLASHING_DONT_WALK (4s) -> DONT_WALK, total 10s",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 300,
+      "steps": [
+        {"after_ms": 200, "node_id": "L1", "send": "1"}
+      ],
+      "checks": [
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: PED SIGNAL side 0 -> WALK",
+          "within_ms": 900,
+          "description": "Pressing '1' (pedestrian button, side 0) while L1 is still in its boot-time ARTERIAL_GREEN (arterial-compatible per lx_fsm.c's ped compatibility check, lx_fsm.c:80/137-150) starts WALK on the very next 100ms phase tick since ped_phase was PED_PHASE_NONE and the compatible_mask matched immediately."
+        },
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: PED SIGNAL side 0 -> FLASHING_DONT_WALK",
+          "within_ms": 6900,
+          "description": "TL-05/LX_WALK_MS=6000 (lx_timer.h:57 - explicitly documented as an arbitrary team placeholder, not a spec value, but still a real value the code must honor). Chained from the WALK check above (WALK starts ~0.3s from t0, so FDW is expected ~6.3s from t0; 600ms slack covers tick granularity)."
+        },
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: PED SIGNAL side 0 -> DONT_WALK",
+          "within_ms": 10900,
+          "description": "TL-06/LX_FLASHING_DONT_WALK_MS=4000 (lx_timer.h:58, same placeholder caveat). Total WALK+FDW chain expected to complete ~10.3s from t0; this is the third link in the same chained-checks pattern as the two above."
+        }
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TL-TIME-08",
+      "title": "Negative/integrity -- full PEAK_FIXED cycle is exactly 90s, no drift",
+      "type": "negative",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 300,
+      "steps": [],
+      "checks": [
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> ARTERIAL GREEN",
+          "within_ms": 91000,
+          "description": "TL-02/LX_CYCLE_LENGTH_MS=90000 (lx_timer.h:81-82, derived as 48+4+2+30+4+2 seconds from the individual constants, never hand-duplicated). The boot-time ARTERIAL_GREEN print happens before t0 and is excluded, so this check's first (and, within this window, only) match is the SECOND cycle's ARTERIAL_GREEN entry - i.e. exactly one full cycle after the implicit t~0 start. Window is 90000+1000, matching the doc's own '89.0-91.0s' tolerance. If this consistently lands very close to the 90.0s edge across repeated runs rather than comfortably under it, that is itself worth a closer look for drift in lx_fsm_on_phase_timer() per the doc's own note - not a tool defect."
+        }
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "DP-TIME-01",
+      "title": "Positive -- default placeholder hours 6/9 (SKIPPED: no exposed hook to call the pure function directly)",
+      "type": "positive",
+      "environment": "A",
+      "skip": true,
+      "skip_reason": "c_mode_eng_select_mode(eng, current_hour) (app/central/includes/c_mode_eng.h:126) is a pure function of a caller-supplied hour - c_main.c/c_operator.c confirmed to never call it from any reachable runtime path (see the .md's own 'Ghi chu quan trong' section). There is no operator-console command, IPC verb, or CLI flag on c_main that invokes this function with an arbitrary test hour and prints the result - it is simply not reachable from outside the process by sending keystrokes to the built binary. Exercising it needs either a unit-test harness that links c_mode_eng.c directly and calls select_mode(&eng,6)/select_mode(&eng,8)/select_mode(&eng,9) itself, or a debugger - both outside this keystroke-driven runner's model (same class of exclusion the README gives for 'anything requiring a debugger... a regex can't replace'). Confirming the two constants themselves (C_MODE_ENG_DEFAULT_PEAK_START_HOUR=6, C_MODE_ENG_DEFAULT_PEAK_END_HOUR=9, c_mode_eng.h:49-50) is a one-line source read, not something worth faking a runtime test around.",
+      "nodes": [],
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "DP-TIME-02",
+      "title": "Edge case/known-gap -- operating mode does NOT auto-switch on any real clock-hour boundary",
+      "type": "edge",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 300,
+      "steps": [],
+      "checks": [
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW",
+          "within_ms": 48400,
+          "description": "Deliberately reframed vs the .md's literal procedure: the doc's own approach (moving the test VM's system clock across 06:00/09:00 with `date`, requiring root) is not something this runner can safely automate - mutating the shared host's real wall clock mid-test-suite would corrupt timestamps for every other concurrently-running process and any other test relying on `date`/`time()`, and the runner has no privileged, sandboxed clock-injection capability (this is the same class of gap as the README's environment (D) exclusion: a capability the tool genuinely lacks, not a tuning problem). Instead, this test uses the ALREADY-CONFIRMED codebase fact (c_mode_eng.c:56-62's doc comment, cross-checked directly in app/central/src/c_main.c and app/central/src/c_operator.c: neither ever calls c_mode_eng_select_mode() with a real localtime()-derived hour) to construct an equivalent, honest runtime observation: L1 boots into MODE_PEAK_FIXED unconditionally (lx_fsm.c:360) and NO code path anywhere reads the wall clock to change that - so this fixed-48s ARTERIAL_GREEN duration will be observed REGARDLESS of what the real current hour happens to be at test-run time (e.g. even if the machine's actual clock reads 14:00, well outside the 6-9 placeholder peak window, mode stays PEAK_FIXED with its fixed timing, never spontaneously switching to OFF_PEAK_SENSOR's demand-driven timing). A human wanting the literal doc procedure (crossing a real 06:00/09:00 boundary on a dedicated disposable test VM with the clock deliberately moved) can still do so manually; this automated proxy captures the same underlying finding (DP-02's clock-driven auto-switch is not wired into the runtime) without touching the host clock."
+        }
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "DP-TIME-03",
+      "title": "Positive -- SET_MODE via operator console is the one working path to change mode",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 300, "node_id": "C1", "send": "m"},
+        {"after_ms": 500, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 700, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {
+          "node_id": "C1",
+          "pattern": "C1: SET_MODE to 1 -> ACK",
+          "within_ms": 1700,
+          "description": "DP-01/MSG_SET_MODE (lx_fsm_on_set_mode, lx_fsm.c:689+) via c_operator.c's 'm' command. Result may print as plain ACK (mode applied immediately if L1 happened to already be exactly at a phase boundary) or ACK_PENDING (deferred to the next ALL_RED boundary, the far more likely outcome given L1's just-started 48s ARTERIAL_GREEN) - the regex intentionally matches either since PA-12's 'responds within ~1s' claim covers both result codes, not just ACK. Doc's own tolerance was 'trong vong 1s theo dong ho giay cua logger'; 1.7s gives slack for the ~0.7s the operator console needs to read three keystrokes plus the IPC round trip."
+        }
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "CC-TIME-01",
+      "title": "Positive -- connector drain extends in 4s increments while QUEUE_WARNING stays active, ends ~0-4.3s after it clears",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 300, "node_id": "L1", "send": "w"},
+        {"after_ms": 500, "node_id": "RL1", "send": "0"},
+        {"after_ms": 114000, "node_id": "L1", "send": "W"}
+      ],
+      "checks": [
+        {
+          "node_id": "RL1",
+          "pattern": "RLx: flashers ON \\(train approaching, direction 0\\)",
+          "within_ms": 1200,
+          "description": "Sanity check that the train-approaching key was actually registered by RL1 (adjacency: RL1 is wired to L1/L2 per app/railway/src/rlx_comm.c's ADJACENCY table)."
+        },
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN",
+          "within_ms": 120000,
+          "description": "IMPORTANT correction vs the .md text: while RL1 is closed/occupied, L1's supervisory sits in SUPERVISORY_RAILWAY_PREEMPTION, which forces the ALL_RED_A_TO_B boundary back into ARTERIAL_GREEN instead of CONNECTOR_GREEN every cycle (lx_fsm.c:262-277, CC-02) - so L1 keeps repeating ~54s ARTERIAL-only mini-cycles (0-54-108-162s...) for as long as the crossing stays closed. RL1's own close+occupy+reopen sequence (RC-TIME-04's ~48-52s estimate: 5s WARNING + ~3-4s CLOSING + 20s CLOSED-wait + 20s TRAIN_PRESENT window, then ~3s to confirm OPEN) is expected to finish just BEFORE L1's first 54s boundary given both processes start together here, so the FAST case (drain-carrying CONNECTOR_GREEN starting ~54s) is the expected outcome, not a 50/50 race - but it IS a real race against L1's own 54s-multiple boundaries, and on a slow/loaded test machine the reopen could slip past 54s, pushing this to the NEXT boundary (~108s). This within_ms=120000 window covers both the expected-fast and the fallback-slow branch; the two checks below assume the FAST branch (~54s) and are the ones at real risk if the slow branch occurs - see their descriptions."
+        },
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW",
+          "within_ms": 119000,
+          "description": "CC-03/UC-05 drain (lx_fsm.c:1084-1099, LX_EXTENSION_MS=4000 reused as the recheck cadence, lx_timer.h:71 LX_DRAIN_MAX_EXTENSION_MS=60000 as the cap). CORRECTION vs the .md's prose: the drain extension only starts counting AFTER this CONNECTOR_GREEN phase's ordinary fixed PEAK_FIXED duration (LX_PEAK_CONNECTOR_GREEN_MS=30000, lx_timer.h:24) has already elapsed (lx_fsm.c:1102-1111 sets drain_extending=1 only once `green_elapsed_ms >= 30000`) - it is NOT, as the doc's own worked example implies, counted from the start of the CONNECTOR_GREEN phase itself. This case's 'W' (queue-warning clear) step is scheduled at t=114000ms, i.e. ~30s into the drain-extension window under the FAST-branch assumption (CONNECTOR_GREEN start ~54s + 30s ordinary = extension starts ~84s; clearing at 114s is ~30s into that up-to-60s extension window), so the phase is expected to end ~4300ms later at the next 4000ms recheck (114000+4300=118300; this window adds slack to 119000). KNOWN RISK: if the slow branch from the CONNECTOR_GREEN check above occurred instead (drain starting ~108s), clearing at 114000 would land only ~6s into the ordinary 30s baseline (before extension even begins), and this check would likely FAIL or match much later than expected - if that happens, treat it as the cross-node race landing on its slow branch, not as a drain-logic bug, and re-run or inspect results/CC-TIME-01/{L1,RL1}.log to confirm which branch occurred."
+        }
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "CC-TIME-02",
+      "title": "Edge case -- drain hard-caps at 60s of extension (90s total connector-green) even if QUEUE_WARNING never clears",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 300, "node_id": "L1", "send": "w"},
+        {"after_ms": 500, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {
+          "node_id": "RL1",
+          "pattern": "RLx: flashers ON \\(train approaching, direction 0\\)",
+          "within_ms": 1200,
+          "description": "Sanity check, same as CC-TIME-01."
+        },
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN",
+          "within_ms": 120000,
+          "description": "Same fast/slow race as CC-TIME-01's identical check - see that case's description. QUEUE_WARNING is never cleared in this case ('W' is never sent), which sidesteps CC-TIME-01's precise-timing risk for the checks that follow: since the flag simply never clears, the exact moment CONNECTOR_GREEN starts does not need to be predicted to schedule a well-timed clear step - only the total elapsed budget matters, which is why this case is the most robust of the three CC-TIME cases to the race."
+        },
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW",
+          "within_ms": 205000,
+          "description": "CORRECTION vs the .md's stated '60.0-60.5s from drain start': reading lx_fsm.c:1084-1115 directly shows the 60s LX_DRAIN_MAX_EXTENSION_MS cap (lx_timer.h:71) only bounds the EXTENSION portion, which itself only begins after the ordinary LX_PEAK_CONNECTOR_GREEN_MS=30000 baseline elapses - so with QUEUE_WARNING held forever, TOTAL phase duration from the 'CONNECTOR GREEN' line to 'CONNECTOR YELLOW' is 30000+60000=90000ms, not 60000ms as the doc's worked example states. This is exactly the kind of 'doc says X, current code says Y' discrepancy the task brief asked to flag and resolve in favor of the source - recommend this be raised with the Compliance Agent the same way the TC-02/03 offset fix was. The window here (205000) covers the worst case: slow-branch CONNECTOR_GREEN start (~108s per the race note above) + 90000ms + ~7s margin for tick/process jitter, so it will report PASS well before ~3.4 minutes into the run regardless of which race branch occurred - a human wanting the precise observed total should read results/CC-TIME-02/L1.log's phase-transition line count/order directly."
+        }
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "CC-TIME-03",
+      "title": "Positive -- drain ends early (well short of the 60s cap) once QUEUE_WARNING clears naturally",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 300, "node_id": "L1", "send": "w"},
+        {"after_ms": 500, "node_id": "RL1", "send": "0"},
+        {"after_ms": 88000, "node_id": "L1", "send": "W"}
+      ],
+      "checks": [
+        {
+          "node_id": "RL1",
+          "pattern": "RLx: flashers ON \\(train approaching, direction 0\\)",
+          "within_ms": 1200,
+          "description": "Sanity check, same as CC-TIME-01/02."
+        },
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN",
+          "within_ms": 120000,
+          "description": "Same fast/slow race as CC-TIME-01/02 - see CC-TIME-01's description for the full reasoning."
+        },
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW",
+          "within_ms": 93000,
+          "description": "Re-interpretation of the doc's 'clear at giay thu 12' vs the corrected drain-extension timing model (see CC-TIME-01/02's descriptions: extension only starts ~30s into CONNECTOR_GREEN, not from its very start). Under the expected FAST branch, CONNECTOR_GREEN starts ~54s and its extension window opens ~84s; this case clears QUEUE_WARNING at t=88000ms - i.e. only ~4s into the up-to-60s extension window (the doc's original intent of clearing 'early', now correctly anchored to when the extension actually begins rather than to phase start) - so the phase should end at the very next 4000ms recheck, ~4300ms later (88000+4300=92300; window rounds up to 93000), demonstrating it ends nowhere near the 60s/144000ms cap. Distinguishes this case from CC-TIME-01 (which clears mid-way through the extension window, ~30s in) purely by how early within the extension the flag is cleared. KNOWN RISK: same cross-node race as CC-TIME-01 - if the slow branch occurred (CONNECTOR_GREEN starting ~108s instead of ~54s), clearing at 88000 would land BEFORE CONNECTOR_GREEN even starts, and this check would very likely FAIL; treat a failure here as a signal to check results/CC-TIME-03/{L1,RL1}.log for which race branch actually occurred before assuming a drain-logic regression."
+        }
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "RC-TIME-01",
+      "title": "Positive -- warning-to-closing delay is 5s",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 300,
+      "steps": [
+        {"after_ms": 200, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {
+          "node_id": "RL1",
+          "pattern": "RLx: flashers ON \\(train approaching, direction 0\\)",
+          "within_ms": 800,
+          "description": "rlx_fsm_simulate_train_approaching()'s RLX_OPEN->RLX_WARNING transition (rlx_fsm.c:240-245) prints this immediately, no tick delay."
+        },
+        {
+          "node_id": "RL1",
+          "pattern": "RLx: commanding gates DOWN \\(simulated motion, 3000 ms\\)",
+          "within_ms": 5800,
+          "description": "RC-03/RLX_WARNING_TO_CLOSING_MS=5000 (rlx_timer.h:15, checked at rlx_fsm.c:351 on RL1's own 1Hz tick). Chained from the flashers-ON check; doc tolerance 4.5-5.5s, window adds ~300ms for the initial key-press offset plus tick granularity."
+        }
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "RC-TIME-02",
+      "title": "Edge case/negative -- fault path total budget is 20s (5s WARNING + 15s CLOSING), not 15s",
+      "type": "edge",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 300,
+      "steps": [
+        {"after_ms": 100, "node_id": "RL1", "send": "x"},
+        {"after_ms": 300, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {
+          "node_id": "RL1",
+          "pattern": "RLx: flashers ON \\(train approaching, direction 0\\)",
+          "within_ms": 900,
+          "description": "'x' arms rlx_gate.c's demo fault (gate motion will never confirm CLOSED) before '0' starts TRAIN_APPROACHING."
+        },
+        {
+          "node_id": "RL1",
+          "pattern": "RLx: FAULT latched \\(fault bit 0x[0-9a-fA-F]+\\)",
+          "within_ms": 21200,
+          "description": "RC-03/RC-06: RLX_CLOSING_DEADLINE_MS=15000 (rlx_timer.h:16) is measured from entry to CLOSING (state_elapsed_ms reset in enter_closing(), rlx_fsm.c:162-166), NOT from TRAIN_APPROACHING - so the real total budget before FAULT_GATE_CONFIRM_MISSING (rlx_fsm.c:139-141 check_closing_or_reclosing_complete()) is RLX_WARNING_TO_CLOSING_MS+RLX_CLOSING_DEADLINE_MS=5000+15000=20000ms, matching Appendix B4's '20s' figure rather than the more misleading '15s' constant name. Doc window is 20.0-21.0s from flashers-ON; this adds ~200ms for the key-press offsets."
+        }
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "RC-TIME-03",
+      "title": "Positive -- normal path confirms CLOSED in ~8s, well inside the 20s fault deadline",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 300,
+      "steps": [
+        {"after_ms": 200, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {
+          "node_id": "RL1",
+          "pattern": "RLx: flashers ON \\(train approaching, direction 0\\)",
+          "within_ms": 800,
+          "description": "Same as RC-TIME-01's first check; 'x' is never sent here so no demo fault is armed."
+        },
+        {
+          "node_id": "RL1",
+          "pattern": "RLx: train signal PROCEED for direction 0 \\(gates confirmed closed\\)",
+          "within_ms": 9700,
+          "description": "RC-03/RC-06: RLX_GATE_MOTION_MS=3000 (rlx_gate.h:10) means gates confirm CLOSED ~3s after entering CLOSING (~5s after flashers-ON), so ~8s total, rounded up to the next 1Hz tick. Doc window 7.5-9.5s; this adds ~200ms for the key-press offset."
+        }
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "RC-TIME-04",
+      "title": "Positive -- occupancy window is 20s before reopening (measured indirectly, no direct TRAIN_PRESENT log line exists)",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 300,
+      "steps": [
+        {"after_ms": 200, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {
+          "node_id": "RL1",
+          "pattern": "RLx: flashers ON \\(train approaching, direction 0\\)",
+          "within_ms": 800,
+          "description": "Sanity check."
+        },
+        {
+          "node_id": "RL1",
+          "pattern": "RLx: all train signals -> STOP \\(crossing reopening\\)",
+          "within_ms": 52000,
+          "description": "RC-04/RLX_OCCUPANCY_WINDOW_MS=20000 (rlx_timer.h:21), measured the same INDIRECT way the .md itself recommends: there is no printf marking entry to RLX_TRAIN_PRESENT (enter_train_present(), rlx_fsm.c:178-196, is silent), so this checks the full chain flashers-ON -> ... -> OPENING instead: RLX_WARNING_TO_CLOSING_MS(5000) + gate-confirm CLOSED(~3-4.5s, RC-TIME-03's own 7.5-9.5s range implies ~2.5-4.5s for this sub-step) + RLX_EXPECTED_ARRIVAL_MS(20000, the CLOSED-state wait before auto-transitioning to TRAIN_PRESENT, rlx_fsm.c:365-368) + RLX_OCCUPANCY_WINDOW_MS(20000) = ~47.5-49.5s worst-case-inclusive total. This within_ms window (52000) adds ~2.5-4.5s margin on top. Because the intermediate TRAIN_PRESENT boundary is invisible in the log, this test can only validate the SUM of RC-03's arrival wait and RC-04's occupancy window together, not RC-04's 20s in isolation - a human wanting the isolated 20s figure should add a temporary printf at rlx_fsm.c:194 (enter_train_present()) for a one-off manual run, exactly as the doc itself suggests."
+        }
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "RC-TIME-05",
+      "title": "Edge case -- two overlapping occupancy windows: gates stay closed until BOTH have elapsed",
+      "type": "edge",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 300,
+      "steps": [
+        {"after_ms": 200, "node_id": "RL1", "send": "0"},
+        {"after_ms": 38700, "node_id": "RL1", "send": "1"}
+      ],
+      "checks": [
+        {
+          "node_id": "RL1",
+          "pattern": "RLx: flashers ON \\(train approaching, direction 0\\)",
+          "within_ms": 800,
+          "description": "Sanity check for the first train (direction 0)."
+        },
+        {
+          "node_id": "RL1",
+          "pattern": "RLx: train signal PROCEED for direction 1 \\(gates confirmed closed\\)",
+          "within_ms": 39500,
+          "description": "Confirms the second TRAIN_APPROACHING (direction 1, key '1') was registered while RL1 was already past CLOSED (rlx_fsm_simulate_train_approaching()'s RLX_TRAIN_PRESENT case, rlx_fsm.c:263-271, registers a FRESH 20s window via register_window(fsm,direction,RLX_OCCUPANCY_WINDOW_MS) and immediately re-confirms PROCEED since gates are already closed) rather than during WARNING/CLOSING (which would just self-loop with a zero-remaining placeholder window instead, rlx_fsm.c:247-253). The +38700ms timing is estimated from RC-TIME-04's own ~28-29.5s TRAIN_PRESENT-entry estimate plus ~10s to land mid-window; if this line does not appear promptly after t=38.7-39.5s, the second train likely landed in the wrong state and this whole case's timing estimate is off (see the final check's caveat)."
+        },
+        {
+          "node_id": "RL1",
+          "pattern": "RLx: all train signals -> STOP \\(crossing reopening\\)",
+          "within_ms": 66000,
+          "description": "RC-04's 'wait for ALL active windows to clear' invariant (rlx_fsm.c:384-389, `if (active_window_count == 0) enter_opening()`). Window 0 (registered ~28.5s after flashers-ON with a fresh 20s countdown at TRAIN_PRESENT entry) expires ~48.5s after flashers-ON; window 1 (registered ~38.7s after t0, i.e. ~38.9s after flashers-ON per the +0.2s initial offset, with its OWN fresh 20s countdown since it was registered directly during TRAIN_PRESENT, rlx_fsm.c:266) expires ~58.9s after flashers-ON - reopening should wait for the LATER of the two, ~58.7-59s from t0, roughly 10s later than the single-train RC-TIME-04 baseline, consistent with the doc's own '~10s later' expectation. HIGH UNCERTAINTY CAVEAT (stated per the task brief's honesty requirement rather than glossed over): the exact moment 'mid-window' for the second train depends on precisely reproducing RC-TIME-04's own approximate timeline, which itself has ~2s of slack - this window (66000) is deliberately generous to absorb that compounding uncertainty. A human wanting to confirm the precise '~10s more than RC-TIME-04' relationship should compare the actual OPENING timestamps of RC-TIME-04 and RC-TIME-05's runs by re-running both and diffing wall-clock run durations, not by trusting this window's exact bound."
+        }
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "RC-TIME-06",
+      "title": "Positive -- gate confirms OPEN ~3s after OPENING starts, well inside the 15s deadline",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 300,
+      "steps": [
+        {"after_ms": 200, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {
+          "node_id": "RL1",
+          "pattern": "RLx: all train signals -> STOP \\(crossing reopening\\)",
+          "within_ms": 52000,
+          "description": "Same chain as RC-TIME-04 (no demo fault armed) - see that case for the full derivation of this ~48-49.5s (+margin) expectation."
+        },
+        {
+          "node_id": "RL1",
+          "pattern": "RLx: flashers OFF \\(gates confirmed open\\)",
+          "within_ms": 57000,
+          "description": "RC-06/RLX_OPENING_DEADLINE_MS=15000 (rlx_timer.h:22) is the fault deadline; the actual normal-path confirm uses RLX_GATE_MOTION_MS=3000 (rlx_gate.h:10) the same way RC-TIME-03 does for closing, so OPEN confirms ~3s after OPENING starts, deep inside the 15s deadline. Doc tolerance 2.5-4.5s added on top of the STOP check's own window (52000+4500=56500, rounded up to 57000)."
+        }
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "PA-TIME-01",
+      "title": "Positive -- 1Hz heartbeat/HMI refresh is alive shortly after startup",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [
+        {
+          "node_id": "C1",
+          "pattern": "---- C1 network status ----",
+          "within_ms": 1800,
+          "description": "c_hmi_render() is called once per IPC_PULSE_HEARTBEAT_TICK (armed at a fixed 1000ms/1000ms period, c_main.c:175), the same 1Hz pulse the doc's own procedure leans on as a heartbeat-activity proxy (since there is no per-heartbeat log line). TOOL LIMITATION (stated plainly, not glossed over): runner.py's wait_for_pattern only supports 'this pattern appeared at least once by deadline D' - it has no occurrence-counting primitive, so it CANNOT verify the doc's actual claim of '9-11 occurrences in 10s' (a ~1Hz rate with +/-10% jitter). This single check only proves the pulse is alive at all, shortly after boot. A human wanting the real frequency claim verified should `grep -c '\\-\\-\\-\\- C1 network status \\-\\-\\-\\-' results/PA-TIME-01/C1.log` after a run extended to >=10s of cleanup_wait_ms and confirm the count is 9-11 - the runner does not do this arithmetic itself."
+        }
+      ],
+      "cleanup_wait_ms": 10000
+    },
+    {
+      "id": "PA-TIME-02",
+      "title": "Edge case -- UNAVAILABLE fires 2.0-3.0s after last heartbeat (SKIPPED: no way to kill a node mid-test)",
+      "type": "edge",
+      "environment": "B",
+      "skip": true,
+      "skip_reason": "This test requires abruptly killing (kill -9, per the doc, to avoid any graceful last message) the running lx_main subprocess partway through the test, then continuing to watch C1's log for the 'marked UNAVAILABLE' line. The case-file schema (README.md's 'steps' array) only supports one action type - sending a keystroke string to a node's stdin (send_key()) - there is no 'kill this node now' step type in runner.py's run_case()/NodeProcess, and no test_client exists to simulate a heartbeat gap independently of the real lx_main process either. This is a genuine tool-capability gap (not a within_ms tuning problem, and there is no keystroke that stops lx_main's heartbeat thread specifically - lx_sensor.c's 'q' only stops that one keyboard-reading thread, not the process or its IPC_PULSE_HEARTBEAT_TICK-driven heartbeat sends), closely analogous to the README's stated environment (D) exclusion for capabilities the runner simply does not have.",
+      "nodes": [],
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "PA-TIME-03",
+      "title": "Negative -- NOT marked UNAVAILABLE after only 2 missed ticks (SKIPPED: no way to kill/restart a node mid-test)",
+      "type": "negative",
+      "environment": "B",
+      "skip": true,
+      "skip_reason": "Same tool-capability gap as PA-TIME-02: this needs killing lx_main at T0 and then reviving it (or injecting a fresh heartbeat) at T0+1.5s, both of which are process-lifecycle operations the case-file schema has no step type for (only stdin keystrokes are supported).",
+      "nodes": [],
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "PA-TIME-04",
+      "title": "Negative/edge -- override duration cap: 300000 ACKed, 300001 NACKed",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 300, "node_id": "C1", "send": "o"},
+        {"after_ms": 500, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 700, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 900, "node_id": "C1", "send": "300000\n"},
+        {"after_ms": 2500, "node_id": "C1", "send": "c"},
+        {"after_ms": 2700, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 4500, "node_id": "C1", "send": "o"},
+        {"after_ms": 4700, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 4900, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 5100, "node_id": "C1", "send": "300001\n"}
+      ],
+      "checks": [
+        {
+          "node_id": "C1",
+          "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK$",
+          "within_ms": 1800,
+          "description": "PA-11/LX_OVERRIDE_DURATION_CAP_MS=300000 (lx_timer.h:36), checked at lx_fsm.c:752 `duration_ms == 0 || duration_ms > LX_OVERRIDE_DURATION_CAP_MS`. duration_ms=300000 is exactly at the cap, which is inclusive (only strictly-greater is rejected) - ACK is expected. Anchored with '$' so this never accidentally matches an ACK_PENDING line."
+        },
+        {
+          "node_id": "C1",
+          "pattern": "C1: CANCEL_OVERRIDE to 1 -> ACK$",
+          "within_ms": 3500,
+          "description": "The first override must be cancelled (c_operator.c's 'c' command, lx_fsm_on_cancel_override(), lx_fsm.c:1024-1035) before a second REQUEST_OVERRIDE will even be evaluated for its duration - otherwise lx_fsm.c:737-751 NACKs it immediately with NACK_REASON_OUT_OF_RANGE ('an override is already in flight') before the duration check ever runs, which would silently invalidate this test's second assertion below."
+        },
+        {
+          "node_id": "C1",
+          "pattern": "C1: REQUEST_OVERRIDE to 1 -> NACK reason=INVALID_DURATION",
+          "within_ms": 6000,
+          "description": "duration_ms=300001 is one past the cap - NACK_REASON_INVALID_DURATION expected (lx_fsm.c:752-755), confirming the boundary is '> cap is rejected', not '>= cap'."
+        }
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "PA-TIME-05",
+      "title": "Edge case -- duration_ms=0 is also NACKed (lower bound of the (0, 300000] range)",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 300, "node_id": "C1", "send": "o"},
+        {"after_ms": 500, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 700, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 900, "node_id": "C1", "send": "0\n"}
+      ],
+      "checks": [
+        {
+          "node_id": "C1",
+          "pattern": "C1: REQUEST_OVERRIDE to 1 -> NACK reason=INVALID_DURATION",
+          "within_ms": 1800,
+          "description": "PA-11, lx_fsm.c:752 `duration_ms == 0 || ...` - 0 is rejected despite being numerically within (0 <= cap), confirming the valid range is the open-below interval (0, 300000], not [0, 300000]. Note c_operator.c's prompt text says 'duration_ms (1-300000)' (a hint, not an enforced range - read_long() accepts any long including 0) so this exercises the FSM's own authoritative validation, not just the console's suggested range."
+        }
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "PA-TIME-06",
+      "title": "Positive -- REQUEST_OVERRIDE ACK round-trip is well under 1s",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 300, "node_id": "C1", "send": "o"},
+        {"after_ms": 500, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 700, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 900, "node_id": "C1", "send": "5000\n"}
+      ],
+      "checks": [
+        {
+          "node_id": "C1",
+          "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK$",
+          "within_ms": 1500,
+          "description": "PA-12/MsgSend-MsgReply synchronous round trip, no artificial delay in lx_fsm_on_request_override()'s immediate-ACK branch (lx_fsm.c:780-787). ENVIRONMENT CAVEAT (doc explicitly wants (C) here, not (B)): the doc picks environment (C) specifically to measure real inter-VM Qnet network latency, since same-machine loopback (this tool's max) is 'gan nhu 0ms' and would not exercise real network jitter. This case still runs meaningfully on (B): it validates there is no artificial synchronous delay anywhere in the ACK code path (the main functional risk PA-12 guards against), which loopback IPC exercises just as validly as a real network would - it just cannot additionally confirm real-network latency stays under 1s the way the doc's env (C) procedure would. The 1500ms window is generous relative to the last keystroke at t=900ms, i.e. the actual IPC round trip only has ~600ms to complete - in practice this should complete in well under 100ms."
+        }
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "PA-TIME-07",
+      "title": "Edge case -- ACK_PENDING for an override during ped clearance is still immediate; only activation is deferred",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 200, "node_id": "L1", "send": "1"},
+        {"after_ms": 2500, "node_id": "C1", "send": "o"},
+        {"after_ms": 2700, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 2900, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 3100, "node_id": "C1", "send": "5000\n"}
+      ],
+      "checks": [
+        {
+          "node_id": "L1",
+          "pattern": "Lx 1: PED SIGNAL side 0 -> WALK",
+          "within_ms": 900,
+          "description": "Starts the ~10s WALK(6s)+FLASHING_DONT_WALK(4s) ped clearance sequence (see TL-TIME-07) that the override request below must arrive during."
+        },
+        {
+          "node_id": "C1",
+          "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK_PENDING$",
+          "within_ms": 4200,
+          "description": "PA-12/lx_fsm.c:764-779: the override is sent at t=2.5-3.1s, while WALK (started ~0.3s, per TL-TIME-07's timeline runs until ~6.3s) is still active, so ped_clearance_active=1 routes this into the ACK_PENDING branch (OVR_PENDING_CLEARANCE) rather than immediate ACTIVE. The reply itself is still sent immediately (no deferred reply) - only the actual activation (OVR_PENDING_CLEARANCE -> OVR_ACTIVE, lx_fsm.c:993-996, re-checked every 100ms tick once ped_clearance_active drops) is deferred, which is exactly PA-12's 'only activation is deferred' claim. This check only verifies the immediate ACK_PENDING reply; confirming the SEPARATE later activation timing (allowed to take up to the rest of the ~10s ped sequence) is not asserted here since there is no dedicated log line for that transition - a human wanting to confirm it should inspect results/PA-TIME-07/L1.log for signal behavior consistent with the override's target movement taking effect once FLASHING_DONT_WALK completes (~10.3s from t0)."
+        }
+      ],
+      "cleanup_wait_ms": 500
+    }
+  ]
+}

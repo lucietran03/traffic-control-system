@@ -1,0 +1,810 @@
+{
+  "_note": "Written directly (not by a sub-agent, after 3 consecutive stream-timeout failures on this file) from docs/test-plan/01-usecase-functional.md's 43 cases. All cases in this file are environment A/B (none needed skip for cross-VM reasons). Several cases describe a 'this should NOT happen' assertion (e.g. a phase exit that must not occur) - runner.py's checks[] can only assert presence-of-a-pattern-within-a-window, not absence, so those specific negative claims are left undboserved and noted in the relevant check's description rather than faked as a passing check.",
+  "test_cases": [
+    {
+      "id": "TC-UC01-1",
+      "title": "PEAK_FIXED default cycle runs on the fixed schedule",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "nodes": [{"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [
+        {"node_id": "L1", "pattern": "ARTERIAL GREEN", "within_ms": 2000, "description": "initial phase at cold start"},
+        {"node_id": "L1", "pattern": "ARTERIAL YELLOW", "within_ms": 51000, "description": "exit arterial at LX_PEAK_ARTERIAL_GREEN_MS=48000"},
+        {"node_id": "L1", "pattern": "ALL RED \\(A to B\\)", "within_ms": 55000, "description": "at 48000+4000=52000"},
+        {"node_id": "L1", "pattern": "CONNECTOR GREEN", "within_ms": 58000, "description": "at 52000+2000=54000"},
+        {"node_id": "L1", "pattern": "CONNECTOR YELLOW", "within_ms": 88000, "description": "at 54000+30000=84000"},
+        {"node_id": "L1", "pattern": "ALL RED \\(B to A\\)", "within_ms": 92000, "description": "at 84000+4000=88000"},
+        {"node_id": "L1", "pattern": "ARTERIAL GREEN", "after_ms": 91000, "within_ms": 96000, "description": "cycle repeats at 88000+2000=90000 (full LX_CYCLE_LENGTH_MS)"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC01-2",
+      "title": "OFF_PEAK_SENSOR with no demand rests on arterial",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}, {"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 500, "node_id": "C1", "send": "m"},
+        {"after_ms": 700, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 900, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "SET_MODE to 1 -> ACK_PENDING", "within_ms": 3000, "description": "mode differs from current PEAK_FIXED, deferred apply"}
+      ],
+      "cleanup_wait_ms": 500,
+      "_note": "The doc's core negative claim ('L1 never exits ARTERIAL_GREEN once idle in OFF_PEAK_SENSOR') can't be automated - runner.py has no absence check."
+    },
+    {
+      "id": "TC-UC01-3",
+      "title": "Edge: exits at exactly LX_MIN_GREEN_MS=8000 with only opposing demand",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}, {"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 500, "node_id": "C1", "send": "m"},
+        {"after_ms": 700, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 900, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 55000, "node_id": "L1", "send": "c"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "ARTERIAL YELLOW", "after_ms": 62500, "within_ms": 65500, "description": "exits at 55000(approx re-entry)+8000=63000, +-slack; exact re-entry time depends on the deferred mode switch boundary so this window is generous"}
+      ],
+      "cleanup_wait_ms": 500,
+      "_note": "This case's precise premise (press 'c' at the exact instant ARTERIAL GREEN restarts) can't be scripted reliably without first observing the log, which runner.py's fixed after_ms schedule can't react to - approximated with generous timing; a human should cross-check results/TC-UC01-3/L1.log for the exact millisecond gap."
+    },
+    {
+      "id": "TC-UC01-4",
+      "title": "Edge: forced exit at LX_MAX_GREEN_MS=40000 despite continuous own demand",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}, {"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 500, "node_id": "C1", "send": "m"},
+        {"after_ms": 700, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 900, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 55000, "node_id": "L1", "send": "a"},
+        {"after_ms": 55100, "node_id": "L1", "send": "c"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "ARTERIAL YELLOW", "after_ms": 93000, "within_ms": 98000, "description": "anti-starvation forced exit at approx re-entry+40000ms, generous window"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-UC01-5",
+      "title": "Negative: connector demand held safely during railway preemption",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 500, "node_id": "L1", "send": "c"},
+        {"after_ms": 1000, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "flashers ON", "within_ms": 2000, "description": "preemption begins"},
+        {"node_id": "L1", "pattern": "ARTERIAL GREEN", "after_ms": 53000, "within_ms": 60000, "description": "arterial keeps cycling through preemption (at least one more cycle observed)"}
+      ],
+      "cleanup_wait_ms": 1000,
+      "_note": "The doc's core claim ('CONNECTOR GREEN never appears during preemption') is an absence assertion runner.py can't check directly."
+    },
+    {
+      "id": "TC-UC02-1",
+      "title": "WALK -> FLASHING_DONT_WALK -> DONT_WALK exact durations",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "nodes": [{"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 500,
+      "steps": [{"after_ms": 200, "node_id": "L1", "send": "1"}],
+      "checks": [
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> WALK", "within_ms": 1000, "description": "starts almost immediately since ARTERIAL_GREEN is already active"},
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> FLASHING_DONT_WALK", "after_ms": 5500, "within_ms": 7500, "description": "at LX_WALK_MS=6000 after WALK start"},
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> DONT_WALK", "after_ms": 9500, "within_ms": 12000, "description": "at 6000+LX_FLASHING_DONT_WALK_MS(4000)=10000 after WALK start"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-UC02-2",
+      "title": "Negative: repeated presses before service coalesce into one request",
+      "type": "negative",
+      "environment": "A",
+      "skip": false,
+      "nodes": [{"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 200, "node_id": "L1", "send": "1"},
+        {"after_ms": 210, "node_id": "L1", "send": "1"},
+        {"after_ms": 220, "node_id": "L1", "send": "1"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> WALK", "within_ms": 1000, "description": "exactly one WALK expected; runner can't assert 'only once', see note"}
+      ],
+      "cleanup_wait_ms": 12000,
+      "_note": "Verifying 'only ONE WALK sequence, not three' requires an absence/count check runner.py doesn't support - a human should inspect results/TC-UC02-2/L1.log to confirm only one WALK/FDW/DONT_WALK triplet appears."
+    },
+    {
+      "id": "TC-UC02-3",
+      "title": "Negative: pedestrian request held (not lost) while its compatible phase is preempted",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 200, "node_id": "RL1", "send": "0"},
+        {"after_ms": 1500, "node_id": "L1", "send": "3"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "flashers ON", "within_ms": 2000, "description": "preemption begins"},
+        {"node_id": "L1", "pattern": "PED SIGNAL side 2 -> WALK", "after_ms": 53000, "within_ms": 65000, "description": "side 2 (connector-compatible) only served after preemption ends (~52s) and CONNECTOR_GREEN is next reached"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC02-4",
+      "title": "Edge: ped_recall regression - re-press mid-FLASHING_DONT_WALK is not lost",
+      "type": "edge",
+      "environment": "A",
+      "skip": false,
+      "nodes": [{"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 200, "node_id": "L1", "send": "1"},
+        {"after_ms": 8200, "node_id": "L1", "send": "1"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> WALK", "within_ms": 1000, "description": "first WALK"},
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> DONT_WALK", "after_ms": 9500, "within_ms": 12000, "description": "first sequence completes at ~10000ms"},
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> WALK", "after_ms": 10050, "within_ms": 13000, "description": "regression check: a SECOND WALK starts automatically right after DONT_WALK, without a new keypress, because ped_recall[0] was set by the re-press at t=8200ms"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-UC03-1",
+      "title": "Positive: R1 chain broadcast ACKed by all 3 controllers",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "L3", "binary": "lx_main", "args": ["3"]},
+        {"node_id": "L5", "binary": "lx_main", "args": ["5"]}
+      ],
+      "setup_wait_ms": 1000,
+      "steps": [{"after_ms": 500, "node_id": "C1", "send": "t"}, {"after_ms": 700, "node_id": "C1", "send": "1\n"}],
+      "checks": [
+        {"node_id": "C1", "pattern": "SET_TIMING_PROFILE broadcast \\(chain=R1", "within_ms": 2000, "description": "operator command logged"},
+        {"node_id": "C1", "pattern": "SET_TIMING_PROFILE to 1 -> ACK", "within_ms": 3000, "description": "L1 ACKs"},
+        {"node_id": "C1", "pattern": "SET_TIMING_PROFILE to 3 -> ACK", "within_ms": 3000, "description": "L3 ACKs"},
+        {"node_id": "C1", "pattern": "SET_TIMING_PROFILE to 5 -> ACK", "within_ms": 3000, "description": "L5 ACKs"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-UC03-2",
+      "title": "Negative: invalid chain number aborted at console, never sent",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}, {"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [{"after_ms": 500, "node_id": "C1", "send": "t"}, {"after_ms": 700, "node_id": "C1", "send": "3\n"}],
+      "checks": [
+        {"node_id": "C1", "pattern": "not a valid chain \\(1 or 2\\) - command aborted", "within_ms": 2000, "description": "rejected at console before ever building a request"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-UC03-3",
+      "title": "Negative: Lx with no profile still runs standalone PEAK_FIXED normally",
+      "type": "negative",
+      "environment": "A",
+      "skip": false,
+      "nodes": [{"node_id": "L2", "binary": "lx_main", "args": ["2"]}],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [
+        {"node_id": "L2", "pattern": "ARTERIAL GREEN", "within_ms": 2000, "description": "cold start"},
+        {"node_id": "L2", "pattern": "ARTERIAL YELLOW", "within_ms": 51000, "description": "still exits at the normal 48000ms - no stall waiting for a profile"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC03-4",
+      "title": "Edge: profile_id increments and does not corrupt back-to-back applies",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}, {"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 500, "node_id": "C1", "send": "t"},
+        {"after_ms": 700, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 900, "node_id": "C1", "send": "t"},
+        {"after_ms": 1100, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "SET_TIMING_PROFILE to 1 -> ACK", "within_ms": 3000, "description": "first broadcast ACKed"},
+        {"node_id": "C1", "pattern": "SET_TIMING_PROFILE to 1 -> ACK", "after_ms": 900, "within_ms": 5000, "description": "second broadcast (different profile_id) also ACKed, not rejected as a duplicate"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-UC04-1",
+      "title": "Positive: full WARNING->CLOSING->CLOSED->TRAIN_PRESENT->OPENING->OPEN sequence",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "L2", "binary": "lx_main", "args": ["2"]}
+      ],
+      "setup_wait_ms": 1000,
+      "steps": [{"after_ms": 200, "node_id": "RL1", "send": "0"}],
+      "checks": [
+        {"node_id": "RL1", "pattern": "flashers ON \\(train approaching, direction 0\\)", "within_ms": 1000},
+        {"node_id": "RL1", "pattern": "commanding gates DOWN", "after_ms": 4500, "within_ms": 7000, "description": "RLX_WARNING_TO_CLOSING_MS=5000"},
+        {"node_id": "RL1", "pattern": "train signal PROCEED for direction 0", "after_ms": 7500, "within_ms": 10000, "description": "5000+RLX_GATE_MOTION_MS(3000)=8000"},
+        {"node_id": "RL1", "pattern": "all train signals -> STOP", "after_ms": 47000, "within_ms": 51000, "description": "8000+RLX_EXPECTED_ARRIVAL_MS(20000)+RLX_OCCUPANCY_WINDOW_MS(20000)=48000"},
+        {"node_id": "RL1", "pattern": "flashers OFF", "after_ms": 50000, "within_ms": 54000, "description": "48000+RLX_GATE_MOTION_MS(3000)=51000"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC04-2",
+      "title": "Negative/alt 6.1: unconfirmed gate closure raises FAULT, train signal stays STOP",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "L2", "binary": "lx_main", "args": ["2"]}
+      ],
+      "setup_wait_ms": 1000,
+      "steps": [{"after_ms": 200, "node_id": "RL1", "send": "x"}, {"after_ms": 400, "node_id": "RL1", "send": "0"}],
+      "checks": [
+        {"node_id": "RL1", "pattern": "commanding gates DOWN", "after_ms": 4700, "within_ms": 7000},
+        {"node_id": "RL1", "pattern": "gate FAILED TO CONFIRM", "after_ms": 7700, "within_ms": 10000, "description": "motion completes but armed fault"},
+        {"node_id": "RL1", "pattern": "FAULT latched", "after_ms": 19500, "within_ms": 22000, "description": "RLX_CLOSING_DEADLINE_MS=15000 after gates-down command at t=5000"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC04-3",
+      "title": "Edge/alt 8.1: second train mid-occupancy extends reopening",
+      "type": "edge",
+      "environment": "A",
+      "skip": false,
+      "nodes": [{"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 200, "node_id": "RL1", "send": "0"},
+        {"after_ms": 35200, "node_id": "RL1", "send": "1"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "train signal PROCEED for direction 1", "after_ms": 35500, "within_ms": 38000, "description": "second window registered immediately since already TRAIN_PRESENT - confirmed closed applies to it too"},
+        {"node_id": "RL1", "pattern": "all train signals -> STOP", "after_ms": 54500, "within_ms": 58000, "description": "reopening delayed to when BOTH windows expire: direction 1's window ends at 35000+20000=55000, later than direction 0's at 48000"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC04-4",
+      "title": "Negative: repeated approach during WARNING does not reset the 5s closing clock",
+      "type": "negative",
+      "environment": "A",
+      "skip": false,
+      "nodes": [{"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 200, "node_id": "RL1", "send": "0"},
+        {"after_ms": 2200, "node_id": "RL1", "send": "1"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "commanding gates DOWN", "after_ms": 4700, "within_ms": 6200, "description": "still fires ~5000ms after the FIRST approach (t=0), not reset by the second approach at t=2000"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC05-1",
+      "title": "Positive: drain phase extends in 4s increments then ends safely on warning-clear",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}, {"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 200, "node_id": "RL1", "send": "0"},
+        {"after_ms": 30200, "node_id": "L1", "send": "w"},
+        {"after_ms": 58200, "node_id": "L1", "send": "W"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "flashers OFF", "after_ms": 50000, "within_ms": 54000, "description": "crossing reopens ~51s after t=0"},
+        {"node_id": "L1", "pattern": "CONNECTOR GREEN", "after_ms": 51000, "within_ms": 100000, "description": "L1 must first finish its in-progress arterial cycle, then reach connector green (the drain phase) - wide window since exact arterial position at t=0 is not controlled"},
+        {"node_id": "L1", "pattern": "CONNECTOR YELLOW", "after_ms": 51000, "within_ms": 200000, "description": "drain eventually ends (queue warning cleared at ~58s); very wide window since this depends on when connector green is actually entered"}
+      ],
+      "cleanup_wait_ms": 2000,
+      "_note": "This case's exact 4-second-increment timing is highly sensitive to L1's arterial-cycle position at t=0 (uncontrolled at startup) - checks use wide windows; a human should inspect results/TC-UC05-1/L1.log against the doc's worked example for exact increment counting."
+    },
+    {
+      "id": "TC-UC05-2",
+      "title": "Negative/alt 6.1: no queue warning means drain is skipped entirely",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}, {"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [{"after_ms": 200, "node_id": "RL1", "send": "0"}],
+      "checks": [
+        {"node_id": "RL1", "pattern": "flashers OFF", "after_ms": 50000, "within_ms": 54000}
+      ],
+      "cleanup_wait_ms": 2000,
+      "_note": "The core claim ('CONNECTOR_GREEN ends at exactly the ordinary 30000ms, no extension') needs precise correlation with when L1 entered connector green, which is uncontrolled here - a human should inspect results/TC-UC05-2/L1.log."
+    },
+    {
+      "id": "TC-UC05-3",
+      "title": "Edge: drain hard-capped at exactly LX_DRAIN_MAX_EXTENSION_MS=60000",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}, {"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 200, "node_id": "RL1", "send": "0"},
+        {"after_ms": 30200, "node_id": "L1", "send": "w"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "flashers OFF", "after_ms": 50000, "within_ms": 54000},
+        {"node_id": "L1", "pattern": "CONNECTOR YELLOW", "after_ms": 51000, "within_ms": 260000, "description": "drain caps at ordinary(30000)+60000=90000ms of connector green regardless of warning staying active; window is wide because the entry point into connector green is uncontrolled - a human should verify the cap is exactly 90s of connector green in results/TC-UC05-3/L1.log, not longer"}
+      ],
+      "cleanup_wait_ms": 2000
+    },
+    {
+      "id": "TC-UC05-4",
+      "title": "Negative/alt 4.1: crossing FAULT keeps connector suppressed indefinitely",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}, {"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [{"after_ms": 200, "node_id": "RL1", "send": "x"}, {"after_ms": 400, "node_id": "RL1", "send": "0"}],
+      "checks": [
+        {"node_id": "RL1", "pattern": "FAULT latched", "after_ms": 19500, "within_ms": 22000},
+        {"node_id": "L1", "pattern": "ARTERIAL GREEN", "after_ms": 51000, "within_ms": 100000, "description": "arterial keeps cycling even though crossing is in FAULT (never OPEN, connector permanently suppressed)"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC06-1",
+      "title": "Positive: local fault holds STOP immediately and reports independently to Central",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}, {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [{"after_ms": 200, "node_id": "RL1", "send": "x"}, {"after_ms": 400, "node_id": "RL1", "send": "0"}],
+      "checks": [
+        {"node_id": "RL1", "pattern": "FAULT latched", "after_ms": 19700, "within_ms": 22000},
+        {"node_id": "C1", "pattern": "FAULT_REPORT from 7", "after_ms": 19700, "within_ms": 23000, "description": "reaches Central within ~1s of the fault (next 1Hz tick)"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC06-2",
+      "title": "Negative/alt 5.1: local safety independent of Central's presence",
+      "type": "negative",
+      "environment": "A",
+      "skip": false,
+      "nodes": [{"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}],
+      "setup_wait_ms": 500,
+      "steps": [{"after_ms": 200, "node_id": "RL1", "send": "x"}, {"after_ms": 400, "node_id": "RL1", "send": "0"}],
+      "checks": [
+        {"node_id": "RL1", "pattern": "FAULT latched", "after_ms": 19700, "within_ms": 22000, "description": "fires at the same time as TC-UC06-1 even with no C1 running at all"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC06-3",
+      "title": "Negative/alt 7.2: premature fault-clear request NACKed",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}, {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 200, "node_id": "RL1", "send": "x"},
+        {"after_ms": 400, "node_id": "RL1", "send": "0"},
+        {"after_ms": 21000, "node_id": "RL1", "send": "f"},
+        {"after_ms": 21500, "node_id": "C1", "send": "f"},
+        {"after_ms": 21700, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 21900, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "fault-clear result=3 reason=4", "within_ms": 23000, "description": "RESULT_NACK=3, NACK_REASON_FAULT_ACTIVE=4 - local demo trigger"},
+        {"node_id": "C1", "pattern": "REQUEST_FAULT_CLEAR to 7 -> NACK reason=FAULT_ACTIVE", "within_ms": 24000, "description": "real Central path also NACKed"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC06-4",
+      "title": "Edge: ACK path of alt 7.1 is currently unreachable via any available demo key (documented finding)",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}, {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 200, "node_id": "RL1", "send": "x"},
+        {"after_ms": 400, "node_id": "RL1", "send": "0"},
+        {"after_ms": 21000, "node_id": "RL1", "send": "f"},
+        {"after_ms": 23000, "node_id": "RL1", "send": "f"},
+        {"after_ms": 25000, "node_id": "RL1", "send": "f"},
+        {"after_ms": 27000, "node_id": "C1", "send": "f"},
+        {"after_ms": 27200, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 27400, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "fault-clear result=3 reason=4", "after_ms": 24500, "within_ms": 26500, "description": "third local attempt still NACKs"},
+        {"node_id": "C1", "pattern": "REQUEST_FAULT_CLEAR to 7 -> NACK reason=FAULT_ACTIVE", "after_ms": 27200, "within_ms": 30000, "description": "the real Central-path attempt also NACKs - note: as of the 'r' key fix in rlx_sensor.c/rlx_gate.c, an operator CAN now actually reach the ACK path by pressing 'r' first (rlx_gate_force_confirmed_open()) before requesting fault clear - this case intentionally does NOT press 'r', to document the original finding; see TC-FAULT-07/10 in 05-fault-safety.json for the now-working ACK path"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC07-1",
+      "title": "Positive: SET_MODE to a different mode is ACK_PENDING then applied at a safe boundary",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}, {"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [{"after_ms": 500, "node_id": "C1", "send": "m"}, {"after_ms": 700, "node_id": "C1", "send": "1\n"}, {"after_ms": 900, "node_id": "C1", "send": "1\n"}],
+      "checks": [
+        {"node_id": "C1", "pattern": "Operator: SET_MODE\\(target=1, mode=OFF_PEAK_SENSOR\\) submitted", "within_ms": 2000},
+        {"node_id": "C1", "pattern": "SET_MODE to 1 -> ACK_PENDING", "within_ms": 3000}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-UC07-2",
+      "title": "Negative: out-of-range Lx number aborted at console",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}],
+      "setup_wait_ms": 500,
+      "steps": [{"after_ms": 300, "node_id": "C1", "send": "m"}, {"after_ms": 500, "node_id": "C1", "send": "7\n"}],
+      "checks": [
+        {"node_id": "C1", "pattern": "not a valid Lx \\(1-6\\) - command aborted", "within_ms": 2000}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-UC07-3",
+      "title": "Negative: invalid mode value aborted at console without touching bookkeeping",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}, {"node_id": "L2", "binary": "lx_main", "args": ["2"]}],
+      "setup_wait_ms": 1000,
+      "steps": [{"after_ms": 500, "node_id": "C1", "send": "m"}, {"after_ms": 700, "node_id": "C1", "send": "2\n"}, {"after_ms": 900, "node_id": "C1", "send": "2\n"}],
+      "checks": [
+        {"node_id": "C1", "pattern": "not a valid mode \\(0 or 1\\) - command aborted", "within_ms": 2000}
+      ],
+      "cleanup_wait_ms": 500,
+      "_note": "The doc also notes lx_fsm_on_set_mode() now independently validates and would NACK with OUT_OF_RANGE if a malformed value ever reached it - that receiving-side branch needs test_client (see 03-protocol-contract.json TC-MSG-8b), since c_operator.c's own console pre-filter (checked here) never lets a bad value through."
+    },
+    {
+      "id": "TC-UC07-4",
+      "title": "Edge: SET_MODE to the currently-active mode is ACK immediately, not PENDING",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}, {"node_id": "L3", "binary": "lx_main", "args": ["3"]}],
+      "setup_wait_ms": 1000,
+      "steps": [{"after_ms": 500, "node_id": "C1", "send": "m"}, {"after_ms": 700, "node_id": "C1", "send": "3\n"}, {"after_ms": 900, "node_id": "C1", "send": "0\n"}],
+      "checks": [
+        {"node_id": "C1", "pattern": "SET_MODE to 3 -> ACK$", "within_ms": 2500, "description": "$ anchor to distinguish plain ACK from ACK_PENDING"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-UC08-1",
+      "title": "Positive: arterial override genuinely holds green past the ordinary PEAK_FIXED duration",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}, {"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 200, "node_id": "C1", "send": "o"},
+        {"after_ms": 400, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 600, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 800, "node_id": "C1", "send": "60000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 2500},
+        {"node_id": "L1", "pattern": "override cleared/expired", "after_ms": 59000, "within_ms": 64000, "description": "expires at 60000ms after acceptance"},
+        {"node_id": "L1", "pattern": "ARTERIAL YELLOW", "after_ms": 59500, "within_ms": 65000, "description": "resumes ordinary cycle immediately after expiry, NOT at the normal 48000ms mark"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC08-2",
+      "title": "Positive: connector override actually forces the signal, not just bookkeeping",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}, {"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 200, "node_id": "C1", "send": "o"},
+        {"after_ms": 400, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 600, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 800, "node_id": "C1", "send": "300000\n"},
+        {"after_ms": 65000, "node_id": "C1", "send": "c"},
+        {"after_ms": 65200, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 2500},
+        {"node_id": "L1", "pattern": "CONNECTOR GREEN", "after_ms": 53000, "within_ms": 60000, "description": "reaches connector green at the normal ~54s boundary"},
+        {"node_id": "C1", "pattern": "CANCEL_OVERRIDE to 1 -> ACK", "after_ms": 65000, "within_ms": 68000},
+        {"node_id": "L1", "pattern": "override cleared/expired", "after_ms": 65000, "within_ms": 68000},
+        {"node_id": "L1", "pattern": "CONNECTOR YELLOW", "after_ms": 65000, "within_ms": 69000, "description": "resumes right after cancel, well before the ordinary 30000ms connector duration would have elapsed on its own, proving the hold was real"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC08-3",
+      "title": "Negative/alt 3.3: zero duration rejected by Central before reaching the controller",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}, {"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 200, "node_id": "C1", "send": "o"},
+        {"after_ms": 400, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 600, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 800, "node_id": "C1", "send": "0\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "rejected by Central pre-check,\\s*reason=INVALID_DURATION|rejected by Central pre-check.*INVALID_DURATION", "within_ms": 2500, "description": "blocked before ever being forwarded to L1"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-UC08-4",
+      "title": "Negative/alt 3.2: active railway preemption causes NACK",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 200, "node_id": "RL1", "send": "0"},
+        {"after_ms": 2500, "node_id": "C1", "send": "o"},
+        {"after_ms": 2700, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 2900, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 3100, "node_id": "C1", "send": "10000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "REQUEST_OVERRIDE to 1 -> NACK reason=RAILWAY_CONFLICT", "within_ms": 5000}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC08-5",
+      "title": "Negative/alt 3.1: override deferred (ACK_PENDING) during pedestrian clearance, self-activates after",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}, {"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 200, "node_id": "L1", "send": "1"},
+        {"after_ms": 1200, "node_id": "C1", "send": "o"},
+        {"after_ms": 1400, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 1600, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 1800, "node_id": "C1", "send": "15000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "REQUEST_OVERRIDE to 1 -> ACK_PENDING", "within_ms": 3500, "description": "deferred because ped_clearance_active"},
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> DONT_WALK", "after_ms": 9500, "within_ms": 13000, "description": "pedestrian sequence completes normally, not truncated by the pending override"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC08-6",
+      "title": "Edge: 300000/300001ms boundary and rejecting a second REQUEST_OVERRIDE while one is active",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}, {"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 200, "node_id": "C1", "send": "o"},
+        {"after_ms": 400, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 600, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 800, "node_id": "C1", "send": "300001\n"},
+        {"after_ms": 2000, "node_id": "C1", "send": "o"},
+        {"after_ms": 2200, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 2400, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 2600, "node_id": "C1", "send": "300000\n"},
+        {"after_ms": 4000, "node_id": "C1", "send": "o"},
+        {"after_ms": 4200, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 4400, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 4600, "node_id": "C1", "send": "5000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "rejected by Central pre-check.*INVALID_DURATION", "within_ms": 2500, "description": "300001 > cap, blocked at Central"},
+        {"node_id": "C1", "pattern": "REQUEST_OVERRIDE to 1 -> ACK$", "after_ms": 2000, "within_ms": 5000, "description": "300000 exactly at cap, accepted"},
+        {"node_id": "C1", "pattern": "REQUEST_OVERRIDE to 1 -> NACK reason=OUT_OF_RANGE", "after_ms": 4000, "within_ms": 7000, "description": "second REQUEST_OVERRIDE while one is OVR_ACTIVE is rejected by L1 itself"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC09-1",
+      "title": "Positive: status table shows all 9 controllers after they report in",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "L2", "binary": "lx_main", "args": ["2"]},
+        {"node_id": "L3", "binary": "lx_main", "args": ["3"]},
+        {"node_id": "L4", "binary": "lx_main", "args": ["4"]},
+        {"node_id": "L5", "binary": "lx_main", "args": ["5"]},
+        {"node_id": "L6", "binary": "lx_main", "args": ["6"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]},
+        {"node_id": "RL2", "binary": "rlx_main", "args": ["2"]},
+        {"node_id": "RL3", "binary": "rlx_main", "args": ["3"]}
+      ],
+      "setup_wait_ms": 1000,
+      "steps": [],
+      "checks": [
+        {"node_id": "C1", "pattern": "L1\\s+INTERSECTION.*AVAILABLE", "within_ms": 4000},
+        {"node_id": "C1", "pattern": "L6\\s+INTERSECTION.*AVAILABLE", "within_ms": 4000},
+        {"node_id": "C1", "pattern": "RL1\\s+RAILWAY.*AVAILABLE", "within_ms": 4000},
+        {"node_id": "C1", "pattern": "RL3\\s+RAILWAY.*AVAILABLE", "within_ms": 4000}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC09-2",
+      "title": "Negative/alt 5.1: never-started controllers marked UNAVAILABLE after exactly 3 ticks",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}, {"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [
+        {"node_id": "C1", "pattern": "Controller 2 marked UNAVAILABLE|L2.*UNAVAILABLE", "after_ms": 2700, "within_ms": 6000, "description": "L2 never started - marked unavailable ~3s in"}
+      ],
+      "cleanup_wait_ms": 500,
+      "_note": "Exact wording of the UNAVAILABLE log line should be cross-checked against c_watchdog_mon.c at run time; pattern is deliberately permissive (alternation) since this case's author (not the usual per-category agent) has slightly lower confidence in the literal string than the other 6 files."
+    },
+    {
+      "id": "TC-UC09-3",
+      "title": "Positive/alt 2.1: late-joining controller replaces stale view only once it reports",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}, {"node_id": "L1", "binary": "lx_main", "args": ["1"]}, {"node_id": "L2", "binary": "lx_main", "args": ["2"]}],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [
+        {"node_id": "C1", "pattern": "L2\\s+INTERSECTION.*AVAILABLE", "within_ms": 4000, "description": "L2 started alongside everything else in this simplified same-run approximation of 'late join' (true late-join timing needs a start-delay primitive runner.py doesn't have - see 07-cross-node-integration.json's TC-15 skip)"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-UC09-4",
+      "title": "Negative/alt 6.1: railway fault surfaces on Central independent of pre-existing local safety",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}, {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [{"after_ms": 200, "node_id": "RL1", "send": "x"}, {"after_ms": 400, "node_id": "RL1", "send": "0"}],
+      "checks": [
+        {"node_id": "RL1", "pattern": "FAULT latched", "after_ms": 19700, "within_ms": 22000},
+        {"node_id": "C1", "pattern": "RL1\\s+RAILWAY.*0x1", "after_ms": 19700, "within_ms": 23000, "description": "HMI table shows FAULTS=0x1 for RL1 shortly after"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC10-1",
+      "title": "Positive: Lx keeps running its normal schedule with no Central at all",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "nodes": [{"node_id": "L1", "binary": "lx_main", "args": ["1"]}],
+      "setup_wait_ms": 500,
+      "steps": [],
+      "checks": [
+        {"node_id": "L1", "pattern": "ARTERIAL YELLOW", "within_ms": 51000},
+        {"node_id": "L1", "pattern": "CONNECTOR GREEN", "within_ms": 58000}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC10-2",
+      "title": "Positive/alt 6.1: railway protection fully functional with no Central running",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "L1", "binary": "lx_main", "args": ["1"]}, {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}],
+      "setup_wait_ms": 1000,
+      "steps": [{"after_ms": 200, "node_id": "RL1", "send": "0"}],
+      "checks": [
+        {"node_id": "RL1", "pattern": "train signal PROCEED for direction 0", "after_ms": 7500, "within_ms": 10000},
+        {"node_id": "RL1", "pattern": "flashers OFF", "after_ms": 50000, "within_ms": 54000},
+        {"node_id": "L1", "pattern": "ARTERIAL GREEN", "after_ms": 53000, "within_ms": 60000, "description": "L1 received CROSSING_STATUS directly from RL1, no C1 involved, and kept suppressing connector throughout"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-UC10-3",
+      "title": "Positive: full state visible to Central as soon as it starts, no L1 restart needed",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "L1", "binary": "lx_main", "args": ["1"]}, {"node_id": "C1", "binary": "c_main", "args": []}],
+      "setup_wait_ms": 10000,
+      "steps": [],
+      "checks": [
+        {"node_id": "C1", "pattern": "L1\\s+INTERSECTION.*AVAILABLE", "within_ms": 3000, "description": "L1 already ran standalone for setup_wait_ms=10s before C1's node process even starts (both launched together, but C1's own attach dominates its early startup) - approximates 'L1 started well before C1'"}
+      ],
+      "cleanup_wait_ms": 1000,
+      "_note": "runner.py starts all nodes in a case at the same setup_wait_ms boundary, so 'L1 running independently for 10s BEFORE C1 even starts' can only be approximated, not exactly reproduced, without a per-node start-delay primitive."
+    },
+    {
+      "id": "TC-UC10-4",
+      "title": "Edge: REQUEST_OVERRIDE to a never-started controller still marked in-flight despite send failure",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "nodes": [{"node_id": "C1", "binary": "c_main", "args": []}],
+      "setup_wait_ms": 1000,
+      "steps": [
+        {"after_ms": 200, "node_id": "C1", "send": "o"},
+        {"after_ms": 400, "node_id": "C1", "send": "2\n"},
+        {"after_ms": 600, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 800, "node_id": "C1", "send": "10000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "Operator: REQUEST_OVERRIDE\\(target=2, movement=0, duration_ms=10000\\) submitted", "within_ms": 2500},
+        {"node_id": "C1", "pattern": "REQUEST_OVERRIDE to 2 send failed", "within_ms": 4000, "description": "L2 never started, so ipc_client_post's underlying send fails"}
+      ],
+      "cleanup_wait_ms": 500,
+      "_note": "The internal override_in_flight=1 bookkeeping itself has no visible log line to check directly - only the two surrounding, checkable log lines are asserted here."
+    }
+  ]
+}

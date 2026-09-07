@@ -1,0 +1,470 @@
+{
+  "test_cases": [
+    {
+      "id": "TC-FAULT-01",
+      "title": "RC-06: gate never confirms CLOSED while a train approaches -> FAULT, PROCEED never granted",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,   "node_id": "RL1", "send": "x"},
+        {"after_ms": 200, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "RLx: commanding gates DOWN \\(simulated motion, 3000 ms\\)", "within_ms": 7500,
+         "description": "RLX_WARNING_TO_CLOSING_MS (5s) elapses, enter_closing() commands gates down (rlx_fsm.c/rlx_gate.c)"},
+        {"node_id": "RL1", "pattern": "RLx: gate FAILED TO CONFIRM \\(simulated fault\\)", "within_ms": 11000,
+         "description": "the armed demo fault (key 'x') makes this close motion never confirm (rlx_gate.c's g_fail_this_motion)"},
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 23000,
+         "description": "RLX_CLOSING_DEADLINE_MS (15s) exceeded without gates_confirmed_closed() -> enter_fault(FAULT_GATE_CONFIRM_MISSING) (rlx_fsm.c)"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-FAULT-02",
+      "title": "Baseline control: normal gate close with no armed fault -> PROCEED granted, no fault (sanity check for TC-FAULT-01's 15s deadline)",
+      "type": "negative",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "RLx: commanding gates DOWN \\(simulated motion, 3000 ms\\)", "within_ms": 7500,
+         "description": "same 5s warning-to-closing timer as TC-FAULT-01, no fault armed this time"},
+        {"node_id": "RL1", "pattern": "RLx: train signal PROCEED for direction 0 \\(gates confirmed closed\\)", "within_ms": 11000,
+         "description": "gate confirms closed after ~3s (RLX_GATE_MOTION_MS), well inside the 15s deadline - proves TC-FAULT-01's fault was caused by the armed demo fault, not normal timing logic"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-FAULT-03",
+      "title": "RC-06 edge case: gate fails to re-confirm CLOSED while RECLOSING (2nd train approaches mid-OPENING) -> FAULT (timing-sensitive: keys must land inside OPENING's 3s gate-motion window)",
+      "type": "edge",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,     "node_id": "RL1", "send": "0"},
+        {"after_ms": 48200, "node_id": "RL1", "send": "x"},
+        {"after_ms": 48400, "node_id": "RL1", "send": "1"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "RLx: commanding gates UP \\(simulated motion, 3000 ms\\)", "within_ms": 53000,
+         "description": "full natural cycle: WARNING(5s)->CLOSING(3s)->CLOSED(20s RLX_EXPECTED_ARRIVAL_MS)->TRAIN_PRESENT(20s RLX_OCCUPANCY_WINDOW_MS) ends with enter_opening() commanding gates up (~48s after '0')"},
+        {"node_id": "RL1", "pattern": "RLx: reclosing - aborting gate-open motion, flashers remain active", "within_ms": 53500,
+         "description": "pressing '1' while still RLX_OPENING calls enter_reclosing() (rlx_fsm.c), aborting the open motion and starting a new closing motion armed to fail by the preceding 'x'"},
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 70000,
+         "description": "check_closing_or_reclosing_complete() is shared by CLOSING and RECLOSING - RLX_CLOSING_DEADLINE_MS (15s) from RECLOSING entry also raises FAULT_GATE_CONFIRM_MISSING"}
+      ],
+      "cleanup_wait_ms": 800
+    },
+    {
+      "id": "TC-FAULT-04",
+      "title": "Bugfix regression: fault raised mid-OPENING forces an immediate new close command (enter_fault() never leaves gates open/ajar)",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,     "node_id": "RL1", "send": "0"},
+        {"after_ms": 35000, "node_id": "RL1", "send": "x"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "RLx: commanding gates DOWN \\(simulated motion, 3000 ms\\)", "within_ms": 8000,
+         "description": "initial normal CLOSING command (not armed yet) - baseline for the sequence"},
+        {"node_id": "RL1", "pattern": "RLx: commanding gates UP \\(simulated motion, 3000 ms\\)", "within_ms": 56000,
+         "description": "occupancy window (20s RLX_OCCUPANCY_WINDOW_MS, counted from TRAIN_PRESENT entry ~28-30s after '0') expires -> enter_opening() commands gates up (~48-52s after '0'); this motion is armed to fail by the 'x' pressed earlier during TRAIN_PRESENT"},
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 75000,
+         "description": "RLX_OPENING_DEADLINE_MS (15s) exceeded -> enter_fault() unconditionally calls rlx_gate_command_close() BEFORE setting state=RLX_FAULT (the audited bugfix) - a fresh 'commanding gates DOWN' log fires exactly here, immediately forcing the gate down instead of leaving it stalled mid-open"}
+      ],
+      "cleanup_wait_ms": 800
+    },
+    {
+      "id": "TC-FAULT-05",
+      "title": "REQUEST_FAULT_CLEAR while gate is NOT confirmed open -> NACK/FAULT_ACTIVE (RC-10 core: never bypass live verification)",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1",  "binary": "c_main",   "args": []},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 1500,
+      "steps": [
+        {"after_ms": 0,     "node_id": "RL1", "send": "x"},
+        {"after_ms": 200,   "node_id": "RL1", "send": "0"},
+        {"after_ms": 23000, "node_id": "C1",  "send": "f"},
+        {"after_ms": 23300, "node_id": "C1",  "send": "1\n"},
+        {"after_ms": 23600, "node_id": "C1",  "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 23000,
+         "description": "RL1 reaches RLX_FAULT before Central's REQUEST_FAULT_CLEAR is sent - gate was commanded closed by enter_fault(), not open"},
+        {"node_id": "C1", "pattern": "REQUEST_FAULT_CLEAR to 7 -> NACK reason=FAULT_ACTIVE", "within_ms": 25000,
+         "description": "controller_id_t CTRL_RL1=7 (sys_types.h); rlx_fsm_on_fault_clear() re-checks gates_confirmed_open() live and finds it false -> NACK/FAULT_ACTIVE (c_comm.c's on_command_reply() log line)"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-FAULT-06",
+      "title": "REQUEST_FAULT_CLEAR when RLx is NOT faulted at all -> NACK/UNKNOWN_TARGET",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1",  "binary": "c_main",   "args": []},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 1500,
+      "steps": [
+        {"after_ms": 0,   "node_id": "C1", "send": "f"},
+        {"after_ms": 300, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 600, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "REQUEST_FAULT_CLEAR to 7 -> NACK reason=UNKNOWN_TARGET", "within_ms": 3000,
+         "description": "rlx_fsm_on_fault_clear() sees fsm->state != RLX_FAULT (RL1 is idle RLX_OPEN) -> NACK/UNKNOWN_TARGET"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-FAULT-07",
+      "title": "REQUEST_FAULT_CLEAR after gate is genuinely confirmed OPEN -> ACK, exits FAULT (now keyboard-testable via 'r', no debugger needed)",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1",  "binary": "c_main",   "args": []},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 1500,
+      "steps": [
+        {"after_ms": 0,     "node_id": "RL1", "send": "x"},
+        {"after_ms": 200,   "node_id": "RL1", "send": "0"},
+        {"after_ms": 23000, "node_id": "RL1", "send": "r"},
+        {"after_ms": 23500, "node_id": "C1",  "send": "f"},
+        {"after_ms": 23800, "node_id": "C1",  "send": "1\n"},
+        {"after_ms": 24100, "node_id": "C1",  "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 23000,
+         "description": "RL1 reaches RLX_FAULT first, same as TC-FAULT-05"},
+        {"node_id": "RL1", "pattern": "\\[DEMO\\] Gate mechanism simulated as physically repaired - now confirmed OPEN", "within_ms": 24000,
+         "description": "rlx_gate_force_confirmed_open() (bound to key 'r' in rlx_sensor.c) unconditionally sets g_confirmed_open=1, independent of fsm->state - this is the demo counterpart to 'x' that makes the ACK branch reachable from the keyboard. NOTE: the original manual test plan (05-fault-safety.md Group 3 preamble) claims no keyboard/logic path can bring the gate to confirmed-open while RLX_FAULT is active; that claim is now stale - this 'r' key (rlx_gate.h's rlx_gate_force_confirmed_open() doc comment) was added specifically to close that gap, so this case no longer needs a debugger."},
+        {"node_id": "C1", "pattern": "REQUEST_FAULT_CLEAR to 7 -> ACK", "within_ms": 26000,
+         "description": "rlx_fsm_on_fault_clear() re-reads gates_confirmed_open() live, finds it true post-'r' -> ACK, fsm->state -> RLX_OPEN"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-FAULT-08",
+      "title": "Repeated REQUEST_FAULT_CLEAR while still not qualifying -> always NACK, no partial/corrupted state (idempotency)",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1",  "binary": "c_main",   "args": []},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 1500,
+      "steps": [
+        {"after_ms": 0,     "node_id": "RL1", "send": "x"},
+        {"after_ms": 200,   "node_id": "RL1", "send": "0"},
+        {"after_ms": 23000, "node_id": "C1",  "send": "f"},
+        {"after_ms": 23200, "node_id": "C1",  "send": "1\n"},
+        {"after_ms": 23400, "node_id": "C1",  "send": "1\n"},
+        {"after_ms": 24000, "node_id": "C1",  "send": "f"},
+        {"after_ms": 24200, "node_id": "C1",  "send": "1\n"},
+        {"after_ms": 24400, "node_id": "C1",  "send": "1\n"},
+        {"after_ms": 25000, "node_id": "C1",  "send": "f"},
+        {"after_ms": 25200, "node_id": "C1",  "send": "1\n"},
+        {"after_ms": 25400, "node_id": "C1",  "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 23000,
+         "description": "RL1 reaches RLX_FAULT, gate stays closed for all 3 clear attempts"},
+        {"node_id": "C1", "pattern": "REQUEST_FAULT_CLEAR to 7 -> NACK reason=FAULT_ACTIVE", "within_ms": 27000,
+         "description": "confirms at least one of the 3 rapid-fire requests gets NACK/FAULT_ACTIVE; this tool's pattern-presence check cannot count exactly 3 occurrences - inspect results/TC-FAULT-08/C1.log manually to confirm all 3 replies logged and fsm->faults/active_window_count were never partially mutated"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-FAULT-09",
+      "title": "Local 'f' key at rlx_main still enforces RC-10 (NACK when gate not open) - not a safety bypass, just a different request path",
+      "type": "negative",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,     "node_id": "RL1", "send": "x"},
+        {"after_ms": 200,   "node_id": "RL1", "send": "0"},
+        {"after_ms": 23000, "node_id": "RL1", "send": "f"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 23000,
+         "description": "RL1 reaches RLX_FAULT; gate is closed (enter_fault() commanded it), not open"},
+        {"node_id": "RL1", "pattern": "\\[rlx_sensor\\] DEMO-ONLY local fault-clear trigger \\(RC-09 requires Central in production\\)", "within_ms": 24000,
+         "description": "local 'f' key calls rlx_fsm_on_fault_clear() directly - same function, same live-verification logic as the Central IPC path"},
+        {"node_id": "RL1", "pattern": "\\[rlx_sensor\\] fault-clear result=3 reason=4", "within_ms": 24000,
+         "description": "msg_result_t RESULT_NACK=3, nack_reason_t NACK_REASON_FAULT_ACTIVE=4 (sys_types.h/ipc_msg.h) - gate not confirmed open, so even the local/bypassed-IPC path still NACKs"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-FAULT-10",
+      "title": "Local 'f' key ACKs once gate is genuinely confirmed open (positive counterpart to TC-FAULT-09; now keyboard-testable via 'r', no debugger needed)",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,     "node_id": "RL1", "send": "x"},
+        {"after_ms": 200,   "node_id": "RL1", "send": "0"},
+        {"after_ms": 23000, "node_id": "RL1", "send": "r"},
+        {"after_ms": 24000, "node_id": "RL1", "send": "f"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 23000,
+         "description": "RL1 reaches RLX_FAULT first, same as TC-FAULT-09"},
+        {"node_id": "RL1", "pattern": "\\[DEMO\\] Gate mechanism simulated as physically repaired - now confirmed OPEN", "within_ms": 24000,
+         "description": "rlx_gate_force_confirmed_open() (key 'r') simulates a technician physically confirming the gate open, same mechanism as TC-FAULT-07"},
+        {"node_id": "RL1", "pattern": "\\[rlx_sensor\\] fault-clear result=1 reason=0", "within_ms": 25000,
+         "description": "msg_result_t RESULT_ACK=1, nack_reason_t NACK_REASON_NONE=0 - confirms the local path and the Central IPC path (TC-FAULT-07) share the exact same rlx_fsm_on_fault_clear() logic, both reaching ACK once the gate is verified open"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-FAULT-11",
+      "title": "Confirm there is no keyboard-triggered fault path for Lx (structural/code-review only)",
+      "type": "edge",
+      "environment": "N/A",
+      "skip": true,
+      "skip_reason": "Code-review-only finding, re-confirmed against the current app/intersection/src/lx_sensor.c: the only cases in its switch(input) are a/A/c/C/1/2/3/4/w/W/h/?/q, none of which call any fault-raising function. The only place fsm->faults is ever OR'd is lx_fsm_report_watchdog_trip() (lx_fsm.c), whose only caller is lx_watchdog_thread(). There is no keyboard key or IPC verb that raises an Lx fault directly, so there is no runtime behavior for this tool to script - only a static read of the source proves this.",
+      "nodes": [],
+      "setup_wait_ms": 0,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 0
+    },
+    {
+      "id": "TC-FAULT-12",
+      "title": "FAULT_SAFE always wins - every new command NACKs with FAULT_ACTIVE once Lx is faulted (runtime blocked on watchdog trip)",
+      "type": "positive",
+      "environment": "B",
+      "skip": true,
+      "skip_reason": "The runtime portion requires L1 to already be in SUPERVISORY_FAULT_SAFE. Per TC-FAULT-11, lx_sensor.c has no keyboard key that raises a fault - the only way in is a real watchdog trip (Group 5), which itself needs a debugger able to stall only the server thread while lx_watchdog_thread() keeps running (see TC-FAULT-17's caveat). This keystroke-only automation tool cannot create that precondition, so it cannot exercise lx_fsm_on_set_mode()/lx_fsm_on_set_timing_profile()/lx_fsm_on_request_override() NACKing with FAULT_ACTIVE. The doc's code-review half (that lx_fsm_check_fault_locked() gates every lx_fsm_on_*() handler except lx_fsm_on_crossing_status()) is a static-analysis verdict with no distinguishing runtime output to check.",
+      "nodes": [],
+      "setup_wait_ms": 0,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 0
+    },
+    {
+      "id": "TC-FAULT-13",
+      "title": "FAULT_SAFE forcibly terminates an active REQUEST_OVERRIDE (SC-03A) (runtime blocked on watchdog trip)",
+      "type": "positive",
+      "environment": "B",
+      "skip": true,
+      "skip_reason": "Same precondition problem as TC-FAULT-12: entering SUPERVISORY_FAULT_SAFE while override_substate == OVR_ACTIVE requires a real Lx watchdog trip, only reachable via a debugger that can freeze just the server thread (TC-FAULT-17) - lx_sensor.c has no keyboard fault trigger (TC-FAULT-11). Without that trip this tool cannot exercise lx_fsm_report_watchdog_trip()'s call to lx_fsm_terminate_override_locked(); the code-review fallback (lx_fsm.c's fsm->supervisory == SUPERVISORY_CENTRAL_OVERRIDE check inside that function) has nothing to run.",
+      "nodes": [],
+      "setup_wait_ms": 0,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 0
+    },
+    {
+      "id": "TC-FAULT-14",
+      "title": "FAULT_SAFE does not block MSG_CROSSING_STATUS replies (Lx only observes, never rejects) (code review only)",
+      "type": "edge",
+      "environment": "N/A",
+      "skip": true,
+      "skip_reason": "Pure code-review verdict: lx_fsm_on_crossing_status() always sets reply->result = RESULT_ACK regardless of fsm->supervisory (per its RC-02 comment), so there is no NACK/ACK branch difference a log-pattern check could distinguish at runtime. The doc itself flags the full runtime variant (a live neighboring RLx plus a tripped Lx watchdog at the same time) as an unnecessary complex combination, not required to demonstrate this - reading lx_fsm.c is sufficient and is what this finding is actually based on.",
+      "nodes": [],
+      "setup_wait_ms": 0,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 0
+    },
+    {
+      "id": "TC-FAULT-14b",
+      "title": "REQUEST_FAULT_CLEAR resumes Lx from FAULT_SAFE to NORMAL_OPERATION when the neighboring crossing is OPEN (runtime blocked on watchdog trip)",
+      "type": "positive",
+      "environment": "B",
+      "skip": true,
+      "skip_reason": "Precondition (L1 already SUPERVISORY_FAULT_SAFE) can only be reached via a real watchdog trip, which needs a debugger able to stall only the server thread while lx_watchdog_thread() keeps running (TC-FAULT-17) - lx_sensor.c has no fault-triggering key (TC-FAULT-11). Without that precondition this tool cannot keystroke its way to exercising lx_fsm_on_request_fault_clear()'s ACK path, even though the clear request itself (C1's 'f' -> node type '0' -> Lx number) is otherwise fully keyboard-driven.",
+      "nodes": [],
+      "setup_wait_ms": 0,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 0
+    },
+    {
+      "id": "TC-FAULT-14c",
+      "title": "REQUEST_FAULT_CLEAR resumes RAILWAY_PREEMPTION (not NORMAL_OPERATION) when the neighboring crossing is still closed (safety regression case; runtime blocked on watchdog trip)",
+      "type": "positive",
+      "environment": "B",
+      "skip": true,
+      "skip_reason": "Same debugger-dependent precondition as TC-FAULT-14b (a real Lx watchdog trip is required to enter FAULT_SAFE while fsm->last_crossing_state != CROSSING_OPEN), plus this case additionally needs a live neighboring rlx_main actually driving real MSG_CROSSING_STATUS updates timed against the trip - not reachable through this tool's keystroke-only automation. Verify instead by code review of lx_fsm_on_request_fault_clear() in app/intersection/src/lx_fsm.c: 'fsm->supervisory = (fsm->last_crossing_state != CROSSING_OPEN) ? SUPERVISORY_RAILWAY_PREEMPTION : SUPERVISORY_NORMAL_OPERATION;'",
+      "nodes": [],
+      "setup_wait_ms": 0,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 0
+    },
+    {
+      "id": "TC-FAULT-15",
+      "title": "Watchdog dead-man's-switch logic confirmed by code review (baseline for Group 5, always passes without a QNX machine)",
+      "type": "positive",
+      "environment": "N/A",
+      "skip": true,
+      "skip_reason": "This is explicitly a code-review case, not a runtime one (per the .md: 'Loai: review code, khong phai runtime'). It reads lx_watchdog_thread() (app/intersection/src/lx_watchdog.c) and rlx_watchdog_thread() (app/railway/src/rlx_watchdog.c) to confirm each runs sleep()-then-compare-counter loops on their own dedicated thread and calls lx_fsm_report_watchdog_trip()/rlx_fsm_report_watchdog_trip() independently of the server thread. There is no keystroke input or log pattern this tool can assert beyond what TC-FAULT-17/18 already attempt at runtime.",
+      "nodes": [],
+      "setup_wait_ms": 0,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 0
+    },
+    {
+      "id": "TC-FAULT-16",
+      "title": "Negative proof: kill -STOP/-CONT on the whole process does NOT trigger the watchdog (documents why this approach is invalid for PA-10)",
+      "type": "negative",
+      "environment": "A",
+      "skip": true,
+      "skip_reason": "This case is about sending POSIX signals (SIGSTOP/SIGCONT) to a running node's PID mid-test. runner.py's NodeProcess only supports scripted stdin keystrokes (steps[].send) and terminate() at cleanup - it has no facility to send OS signals to a running node process. Even if it did, the .md's own analysis (confirmed against the multi-threaded design of lx_watchdog.c/rlx_watchdog.c) explains that SIGSTOP/SIGCONT act on the whole process including the watchdog thread itself, so the watchdog would never observe a 'gap' - this test is a deliberate negative result, not something worth adding signal-delivery machinery to reproduce.",
+      "nodes": [],
+      "setup_wait_ms": 0,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 0
+    },
+    {
+      "id": "TC-FAULT-17",
+      "title": "Best-effort: trip the Lx watchdog via a debugger that stalls only the server thread",
+      "type": "positive",
+      "environment": "B",
+      "skip": true,
+      "skip_reason": "Requires a debugger (gdb / QNX Momentics) capable of stopping only the server thread (e.g. via a breakpoint inside the phase-timer handling path in lx_fsm.c/lx_main.c) while lx_watchdog_thread() keeps running on its own thread for at least LX_WATCHDOG_CHECK_INTERVAL_S*2 (4s). This keystroke-only automation tool has no per-thread stop/continue capability and cannot attach a debugger, so it cannot script this. Per the .md's own caveat, even manual attempts may fail on debug tooling that stops every thread at a breakpoint (the same problem as TC-FAULT-16) - TC-FAULT-15's code review is the fallback evidence.",
+      "nodes": [],
+      "setup_wait_ms": 0,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 0
+    },
+    {
+      "id": "TC-FAULT-18",
+      "title": "Best-effort: trip the RLx watchdog via a debugger that stalls only the server thread (gate must be commanded closed even while fully idle/OPEN)",
+      "type": "positive",
+      "environment": "B",
+      "skip": true,
+      "skip_reason": "Same debugger-only limitation as TC-FAULT-17, applied to rlx_main's server thread (a breakpoint inside rlx_fsm_on_tick(), app/railway/src/rlx_fsm.c) while rlx_watchdog_thread() keeps running for at least RLX_WATCHDOG_CHECK_INTERVAL_S*2 (6s). This tool has no debugger/per-thread-stall capability. Fallback evidence is TC-FAULT-15's code review plus TC-FAULT-01/04's confirmation that enter_fault() unconditionally commands the gate closed.",
+      "nodes": [],
+      "setup_wait_ms": 0,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 0
+    },
+    {
+      "id": "TC-FAULT-19",
+      "title": "Stuck pedestrian button (repeated/held press) does not set FAULT_PED_BUTTON_STUCK - accepted PoC limitation, confirmed not to hang the WALK/FDW sequence",
+      "type": "negative",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,     "node_id": "L1", "send": "1"},
+        {"after_ms": 2000,  "node_id": "L1", "send": "1"},
+        {"after_ms": 4000,  "node_id": "L1", "send": "1"},
+        {"after_ms": 6000,  "node_id": "L1", "send": "1"},
+        {"after_ms": 8000,  "node_id": "L1", "send": "1"},
+        {"after_ms": 10000, "node_id": "L1", "send": "1"},
+        {"after_ms": 12000, "node_id": "L1", "send": "1"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> WALK", "within_ms": 1500,
+         "description": "cold-start phase is PHASE_ARTERIAL_GREEN (compatible with side 0/1 per lx_fsm.c's ASSUMPTION comment), so the first latched press starts a WALK sequence almost immediately"},
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> DONT_WALK", "within_ms": 11500,
+         "description": "LX_WALK_MS(6s)+LX_FLASHING_DONT_WALK_MS(4s)=10s later the sequence completes to DONT_WALK despite continuous simulated 'holding' of the button (repeated '1' presses every 2s) - proves lx_fsm_latch_pedestrian_request()'s coalescing (ped_recall) does not hang or infinite-loop under a stuck-style input. There is no printed FAULT_PED_BUTTON_STUCK message to check for in either direction (by design, per lx_fsm.c's own comment: 'FAULT_PED_BUTTON_STUCK ... is never set by this file') - this is a code-confirmed limitation, not something a missing-pattern check could additionally verify."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-FAULT-20",
+      "title": "Stuck vehicle sensor (arterial demand held forever, never cleared) does not set FAULT_VEHICLE_SENSOR_STUCK - accepted PoC limitation, confirmed system keeps cycling normally",
+      "type": "negative",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0, "node_id": "L1", "send": "a"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL GREEN", "within_ms": 95000,
+         "description": "cold start is MODE_PEAK_FIXED (no Central in environment A to send SET_MODE to MODE_OFF_PEAK_SENSOR), so LX_CYCLE_LENGTH_MS (90s: 48+4+2+30+4+2) elapses on a fixed schedule regardless of arterial_vehicle_demand. The very first 'SIGNAL -> ARTERIAL GREEN' print happens at process cold-start, before this check's since_monotonic cutoff (t0, set after setup_wait_ms) - so this check only matches the SECOND arterial-green entry, one full 90s cycle later, proving the intersection keeps cycling normally (never freezes into FAULT_SAFE) even though fsm->arterial_vehicle_demand has been held at 1 with 'A' never pressed. As with TC-FAULT-19, there is no FAULT_VEHICLE_SENSOR_STUCK printf to check for - lx_fsm.c has no elapsed-time-since-asserted tracking for this demand flag at all, by design."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-FAULT-21",
+      "title": "Stuck train-approaching sensor (repeated '0' before the 5s warning timer elapses) does not reset the closing timer or set FAULT_TRAIN_SENSOR_STUCK - accepted PoC limitation",
+      "type": "negative",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0,    "node_id": "RL1", "send": "0"},
+        {"after_ms": 1000, "node_id": "RL1", "send": "0"},
+        {"after_ms": 2000, "node_id": "RL1", "send": "0"},
+        {"after_ms": 3000, "node_id": "RL1", "send": "0"},
+        {"after_ms": 4000, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "RLx: commanding gates DOWN \\(simulated motion, 3000 ms\\)", "within_ms": 6500,
+         "description": "RLX_WARNING case in rlx_fsm_simulate_train_approaching() only calls register_window() again on a repeated '0' (self-loop) - it does NOT reset fsm->state_elapsed_ms. If repeated presses incorrectly reset the timer, enter_closing() would only fire at ~4000+5000=9000ms after the LAST press; instead it fires at ~5000ms after the FIRST press (within this check's 6500ms budget), proving the 'stuck sensor' repeated-approach signal does not delay closing. RLX_WARNING_DIAGNOSTIC_TIMEOUT_MS (60s, rlx_timer.h) exists but is RESERVED/unreferenced, and no FAULT_TRAIN_SENSOR_STUCK printf exists anywhere in rlx_fsm.c/rlx_gate.c to check for - confirmed by code review as well as this runtime timing check."}
+      ],
+      "cleanup_wait_ms": 500
+    }
+  ]
+}

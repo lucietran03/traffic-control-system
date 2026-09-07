@@ -1,0 +1,667 @@
+{
+  "_comment_schema_extension": "Every case below adds a 'repeat' integer field (not in the original README schema - see the appended note in tools/test-automation/README.md). Meaning: run this exact case N times back-to-back (the runner already launches fresh node subprocesses per run_case() call, which naturally satisfies 'restart the whole system between sessions' for the cases that call for it); the case is reported PASS only if every one of the N runs independently passes. This directly encodes 06-concurrency-race.md's own repeated recommendation ('lặp lại tối thiểu N lần') that a human can't reliably do by hand but a script can.",
+  "_comment_known_gap": "wait_for_pattern() (runner.py) proves a pattern occurred somewhere in the [after_ms, after_ms+within_ms] window (both measured from case-start t0) - checks below use 'after_ms' wherever a case's log can legitimately print the exact same line more than once in one run (e.g. TC-RACE-1/2/3/16/17/20), to make sure the check targets the SPECIFIC occurrence the race is actually about instead of trivially matching an earlier, differently-meaningful occurrence of identical text. What after_ms/within_ms still CANNOT express is an exact occurrence COUNT ('exactly one 2nd cycle, not zero, not many' for TC-RACE-1/3; 'the clearance line prints only once, never twice' for TC-RACE-8) - confirming that still requires eyeballing results/<id>/<node>.log (grep -c), same class of limitation the README's own 'Known gap' section already documents for cross-node timing gaps. Where a check below still has this residual limitation, its own description says so explicitly.",
+  "test_cases": [
+    {
+      "id": "TC-RACE-1",
+      "title": "Re-press same-side pedestrian button mid-WALK is coalesced into one recall cycle, not lost",
+      "type": "edge",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 3,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0, "node_id": "L1", "send": "1"},
+        {"after_ms": 1000, "node_id": "L1", "send": "1"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> WALK", "within_ms": 1000,
+         "description": "lx_fsm_init() starts in PHASE_ARTERIAL_GREEN; first '1' press must start WALK almost immediately (lx_fsm_latch_pedestrian_request -> next 100ms tick)."},
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> FLASHING_DONT_WALK", "within_ms": 6600,
+         "description": "LX_WALK_MS=6000ms after WALK begins (lx_timer.h) - cannot legitimately appear earlier, so this bound is tight against the real FSM timing, not arbitrary."},
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> DONT_WALK", "within_ms": 4600,
+         "description": "LX_FLASHING_DONT_WALK_MS=4000ms after FDW begins; this is the tick where ped_recall[0] (set by the 2nd press while mid-WALK) is consumed (lx_fsm.c lines ~172-194)."},
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> WALK", "within_ms": 700, "after_ms": 10000,
+         "description": "TL-06 coalesce invariant: the 2nd press must not be dropped - since ped_recall[0] left ped_latched[0]=1, the very next 100ms tick after DONT_WALK must start a fresh WALK automatically. after_ms=10000 (the earliest DONT_WALK could possibly occur, WALK 6000 + FDW 4000) excludes the very first WALK line at t~0-100ms, so this specifically requires a NEW occurrence after the first cycle ended - a bug that permanently drops side 0 at DONT_WALK (no further WALK ever printed after t=10000ms) correctly fails this check by timeout."}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-RACE-2",
+      "title": "Re-press same side exactly at the FLASHING_DONT_WALK->DONT_WALK tick boundary never permanently drops the request",
+      "type": "edge",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 10,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0, "node_id": "L1", "send": "1"},
+        {"after_ms": 10050, "node_id": "L1", "send": "1"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> DONT_WALK", "within_ms": 1500,
+         "description": "WALK(6000ms)+FDW(4000ms)=10000ms minimum; the 2nd press at t=10050ms is deliberately aimed at the FDW->DONT_WALK tick boundary (lx_fsm.c PED_PHASE_FLASHING_DONT_WALK branch, lines 172-194) - repeat=10 relies on natural per-process tick-phase jitter (0-100ms, fixed for lx_main's 100ms periodic timer) to sample both sides of the boundary across runs, since a human/script can't know the exact phase in advance."},
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> WALK", "within_ms": 700, "after_ms": 10000,
+         "description": "Whichever branch is taken (ped_recall kept ped_latched[0]=1, or a fresh ped_latched[0]=1 set after DONT_WALK already cleared it), lx_fsm_ped_service_tick_locked() re-evaluates compatible_mask on the very next 100ms tick either way - so a new WALK must appear within ~1-2 ticks of DONT_WALK regardless of which internal path was taken. after_ms=10000 excludes the very first (t~0-100ms) WALK line, so this specifically demands a NEW occurrence - side 0 must NEVER end up stuck at DONT_WALK forever, which a bug here would show as a timeout."}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-RACE-3",
+      "title": "Spamming the same pedestrian button >=5 times across WALK+FDW coalesces into exactly one pending recall",
+      "type": "edge",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 3,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0, "node_id": "L1", "send": "1"},
+        {"after_ms": 1200, "node_id": "L1", "send": "1"},
+        {"after_ms": 1250, "node_id": "L1", "send": "1"},
+        {"after_ms": 3000, "node_id": "L1", "send": "1"},
+        {"after_ms": 3050, "node_id": "L1", "send": "1"},
+        {"after_ms": 3100, "node_id": "L1", "send": "1"},
+        {"after_ms": 7000, "node_id": "L1", "send": "1"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> DONT_WALK", "within_ms": 1800,
+         "description": "First full cycle ends at ~10000ms after t=0 (WALK 6000 + FDW 4000); irregular spam (some <200ms apart, some seconds apart per the test plan) must not disturb this schedule since ped_recall[side]=1 is idempotent (lx_fsm_latch_pedestrian_request)."},
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> WALK", "within_ms": 700, "after_ms": 10000,
+         "description": "Exactly ONE follow-up WALK/FDW cycle is expected (TL-06 'coalesce repeated presses'), not one per keypress and not zero. after_ms=10000 excludes the initial t~0 WALK line so this proves a genuinely NEW cycle started ('not zero'); see _comment_known_gap for why 'not more than one' still needs a manual results/L1.log line-count check (after_ms gives a floor, not a count limit)."}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-RACE-4",
+      "title": "Two arterial-compatible pedestrian buttons pressed within the same 100ms tick are served in one shared cycle",
+      "type": "edge",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 10,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0, "node_id": "L1", "send": "12"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> WALK", "within_ms": 300,
+         "description": "Sending '1' and '2' as a single write() (one 'send' string, two chars) delivers both bytes to lx_sensor_reader_thread's scanf loop in the same syscall, virtually guaranteeing both lx_fsm_latch_pedestrian_request() calls land in the same 100ms tick before lx_fsm_ped_service_tick_locked() next runs - stronger than a human's <100ms two-keypress attempt."},
+        {"node_id": "L1", "pattern": "PED SIGNAL side 1 -> WALK", "within_ms": 100,
+         "description": "Both sides must join the SAME compatible_mask (lx_fsm.c lines 129-158) and start WALK together - side 1's WALK line must appear within ~1 tick of side 0's, not ~10000ms later (which is what happens if the 2nd press missed this cycle and had to wait for the next one, per the test plan's own explicit non-bug carve-out)."},
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> FLASHING_DONT_WALK", "within_ms": 6500,
+         "description": "Confirms side 0 completes its normal WALK duration undisturbed by the simultaneous side-1 latch."},
+        {"node_id": "L1", "pattern": "PED SIGNAL side 1 -> FLASHING_DONT_WALK", "within_ms": 200,
+         "description": "Side 1 must transition to FDW in lockstep with side 0 (both share fsm->ped_phase/ped_phase_elapsed_ms) - appearing on the same tick as side 0's FDW line, not offset by a separate cycle."}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-RACE-5",
+      "title": "REQUEST_OVERRIDE arriving in the last tick of pedestrian FDW clearance activates in the SAME tick clearance ends",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 10,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main"},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 800,
+      "steps": [
+        {"after_ms": 0, "node_id": "L1", "send": "1"},
+        {"after_ms": 9750, "node_id": "C1", "send": "o"},
+        {"after_ms": 9760, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 9770, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 9780, "node_id": "C1", "send": "30000\n"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> FLASHING_DONT_WALK", "within_ms": 6600,
+         "description": "FDW begins ~6000ms after the WALK press (LX_WALK_MS); FDW itself lasts LX_FLASHING_DONT_WALK_MS=4000ms, i.e. ends at ~10000ms - the override request is deliberately timed to land at t=9750-9780ms, in FDW's last ~250ms."},
+        {"node_id": "C1", "pattern": "REQUEST_OVERRIDE to 1 -> ACK_PENDING", "within_ms": 1000,
+         "description": "lx_fsm_on_request_override() (lx_fsm.c lines 731-789): while fsm->ped_clearance_active is still set (FDW still running when the request is processed), the result must be ACK_PENDING/OVR_PENDING_CLEARANCE, never a plain ACK that would imply the clearance was truncated."},
+        {"node_id": "L1", "pattern": "PED SIGNAL side 0 -> DONT_WALK", "within_ms": 1000,
+         "description": "Confirms FDW completes normally, undisturbed by the pending override - this is the exact tick where ped_clearance_active drops to 0 and OVR_PENDING_CLEARANCE must flip to OVR_ACTIVE per lx_fsm_on_phase_timer()'s ordering fix (ped-service tick runs BEFORE the override re-validation in the same tick, lx_fsm.c lines 964-997)."},
+        {"node_id": "C1", "pattern": "^L1\\s.*\\s1\\s+(AVAILABLE|UNAVAILABLE)\\s*$", "within_ms": 3000,
+         "description": "c_hmi_render()'s OVERRIDE column (c_hmi.c) becomes 1 once L1's next HEARTBEAT reports override_active - this is only a ~1s-resolution confirmation (heartbeat+render are both 1Hz), consistent with 06-concurrency-race.md's own admission that sub-second activation-timing can't be proven from logs alone; it corroborates activation happened without an extra half-cycle delay, it does not itself prove 'same tick'."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-RACE-6",
+      "title": "Two REQUEST_OVERRIDE sent back-to-back for the same Lx: exactly one ACK, one NACK OUT_OF_RANGE, never both ACK",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 5,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main"},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0, "node_id": "C1", "send": "o"},
+        {"after_ms": 10, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 20, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 30, "node_id": "C1", "send": "60000\n"},
+        {"after_ms": 40, "node_id": "C1", "send": "o"},
+        {"after_ms": 50, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 60, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 70, "node_id": "C1", "send": "60000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 1500,
+         "description": "c_mode_eng_validate_override_request() has no 'already in flight' pre-check (that's deliberately Lx's job, see c_operator.c's handle_request_override doc comment) - both requests reach lx_fsm_on_request_override() over real IPC. The first must be plain ACK (fsm->supervisory was NORMAL_OPERATION)."},
+        {"node_id": "C1", "pattern": "REQUEST_OVERRIDE to 1 -> NACK reason=OUT_OF_RANGE", "within_ms": 500,
+         "description": "lx_fsm_on_request_override() (lx_fsm.c lines 737-751): the 2nd request sees fsm->supervisory==SUPERVISORY_CENTRAL_OVERRIDE already set by the 1st, and must be rejected NACK_REASON_OUT_OF_RANGE (the documented 'reuse RENEW_OVERRIDE instead' code path) - never silently ACK and overwrite the 1st request's target/duration."}
+      ],
+      "cleanup_wait_ms": 300
+    },
+    {
+      "id": "TC-RACE-7",
+      "title": "RENEW_OVERRIDE arriving right at natural override expiry resolves cleanly to ACK or NACK, never a half state",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 10,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main"},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0, "node_id": "C1", "send": "o"},
+        {"after_ms": 10, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 20, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 30, "node_id": "C1", "send": "500\n"},
+        {"after_ms": 530, "node_id": "C1", "send": "r"},
+        {"after_ms": 540, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 550, "node_id": "C1", "send": "0\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 500,
+         "description": "Baseline override accepted with a short 500ms duration_ms (well within PA-11's (0,300000] bound) to make natural expiry reachable quickly and repeatably."},
+        {"node_id": "C1", "pattern": "RENEW_OVERRIDE to 1 -> (ACK|NACK reason=UNKNOWN_TARGET)", "within_ms": 2000,
+         "description": "override_remaining_ms is decremented in 100ms ticks (LX_PHASE_TICK_MS) starting from the tick after acceptance, so real wall-clock expiry lands ~400-600ms after acceptance depending on tick-phase alignment - renew is sent at exactly the +500ms nominal boundary and repeat=10 samples the natural per-run jitter on both sides, per lx_fsm_on_renew_override() (lx_fsm.c lines 791-814): before expiry it must ACK and restart the timer; at/after expiry (override_substate no longer OVR_ACTIVE) it must cleanly NACK_REASON_UNKNOWN_TARGET. Any OTHER outcome (crash, hang, wrong reason code) fails this check."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-RACE-8",
+      "title": "CANCEL_OVERRIDE arriving right at natural override expiry is idempotent with terminate_override_locked, never double-fires",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 10,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main"},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0, "node_id": "C1", "send": "o"},
+        {"after_ms": 10, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 20, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 30, "node_id": "C1", "send": "500\n"},
+        {"after_ms": 530, "node_id": "C1", "send": "c"},
+        {"after_ms": 540, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 500,
+         "description": "Baseline short-duration override, same rationale as TC-RACE-7."},
+        {"node_id": "C1", "pattern": "CANCEL_OVERRIDE to 1 -> (ACK|NACK reason=UNKNOWN_TARGET)", "within_ms": 2000,
+         "description": "lx_fsm_on_cancel_override() (lx_fsm.c lines 816-830): ACK if cancel wins the race against natural expiry, NACK_REASON_UNKNOWN_TARGET if expiry already ran (override_substate already OVR_NONE) - either is correct, a 3rd outcome is not."},
+        {"node_id": "L1", "pattern": "override cleared/expired - running safe clearance sequence", "within_ms": 500,
+         "description": "lx_fsm_terminate_override_locked() (lx_fsm.c lines 205-216) must run exactly once for this override regardless of whether cancel or expiry triggered it - this line is only reachable from that one function, so its presence confirms clean termination occurred; the 'not printed twice for the same override' half of the invariant needs a manual grep -c on results/L1.log per this file's _comment_known_gap (the check tool has no count assertion)."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-RACE-9a",
+      "title": "Railway preemption arriving BEFORE a REQUEST_OVERRIDE for the adjacent Lx forces NACK_RAILWAY_CONFLICT",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 5,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main"},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 1500,
+      "steps": [
+        {"after_ms": 0, "node_id": "RL1", "send": "0"},
+        {"after_ms": 1200, "node_id": "C1", "send": "o"},
+        {"after_ms": 1210, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 1220, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 1230, "node_id": "C1", "send": "60000\n"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "flashers ON \\(train approaching, direction 0\\)", "within_ms": 500,
+         "description": "RL1 (adjacent to L1/L2 per rlx_comm.c's ADJACENCY table) enters RLX_WARNING immediately on '0'."},
+        {"node_id": "C1", "pattern": "REQUEST_OVERRIDE to 1 -> NACK reason=RAILWAY_CONFLICT", "within_ms": 3000,
+         "description": "Correction vs. this test's original .md wording: rlx_comm_broadcast_crossing_status_if_changed() sends MSG_CROSSING_STATUS on RL1's very next 1Hz tick after any crossing_state change (map_to_crossing_state(RLX_WARNING)=CROSSING_WARNING, which already != CROSSING_OPEN) - NOT after the 5s WARNING_TO_CLOSING_MS lead time as the prose implied. The override is sent at t=1200ms, comfortably after RL1's first post-press tick (fires within [1000,2000]ms of RL1's own start given setup_wait_ms=1500), so lx_fsm_on_request_override()'s SUPERVISORY_RAILWAY_PREEMPTION check (lx_fsm.c line 756) must already be active and NACK the request."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-RACE-9b",
+      "title": "Railway preemption arriving AFTER an override was already ACKed evicts it via safe clearance",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 5,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main"},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 1500,
+      "steps": [
+        {"after_ms": 0, "node_id": "C1", "send": "o"},
+        {"after_ms": 10, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 20, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 30, "node_id": "C1", "send": "60000\n"},
+        {"after_ms": 300, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 500,
+         "description": "Override must be accepted (fully ACKed) BEFORE the crossing status arrives - IPC round-trip on loopback is normally single-digit ms, comfortably inside the 300ms head start given to it here."},
+        {"node_id": "RL1", "pattern": "flashers ON \\(train approaching, direction 0\\)", "within_ms": 200,
+         "description": "Confirms the press at t=300ms registered."},
+        {"node_id": "L1", "pattern": "override cleared/expired - running safe clearance sequence", "within_ms": 2000,
+         "description": "lx_fsm_on_crossing_status() (lx_fsm.c lines 832-891): CC-02 requires an active CENTRAL_OVERRIDE to be evicted through lx_fsm_terminate_override_locked() the moment a non-OPEN crossing status arrives, which happens on RL1's next 1Hz tick after the press - never left running in parallel with RAILWAY_PREEMPTION."},
+        {"node_id": "C1", "pattern": "^L1\\s.*\\s0\\s+(AVAILABLE|UNAVAILABLE)\\s*$", "within_ms": 3000,
+         "description": "HMI OVERRIDE column for L1 must drop back to 0 once the eviction is reported via L1's next heartbeat - confirms supervisory truly left CENTRAL_OVERRIDE, not just printed the clearance line."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-RACE-10",
+      "title": "Watchdog trip racing an ACTIVE override on a second thread",
+      "type": "edge",
+      "environment": "A",
+      "skip": true,
+      "skip_reason": "lx_watchdog_thread() (lx_watchdog.c) only trips lx_fsm_report_watchdog_trip() after genuinely observing 2s of zero phase_tick_counter advancement - i.e. the server thread must actually be hung. Unlike RLx's gate fault path (rlx_gate_arm_demo_fault(), a real keyboard-reachable demo hook), lx_main.c/lx_watchdog.c expose no equivalent demo hook to force a trip on demand. Genuinely inducing this via scripted stdin+after_ms is not possible without either modifying the QNX C code (out of scope per this tool's own charter) or actually stalling the process (e.g. SIGSTOP on a specific thread), which defeats the point of then observing its FSM behavior over IPC. This is the 'requires a mechanism a regex/keystroke script can't replace' case the README's skip criterion is for, not a precision problem repeat=N could fix.",
+      "nodes": [],
+      "setup_wait_ms": 0,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 0
+    },
+    {
+      "id": "TC-RACE-11",
+      "title": "Multiple SET_MODE flip-flops before the next ALL_RED boundary: only the LAST one applies",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 3,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main"},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0, "node_id": "C1", "send": "m"},
+        {"after_ms": 10, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 20, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 1000, "node_id": "C1", "send": "m"},
+        {"after_ms": 1010, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 1020, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 2000, "node_id": "C1", "send": "m"},
+        {"after_ms": 2010, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 2020, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 3000, "node_id": "C1", "send": "m"},
+        {"after_ms": 3010, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 3020, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 4000, "node_id": "C1", "send": "m"},
+        {"after_ms": 4010, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 4020, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "SET_MODE to 1 -> (ACK|ACK_PENDING)", "within_ms": 1000,
+         "description": "All 5 SET_MODE commands are accepted immediately at the IPC layer (lx_fsm_on_set_mode always ACK/ACK_PENDING outside FAULT_SAFE) - this just confirms the burst was actually delivered and processed, not silently dropped."},
+        {"node_id": "L1", "pattern": "SIGNAL -> ALL RED \\(A to B\\)", "within_ms": 51000,
+         "description": "L1 starts in PHASE_ARTERIAL_GREEN with the full LX_PEAK_ARTERIAL_GREEN_MS=48000ms + LX_YELLOW_MS=4000ms ahead of it at t=0 - waits out the ordinary cycle to reach the first ALL_RED_A_TO_B boundary where lx_fsm_advance_phase_locked() applies fsm->pending_mode (lx_fsm.c lines 236-242)."},
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+1\\s", "within_ms": 3000,
+         "description": "The final SET_MODE sent (mode=1/OFF_PEAK_SENSOR at t=4000ms) must be the one that wins - c_hmi_render()'s MODE column for L1 must read 1, not 0 or any intermediate value, proving mode_change_pending's last-write-wins semantics (lx_fsm_on_set_mode, lx_fsm.c lines 689-729) survived the flip-flop burst."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-RACE-12",
+      "title": "Mode change applied at BOTH ALL_RED boundaries in the same run (regression: previously only A_TO_B was fixed)",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 3,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main"},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0, "node_id": "C1", "send": "m"},
+        {"after_ms": 10, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 20, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 54500, "node_id": "C1", "send": "m"},
+        {"after_ms": 54510, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 54520, "node_id": "C1", "send": "0\n"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "SIGNAL -> ALL RED \\(A to B\\)", "within_ms": 52000,
+         "description": "48000(arterial green)+4000(yellow) after t=0 - first boundary, where lx_fsm_advance_phase_locked()'s A_TO_B branch (lx_fsm.c lines 236-242) applies mode=1 (OFF_PEAK_SENSOR)."},
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+1\\s", "within_ms": 3000,
+         "description": "Confirms mode actually flipped to 1 at the A_TO_B boundary before the 2nd SET_MODE is even sent (2nd send is scheduled for t=54500ms, i.e. after this boundary at ~52000ms plus the following 2000ms all-red)."},
+        {"node_id": "L1", "pattern": "SIGNAL -> CONNECTOR GREEN", "within_ms": 2500,
+         "description": "Confirms the sequencer actually crossed ALL_RED_A_TO_B (2000ms) into connector green, so the 2nd SET_MODE (sent at t=54500ms, i.e. shortly after connector green begins) targets the SAME B_TO_A boundary this test wants to exercise, not a stale phase."},
+        {"node_id": "L1", "pattern": "SIGNAL -> ALL RED \\(B to A\\)", "within_ms": 32000,
+         "description": "30000(connector green, mode is OFF_PEAK_SENSOR by now so this uses the demand-driven exit guard and could in principle exit earlier with no demand pressure applied here so it runs the full duration)+buffer - reaches the SECOND boundary where the B_TO_A branch (lx_fsm.c lines 301-309, the one the regression comment at lines 302-305 flags as previously dropped) must ALSO apply the pending mode."},
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+0\\s", "within_ms": 3000,
+         "description": "Confirms mode flipped back to 0 (PEAK_FIXED) at the B_TO_A boundary too - if only the A_TO_B branch worked (the historical bug), this column would still read 1 here."},
+        {"node_id": "L1", "pattern": "SIGNAL -> ARTERIAL GREEN", "within_ms": 2500,
+         "description": "Confirms the sequencer completed the B_TO_A boundary and resumed arterial green, proving the 2nd mode change did not stall the phase machine."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-RACE-13",
+      "title": "SET_TIMING_PROFILE offset and SET_MODE sent nearly simultaneously in the same phase never leave a pending flag stuck",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 3,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main"},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 54500,
+      "steps": [
+        {"after_ms": 0, "node_id": "C1", "send": "t"},
+        {"after_ms": 10, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 200, "node_id": "C1", "send": "m"},
+        {"after_ms": 210, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 220, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "SET_TIMING_PROFILE \\(profile \\d+\\) to 1 -> ACK$", "within_ms": 1000,
+         "description": "setup_wait_ms=54500ms lets L1 (starts in PHASE_ARTERIAL_GREEN) run past its first ALL_RED_A_TO_B boundary into PHASE_CONNECTOR_GREEN before either command is sent, matching the test plan's prep step. offset_apply_pending is only set here (lx_fsm_on_set_timing_profile, lx_fsm.c lines 654-687), not yet consumed (that only happens at the next fresh PHASE_ARTERIAL_GREEN entry)."},
+        {"node_id": "C1", "pattern": "SET_MODE to 1 -> ACK_PENDING", "within_ms": 500,
+         "description": "mode_change_pending set to switch to OFF_PEAK_SENSOR, deferred to the upcoming ALL_RED_B_TO_A boundary - sent ~200ms after the timing profile, well within the same PHASE_CONNECTOR_GREEN."},
+        {"node_id": "L1", "pattern": "SIGNAL -> ALL RED \\(B to A\\)", "within_ms": 32000,
+         "description": "Remaining PHASE_CONNECTOR_GREEN (up to 30000ms, still PEAK_FIXED mode at exit-check time since mode_change_pending is only consumed AT this boundary) + buffer."},
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+1\\s", "within_ms": 3000,
+         "description": "Confirms mode_change_pending was consumed exactly at this boundary (not stuck forever, not applied early)."},
+        {"node_id": "L1", "pattern": "SIGNAL -> ARTERIAL GREEN", "within_ms": 2500,
+         "description": "By the design documented in lx_fsm_apply_offset_locked()'s doc comment (lx_fsm.c lines 486-652), because mode is now OFF_PEAK_SENSOR (not MODE_PEAK_FIXED) at this fresh ARTERIAL_GREEN entry, the guard at line 586 returns early WITHOUT applying the offset - but per line 343 offset_apply_pending is still cleared unconditionally right before the call, so it can never re-fire on a later cycle once mode returns to PEAK_FIXED. This line's mere appearance (the sequencer keeps advancing normally) is the observable proof that neither pending flag deadlocked the phase machine; the offset's silent no-op is not independently visible via any printf and is accepted here as a code-reading-verified invariant rather than a log-checkable one."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-RACE-14",
+      "title": "Two trains approaching from different directions in immediate succession both get tracked and both get PROCEED",
+      "type": "edge",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 3,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0, "node_id": "RL1", "send": "01"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "flashers ON \\(train approaching, direction 0\\)", "within_ms": 500,
+         "description": "RLX_OPEN -> RLX_WARNING on the first char; register_window() (rlx_fsm.c lines 83-104) opens slot 0 for direction 0."},
+        {"node_id": "RL1", "pattern": "train signal PROCEED for direction 0", "within_ms": 8500,
+         "description": "WARNING->CLOSING takes 4000-5000ms (5 ticks of RLX_WARNING_TO_CLOSING_MS=5000 from an arbitrary tick-phase offset), then CLOSING->CLOSED takes exactly 3000ms more (RLX_GATE_MOTION_MS) - both PROCEED lines print together in check_closing_or_reclosing_complete()'s loop over all active windows at that single CLOSED-entry tick."},
+        {"node_id": "RL1", "pattern": "train signal PROCEED for direction 1", "within_ms": 200,
+         "description": "Sending '0' and '1' as one combined write() delivers both to rlx_sensor_reader_thread's scanf loop in immediate succession, so direction 1's window registers via the RLX_WARNING self-loop branch (rlx_fsm.c lines 247-253) before the WARNING->CLOSING transition - both windows must be active and both must get PROCEED on the same tick as direction 0, not one direction silently dropped by register_window()'s 2-slot bookkeeping (RLX_MAX_OCCUPANCY_WINDOWS=2, rlx_fsm.h)."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-RACE-15",
+      "title": "Repeated same-direction presses while both occupancy slots are full only ever refresh, never overflow the 2-slot table",
+      "type": "edge",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 3,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0, "node_id": "RL1", "send": "0"},
+        {"after_ms": 300, "node_id": "RL1", "send": "0"},
+        {"after_ms": 600, "node_id": "RL1", "send": "0"},
+        {"after_ms": 900, "node_id": "RL1", "send": "0"},
+        {"after_ms": 1200, "node_id": "RL1", "send": "0"},
+        {"after_ms": 1500, "node_id": "RL1", "send": "1"},
+        {"after_ms": 1800, "node_id": "RL1", "send": "0"},
+        {"after_ms": 2000, "node_id": "RL1", "send": "1"},
+        {"after_ms": 2200, "node_id": "RL1", "send": "0"},
+        {"after_ms": 2400, "node_id": "RL1", "send": "1"},
+        {"after_ms": 2600, "node_id": "RL1", "send": "0"},
+        {"after_ms": 2800, "node_id": "RL1", "send": "1"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "flashers ON \\(train approaching, direction 0\\)", "within_ms": 500,
+         "description": "First press opens the one and only slot for direction 0."},
+        {"node_id": "RL1", "pattern": "train signal PROCEED for direction 0", "within_ms": 8500,
+         "description": "register_window()'s refresh branch (rlx_fsm.c lines 87-92) means every repeated '0'/'1' after the first of each direction only resets remaining_ms for the EXISTING slot - RLX_MAX_OCCUPANCY_WINDOWS=2 makes it structurally impossible for this implementation to print more than 2 PROCEED lines regardless of spam volume (the loop that prints PROCEED only ever iterates the fixed 2-element windows[] array), so this check's real purpose is confirming the spam did not somehow LOSE direction 0's window."},
+        {"node_id": "RL1", "pattern": "train signal PROCEED for direction 1", "within_ms": 200,
+         "description": "Direction 1's slot (opened at t=1500ms, refreshed 3 more times by the alternating spam) must also survive to PROCEED, proving the alternating dense presses didn't corrupt either slot's bookkeeping."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-RACE-16",
+      "title": "Two occupancy windows that expire on the exact same tick trigger exactly one reopening, not one-window-early",
+      "type": "edge",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 3,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0, "node_id": "RL1", "send": "01"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "train signal PROCEED for direction 1", "within_ms": 8500,
+         "description": "Sanity checkpoint (same as TC-RACE-14) before the longer wait below - both windows are now active with identical remaining_ms, since enter_train_present() (rlx_fsm.c lines 178-196) assigns RLX_OCCUPANCY_WINDOW_MS=20000 to every remaining_ms==0 window in the SAME call, guaranteeing they expire on the same tick 20000ms later."},
+        {"node_id": "RL1", "pattern": "commanding gates UP \\(simulated motion, 3000 ms\\)", "within_ms": 2500, "after_ms": 46500,
+         "description": "CLOSED->TRAIN_PRESENT after RLX_EXPECTED_ARRIVAL_MS=20000ms more (CLOSED entry at t0+[7000,8000) per TC-RACE-14's derivation -> TRAIN_PRESENT at t0+[27000,28000)), then both windows count down RLX_OCCUPANCY_WINDOW_MS=20000ms in lockstep -> enter_opening() at t0+[47000,48000). after_ms=46500 is a real lower bound (500ms below the earliest theoretically-possible correct time, as safety margin against process/launch jitter, NOT against the bug): the historical bug this regresses against (checking active_window_count==0 INSIDE the windows[] loop right after clearing the first window, instead of after the whole loop per rlx_fsm.c lines 375-389/384-386) would fire enter_opening() one whole tick (1000ms) early - comfortably outside this 46500ms floor - so this check now genuinely catches that regression, not just 'eventually happens'."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-RACE-17",
+      "title": "A new TRAIN_APPROACHING for the other direction during the 3s gate-OPENING window aborts the open and recloses safely",
+      "type": "edge",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 5,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0, "node_id": "RL1", "send": "0"},
+        {"after_ms": 49000, "node_id": "RL1", "send": "1"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "train signal PROCEED for direction 0", "within_ms": 8500,
+         "description": "Sanity checkpoint before the long wait to OPENING."},
+        {"node_id": "RL1", "pattern": "commanding gates UP \\(simulated motion, 3000 ms\\)", "within_ms": 40000,
+         "description": "OPENING begins at ~47000-48000ms after t=0 (see TC-RACE-16's derivation); the '1' press at t=49000ms is deliberately placed so it lands inside the 3000ms OPENING window regardless of which end of the [47000,48000) entry-time jitter range this particular run hit (worst case entry=48000 -> window=[48000,51000); best case entry=47000 -> window=[47000,50000); 49000 is inside both)."},
+        {"node_id": "RL1", "pattern": "reclosing - aborting gate-open motion, flashers remain active", "within_ms": 1000,
+         "description": "rlx_fsm_simulate_train_approaching()'s RLX_OPENING case (rlx_fsm.c lines 273-275) must call enter_reclosing() - confirms the abort-and-reclose path fired instead of silently finishing the open into RLX_OPEN."},
+        {"node_id": "RL1", "pattern": "commanding gates DOWN \\(simulated motion, 3000 ms\\)", "within_ms": 1100, "after_ms": 48900,
+         "description": "enter_reclosing() (rlx_fsm.c lines 169-176) commands the gate back down in the same call that logs the reclosing line above. after_ms=48900 (just before the '1' press at t=49000ms) is required here: rlx_gate_command_close() prints this EXACT same line once already, much earlier, during the original WARNING->CLOSING transition (~t0+4000-5000ms) - without this floor, the check would trivially match that old line instead of proving a SECOND close command was issued for the reclose."},
+        {"node_id": "RL1", "pattern": "train signal PROCEED for direction 1", "within_ms": 4000,
+         "description": "After the 3000ms reclose motion confirms closed, check_closing_or_reclosing_complete() must grant PROCEED for the newly-registered direction-1 window - proving the crossing never reports OPEN while a genuinely new train is present, and never gets stuck in an unresolved gate state past RLX_CLOSING_DEADLINE_MS."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-RACE-18",
+      "title": "Fault-clear ('f') immediately followed by a new TRAIN_APPROACHING never swallows the approach event",
+      "type": "edge",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 3,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 0, "node_id": "RL1", "send": "x"},
+        {"after_ms": 100, "node_id": "RL1", "send": "0"},
+        {"after_ms": 21000, "node_id": "RL1", "send": "r"},
+        {"after_ms": 21050, "node_id": "RL1", "send": "f0"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "Next gate motion armed to fail confirmation", "within_ms": 500,
+         "description": "rlx_gate_arm_demo_fault() armed - the upcoming close motion (triggered by '0' at t=100ms) will never set g_confirmed_closed."},
+        {"node_id": "RL1", "pattern": "gate FAILED TO CONFIRM \\(simulated fault\\)", "within_ms": 4000,
+         "description": "3rd tick after CLOSING entry (t~=4100-8100ms depending on WARNING->CLOSING jitter): rlx_gate_on_tick() reports the simulated failure."},
+        {"node_id": "RL1", "pattern": "FAULT latched \\(fault bit", "within_ms": 16000,
+         "description": "check_closing_or_reclosing_complete() escalates to enter_fault(FAULT_GATE_CONFIRM_MISSING) once state_elapsed_ms>=RLX_CLOSING_DEADLINE_MS=15000ms in CLOSING without confirmation - total from the '0' press this lands at roughly [100+4000, 100+5000)+15000 = [19100,20100)ms, comfortably before the 'r'/'f0' steps scheduled at t>=21000ms."},
+        {"node_id": "RL1", "pattern": "fault-clear result=1 reason=0", "within_ms": 500,
+         "description": "'r' (rlx_gate_force_confirmed_open) is sent first at t=21000ms, forcing g_confirmed_open=1 and clearing the demo-fault arm - so the 'f0' combined send at t=21050ms hits rlx_fsm_on_fault_clear() with gates_confirmed_open() now genuinely true, giving RESULT_ACK(1)/NACK_REASON_NONE(0)."},
+        {"node_id": "RL1", "pattern": "flashers ON \\(train approaching, direction 0\\)", "within_ms": 500,
+         "description": "The '0' half of the combined 'f0' send must be read by rlx_sensor_reader_thread right after 'f' finishes (both are handled inline, synchronously, in the same single-threaded scanf loop - rlx_fsm.c's RLX_FAULT case for TRAIN_APPROACHING (lines 277-280) is a no-op specifically to avoid this exact ambiguity) - by the time '0' is processed, state must already be RLX_OPEN (post fault-clear), so this line MUST appear. If it doesn't, the approach event was swallowed by a residual RLX_FAULT check - a real regression this test exists to catch."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-RACE-19",
+      "title": "Operator command burst near ipc_client_post's 16-slot queue capacity does not deadlock or crash Central",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 5,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main"},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "L2", "binary": "lx_main", "args": ["2"]},
+        {"node_id": "L3", "binary": "lx_main", "args": ["3"]},
+        {"node_id": "L4", "binary": "lx_main", "args": ["4"]},
+        {"node_id": "L5", "binary": "lx_main", "args": ["5"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]},
+        {"node_id": "RL2", "binary": "rlx_main", "args": ["2"]},
+        {"node_id": "RL3", "binary": "rlx_main", "args": ["3"]}
+      ],
+      "setup_wait_ms": 800,
+      "steps": [
+        {"after_ms": 0, "node_id": "C1", "send": "t"},
+        {"after_ms": 10, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 30, "node_id": "C1", "send": "t"},
+        {"after_ms": 40, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 60, "node_id": "C1", "send": "t"},
+        {"after_ms": 70, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 90, "node_id": "C1", "send": "t"},
+        {"after_ms": 100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 120, "node_id": "C1", "send": "t"},
+        {"after_ms": 130, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 150, "node_id": "C1", "send": "t"},
+        {"after_ms": 160, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 500, "node_id": "C1", "send": "m"},
+        {"after_ms": 510, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 520, "node_id": "C1", "send": "0\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "SET_MODE to 1 -> ACK$", "within_ms": 3000,
+         "description": "L6 is deliberately not started (simulating one unreachable target, per the test plan's own prep step) and chain R1 (L1/L3/L5, all 3 running here) is broadcast 6 times back-to-back = 18 ipc_client_post() calls against IPC_CLIENT_QUEUE_CAPACITY=16 (qnet_utils.c) in well under a second. REDUCED SCOPE vs. the .md's ideal: on a fast same-machine loopback, name_open()/MsgSend() to a live target typically completes in low single-digit ms, so ipc_client_thread_main()'s single consumer thread usually drains the queue faster than this script can fill it - the .md itself flags environment (C)'s real network latency as the reliable way to force an actual overflow ('Rất khó ép hàng đợi đầy thật... Nếu không đạt được đầy hàng đợi thật, hạ mục tiêu xuống xác nhận không crash'). Per that explicit fallback, this case's PASS criterion is the lowered-scope one: the operator thread and client thread must still be alive and processing a fresh, unrelated command (SET_MODE to L1) submitted right after the burst - proving no deadlock/crash, which IS reliably testable on loopback. A queue-full 'dropped - outgoing queue full or stopping' log line may or may not appear in results/C1.log depending on machine speed; its absence here is not itself a failure."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-RACE-20",
+      "title": "Operator commands interleaved with high-frequency status/heartbeat/HMI traffic never deadlock or corrupt mode_eng_lock-protected state",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "repeat": 3,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main"},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "L2", "binary": "lx_main", "args": ["2"]},
+        {"node_id": "L3", "binary": "lx_main", "args": ["3"]},
+        {"node_id": "L4", "binary": "lx_main", "args": ["4"]},
+        {"node_id": "L5", "binary": "lx_main", "args": ["5"]},
+        {"node_id": "L6", "binary": "lx_main", "args": ["6"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]},
+        {"node_id": "RL2", "binary": "rlx_main", "args": ["2"]},
+        {"node_id": "RL3", "binary": "rlx_main", "args": ["3"]}
+      ],
+      "setup_wait_ms": 3000,
+      "steps": [
+        {"after_ms": 0, "node_id": "C1", "send": "m"}, {"after_ms": 10, "node_id": "C1", "send": "1\n"}, {"after_ms": 20, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 300, "node_id": "C1", "send": "o"}, {"after_ms": 310, "node_id": "C1", "send": "2\n"}, {"after_ms": 320, "node_id": "C1", "send": "0\n"}, {"after_ms": 330, "node_id": "C1", "send": "60000\n"},
+        {"after_ms": 600, "node_id": "C1", "send": "r"}, {"after_ms": 610, "node_id": "C1", "send": "2\n"}, {"after_ms": 620, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 900, "node_id": "C1", "send": "t"}, {"after_ms": 910, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 1200, "node_id": "C1", "send": "c"}, {"after_ms": 1210, "node_id": "C1", "send": "2\n"},
+
+        {"after_ms": 7500, "node_id": "C1", "send": "m"}, {"after_ms": 7510, "node_id": "C1", "send": "1\n"}, {"after_ms": 7520, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 7800, "node_id": "C1", "send": "o"}, {"after_ms": 7810, "node_id": "C1", "send": "2\n"}, {"after_ms": 7820, "node_id": "C1", "send": "0\n"}, {"after_ms": 7830, "node_id": "C1", "send": "60000\n"},
+        {"after_ms": 8100, "node_id": "C1", "send": "r"}, {"after_ms": 8110, "node_id": "C1", "send": "2\n"}, {"after_ms": 8120, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 8400, "node_id": "C1", "send": "t"}, {"after_ms": 8410, "node_id": "C1", "send": "2\n"},
+        {"after_ms": 8700, "node_id": "C1", "send": "c"}, {"after_ms": 8710, "node_id": "C1", "send": "2\n"},
+
+        {"after_ms": 15000, "node_id": "C1", "send": "m"}, {"after_ms": 15010, "node_id": "C1", "send": "1\n"}, {"after_ms": 15020, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 15300, "node_id": "C1", "send": "o"}, {"after_ms": 15310, "node_id": "C1", "send": "2\n"}, {"after_ms": 15320, "node_id": "C1", "send": "0\n"}, {"after_ms": 15330, "node_id": "C1", "send": "60000\n"},
+        {"after_ms": 15600, "node_id": "C1", "send": "r"}, {"after_ms": 15610, "node_id": "C1", "send": "2\n"}, {"after_ms": 15620, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 15900, "node_id": "C1", "send": "t"}, {"after_ms": 15910, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 16200, "node_id": "C1", "send": "c"}, {"after_ms": 16210, "node_id": "C1", "send": "2\n"},
+
+        {"after_ms": 22500, "node_id": "C1", "send": "m"}, {"after_ms": 22510, "node_id": "C1", "send": "1\n"}, {"after_ms": 22520, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 22800, "node_id": "C1", "send": "o"}, {"after_ms": 22810, "node_id": "C1", "send": "2\n"}, {"after_ms": 22820, "node_id": "C1", "send": "0\n"}, {"after_ms": 22830, "node_id": "C1", "send": "60000\n"},
+        {"after_ms": 23100, "node_id": "C1", "send": "r"}, {"after_ms": 23110, "node_id": "C1", "send": "2\n"}, {"after_ms": 23120, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 23400, "node_id": "C1", "send": "t"}, {"after_ms": 23410, "node_id": "C1", "send": "2\n"},
+        {"after_ms": 23700, "node_id": "C1", "send": "c"}, {"after_ms": 23710, "node_id": "C1", "send": "2\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "---- C1 network status ----", "within_ms": 2000,
+         "description": "All 9 controllers running per c_watchdog_mon.c/c_hmi.c: the 1Hz IPC_PULSE_HEARTBEAT_TICK on_pulse() (c_main.c lines 109-118) renders the HMI under mode_eng_lock while the operator thread above is simultaneously locking/unlocking the same mutex around every handle_*() call (c_operator.c) - this is the two-writer contention scenario TC-RACE-20 targets. This particular check only proves rendering happened AT LEAST once somewhere in the run (see this file's _comment_known_gap on why 'still rendering at the very end' specifically isn't independently expressible); the check below is the real end-to-end liveness proof."},
+        {"node_id": "C1", "pattern": "CANCEL_OVERRIDE to 2 -> (ACK|NACK reason=UNKNOWN_TARGET)", "within_ms": 2000, "after_ms": 23650,
+         "description": "This is the LAST command in the last of 4 interleaved m/o/r/t/c cycles (ending at t=23710ms) run concurrently with all 9 controllers' real 1Hz heartbeat/status traffic for ~24s total (a time-boxed stand-in for the .md's recommended 5-minute soak, scaled down for practical suite runtime). after_ms=23650 is required: 'CANCEL_OVERRIDE to 2 -> ...' is printed identically once per cycle (4 times total in this run) - without this floor the check would trivially match the FIRST cycle's reply at ~t=1300ms and pass almost instantly, silently skipping the whole point of running the 24s soak. With the floor, a reply to THIS specific final command can only be logged after every earlier command in the entire burst was actually processed by the operator thread AND the client thread drained its queue - conclusive proof against a full deadlock/lock-order hang between the operator thread and the server thread's on_pulse()/on_request() handlers sharing mode_eng_lock. Torn-read/write corruption of individual controllers[] fields and false 'missed heartbeat' bookkeeping (c_watchdog_mon.c) are still NOT independently checkable via a single regex pass/fail - c_hmi_render()'s per-controller row format lets a human eyeball results/C1.log for any out-of-enum-range value or a spurious 'marked UNAVAILABLE' line for L1/L2, per this file's _comment_known_gap."}
+      ],
+      "cleanup_wait_ms": 800
+    }
+  ]
+}

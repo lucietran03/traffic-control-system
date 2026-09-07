@@ -1,0 +1,1075 @@
+{
+  "test_cases": [
+    {
+      "id": "TC-SC01A-1",
+      "title": "SET_MODE deferred to safe phase boundary (ARTERIAL_GREEN -> ALL_RED_A_TO_B applies mode)",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 800,
+      "steps": [
+        {"after_ms": 1000, "node_id": "C1", "send": "m"},
+        {"after_ms": 1200, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 1400, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "REQUEST.*|C1: SET_MODE to 1 -> ACK_PENDING", "within_ms": 2500,
+         "description": "Central logs ACK_PENDING (not ACK) since requested mode differs from L1's current PEAK_FIXED - lx_fsm_on_set_mode() defers to the next safe boundary"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 49500,
+         "description": "48s fixed PEAK_FIXED green must still elapse fully - mode change must not cut the current green short"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ALL RED \\(A to B\\)", "within_ms": 53500,
+         "description": "4s yellow after the 48s green, unaffected by the pending mode change"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN", "within_ms": 56500,
+         "description": "boundary_after_arterial -> CONNECTOR_GREEN fires regardless of mode; the new mode applies internally during this ALL_RED_A_TO_B processing"},
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+1\\s", "within_ms": 57000,
+         "description": "C1's HMI MODE column for L1 flips 0->1 exactly at the ALL_RED_A_TO_B boundary (~54s from step 1), not sooner - c_hmi_render() 1Hz refresh gives ~1s slack"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC01A-2",
+      "title": "SET_MODE to the already-running mode -> immediate ACK, no deferral, and next distinct request unaffected",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 800, "node_id": "C1", "send": "m"},
+        {"after_ms": 900, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 1000, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 2000, "node_id": "C1", "send": "m"},
+        {"after_ms": 2100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 2200, "node_id": "C1", "send": "1\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: SET_MODE to 1 -> ACK$", "within_ms": 2500,
+         "description": "no-op SET_MODE(PEAK_FIXED) while already PEAK_FIXED must ACK immediately, not ACK_PENDING"},
+        {"node_id": "C1", "pattern": "C1: SET_MODE to 1 -> ACK_PENDING", "within_ms": 3500,
+         "description": "the following genuinely-different SET_MODE(OFF_PEAK_SENSOR) request must be treated as fresh, not conflated with the earlier no-op"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 49500,
+         "description": "current PEAK_FIXED phase must not be disrupted by either SET_MODE call - 48s boundary still holds"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC01A-3",
+      "title": "SET_MODE NACK'd while FAULT_SAFE (watchdog trip)",
+      "type": "negative",
+      "environment": "B",
+      "skip": true,
+      "skip_reason": "Requires kill -STOP <pid> for >2s then kill -CONT <pid> against the running lx_main process to trip the real PA-10 watchdog (LX_WATCHDOG_CHECK_INTERVAL_S). This tool's case schema only supports scripted stdin keystrokes (\"send\") to already-running subprocesses - it has no step type for sending OS signals to a node's pid, so FAULT_SAFE cannot be induced through this harness.",
+      "nodes": [],
+      "setup_wait_ms": 0,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 0
+    },
+    {
+      "id": "TC-SC01B-1",
+      "title": "PEAK_FIXED full 90s cycle (48+4+2+30+4+2)",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 400,
+      "steps": [],
+      "checks": [
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 48800,
+         "description": "48.0s arterial green (LX_PEAK_ARTERIAL_GREEN_MS)"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ALL RED \\(A to B\\)", "within_ms": 52800,
+         "description": "+4.0s yellow (LX_YELLOW_MS)"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN", "within_ms": 54800,
+         "description": "+2.0s all-red (LX_ALL_RED_MS)"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW", "within_ms": 84800,
+         "description": "+30.0s connector green (LX_PEAK_CONNECTOR_GREEN_MS)"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ALL RED \\(B to A\\)", "within_ms": 88800,
+         "description": "+4.0s yellow"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL GREEN", "within_ms": 90800,
+         "description": "+2.0s all-red, back to ARTERIAL GREEN at t~=90.0s = LX_CYCLE_LENGTH_MS. Note: the process's very first ARTERIAL GREEN print happens at lx_fsm_init(), before setup_wait_ms elapses, so its timestamp is < t0 and the runner's since_monotonic filter excludes it from this check - this check therefore genuinely targets the cycle's return, not the initial boot line."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC01B-2",
+      "title": "Approach-presence sensor toggling never shortens/lengthens PEAK_FIXED",
+      "type": "negative",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 400,
+      "steps": [
+        {"after_ms": 500, "node_id": "L1", "send": "a"},
+        {"after_ms": 700, "node_id": "L1", "send": "A"},
+        {"after_ms": 900, "node_id": "L1", "send": "a"},
+        {"after_ms": 1100, "node_id": "L1", "send": "A"},
+        {"after_ms": 1300, "node_id": "L1", "send": "c"},
+        {"after_ms": 1500, "node_id": "L1", "send": "C"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 48800,
+         "description": "lx_fsm_on_phase_timer()'s PEAK_FIXED branch never reads arterial_vehicle_demand/connector_vehicle_demand - transition still fires at exactly 48s despite the toggling"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC01B-3",
+      "title": "Exact 48000ms boundary, not 100ms early",
+      "type": "edge",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 400,
+      "steps": [],
+      "checks": [
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 48700,
+         "description": "Upper-bound edge check: tick 480 (t=48000ms) is the first tick satisfying green_elapsed_ms>=48000, so ARTERIAL YELLOW must appear by ~48.1s+overhead. NOTE: this tool's checks can only assert 'appears within N ms of t0', not 'does not appear before N ms' - the doc's 47.9s lower-bound half of this edge case cannot be proven by this harness (would need a negative/absence assertion the runner schema does not support); a human/stopwatch or an enhanced runner would be needed to fully close that gap."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC01C-1",
+      "title": "OFF_PEAK_SENSOR minimum green 8s honoured despite opposing demand",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 300, "node_id": "C1", "send": "m"},
+        {"after_ms": 400, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 500, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 68000, "node_id": "L1", "send": "c"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: SET_MODE to 1 -> ACK_PENDING", "within_ms": 2500,
+         "description": "mode change deferred (applies at the ~54s ALL_RED_A_TO_B boundary of the still-running PEAK_FIXED cycle)"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 76500,
+         "description": "ASSUMPTION (noted for reviewer): mode applies at the ~54s boundary; the intervening transitional CONNECTOR_GREEN (now OFF_PEAK, zero connector demand) is derived to exit at its own 8s min-green, landing the next (first true OFF_PEAK) ARTERIAL_GREEN at ~t=68000ms from t0. The 'c' keypress at t=68000ms creates connector demand with zero arterial demand; lx_timer_should_exit_green() must still refuse to exit before elapsed_ms>=LX_MIN_GREEN_MS=8000, so ARTERIAL YELLOW should land at ~68000+8000=76000ms, not at the first 4s recheck (72000ms)."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC01C-2",
+      "title": "DP-04: no demand anywhere -> rests on arterial green indefinitely",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 300, "node_id": "C1", "send": "m"},
+        {"after_ms": 400, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 500, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 129000, "node_id": "L1", "send": "c"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: SET_MODE to 1 -> ACK_PENDING", "within_ms": 2500,
+         "description": "mode change accepted, deferred to boundary"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 135000,
+         "description": "L1 is left with zero sensor input from ~68000ms (start of the first true OFF_PEAK arterial green, see TC-SC01C-1's derivation) through 129000ms (>60s of rest, past LX_MAX_GREEN_MS=40000) with NO 'SIGNAL ->' line in between - this tool cannot assert that absence directly (no negative-match check type), so as a positive proxy this test presses 'c' at t=129000ms to create connector demand and confirms the FSM was still genuinely resting on ARTERIAL_GREEN (responsive within one ~4s recheck) rather than having already moved on to some other phase on its own."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC01C-3",
+      "title": "DP-06 anti-starvation: arterial force-yields at exactly 40s despite continuous own demand",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 300, "node_id": "C1", "send": "m"},
+        {"after_ms": 400, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 500, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 68000, "node_id": "L1", "send": "a"},
+        {"after_ms": 68100, "node_id": "L1", "send": "c"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 108900,
+         "description": "own_demand(arterial)=1 held continuously from t~=68000ms alongside other_demand(connector)=1; guard must keep refusing to exit at the 8/12/.../36s rechecks (own demand still present, green<40s) and then MUST exit unconditionally at green=40s regardless of own_demand - expected at ~68000+40000=108000ms"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC01C-4",
+      "title": "Connector green also force-exits at 40s despite continuous connector demand (no anti-starvation on this side)",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 300, "node_id": "C1", "send": "m"},
+        {"after_ms": 400, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 500, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 54000, "node_id": "L1", "send": "c"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: SET_MODE to 1 -> ACK_PENDING", "within_ms": 2500,
+         "description": "mode change accepted"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN", "within_ms": 56500,
+         "description": "mode still applies at the ~54s PEAK_FIXED boundary; boundary_after_arterial -> CONNECTOR_GREEN is unconditional"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW", "within_ms": 95500,
+         "description": "connector demand held continuously (pressed 'c' at CONNECTOR_GREEN's own t=0 and never released) so 'no connector demand' is always false; only 'green=40s' can force the exit - expected at ~54000+40000=94000ms, confirming lx_timer.h's comment that CONNECTOR_GREEN has no anti-starvation exemption unlike ARTERIAL_GREEN"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC02-1",
+      "title": "Pedestrian request latched during an incompatible phase, served when a compatible phase begins",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 400,
+      "steps": [
+        {"after_ms": 60000, "node_id": "L1", "send": "1"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> WALK", "within_ms": 91000,
+         "description": "side 0 is compatible with ARTERIAL_GREEN, not CONNECTOR_GREEN/YELLOW/ALL_RED_B_TO_A - button pressed at t=60000ms (during CONNECTOR_GREEN) must latch and only serve once the next ARTERIAL_GREEN begins at ~90000ms - PA-02 'not discarded'"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC02-2",
+      "title": "WALK 6000ms / FLASHING_DONT_WALK 4000ms exact durations, latch cleared afterwards",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 400,
+      "steps": [
+        {"after_ms": 300, "node_id": "L1", "send": "1"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> WALK", "within_ms": 1200,
+         "description": "side 0 compatible with ARTERIAL_GREEN, immediate service"},
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> FLASHING_DONT_WALK", "within_ms": 7200,
+         "description": "LX_WALK_MS=6000 after WALK starts (~300ms + 6000ms + slack)"},
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> DONT_WALK", "within_ms": 11200,
+         "description": "LX_FLASHING_DONT_WALK_MS=4000 after FDW starts"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC02-3",
+      "title": "Coalesce repeated presses while REQUEST_LATCHED",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 400,
+      "steps": [
+        {"after_ms": 60000, "node_id": "L1", "send": "1"},
+        {"after_ms": 61000, "node_id": "L1", "send": "1"},
+        {"after_ms": 62000, "node_id": "L1", "send": "1"},
+        {"after_ms": 63000, "node_id": "L1", "send": "1"},
+        {"after_ms": 64000, "node_id": "L1", "send": "1"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> WALK", "within_ms": 91000,
+         "description": "five redundant presses while REQUEST_LATCHED (CONNECTOR_GREEN/YELLOW/ALL_RED window) are idempotent (lx_fsm_latch_pedestrian_request() just re-sets the same flag) - exactly one WALK/FDW/DONT_WALK sequence must run once ARTERIAL_GREEN begins at ~90000ms, not five"},
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> DONT_WALK", "within_ms": 101200,
+         "description": "the single sequence completes at ~90000+6000+4000=100000ms, not stretched or repeated by the earlier redundant presses"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC02-4",
+      "title": "Coalesce a press mid-WALK - does not restart the WALK timer",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 400,
+      "steps": [
+        {"after_ms": 300, "node_id": "L1", "send": "1"},
+        {"after_ms": 2300, "node_id": "L1", "send": "1"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> WALK", "within_ms": 1200,
+         "description": "first press served immediately (ARTERIAL_GREEN)"},
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> FLASHING_DONT_WALK", "within_ms": 7200,
+         "description": "REGRESSION CHECK - deliberately tight upper bound: FDW must land at ~300+6000=6300ms measured from the ORIGINAL WALK start, not ~8300ms (which a buggy reset of ped_phase_elapsed_ms on the mid-WALK re-press at t=2300ms would produce). A within_ms of 7200ms would correctly FAIL if that reset bug reappeared."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC02-5",
+      "title": "(Critical regression) ped_recall - a re-press mid-service is not lost, restarts a fresh WALK/FDW next eligible cycle",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 400,
+      "steps": [
+        {"after_ms": 300, "node_id": "L1", "send": "1"},
+        {"after_ms": 8300, "node_id": "L1", "send": "1"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> WALK", "within_ms": 1200,
+         "description": "first WALK, served immediately at ARTERIAL_GREEN start (t~=300ms)"},
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> FLASHING_DONT_WALK", "within_ms": 7200,
+         "description": "FDW at ~300+6000=6300ms"},
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> DONT_WALK", "within_ms": 11200,
+         "description": "the re-press at t=8300ms (mid-FDW, ped_recall path) must NOT extend FDW - DONT_WALK still lands at ~300+6000+4000=10300ms"}
+      ],
+      "cleanup_wait_ms": 92000,
+      "_note_for_reviewer": "The doc's core regression claim is that ped_latched[0] survives the mid-FDW re-press (only ped_recall[0] is cleared, not ped_latched[0]), so a brand-new WALK/FDW/DONT_WALK sequence for side 0 auto-starts at the NEXT ARTERIAL_GREEN (~t=90000ms) with no further keypress. This tool's checks match the FIRST occurrence of a pattern with timestamp>=t0 in the transcript, so a fourth check for a second 'PED SIGNAL side 0 -> WALK' at ~90000ms would trivially be satisfied by the FIRST WALK at t~=300ms already (both lines are textually identical) and would NOT actually prove the second occurrence happened - this is a structural limitation of the runner's single-pattern-match check model, not something expressible with the current schema. cleanup_wait_ms is extended to 92000ms so a human reviewing results/TC-SC02-5/L1.log after the run can manually confirm the second 'WALK' line appears near the 90s mark without any further keypress in the log."
+    },
+    {
+      "id": "TC-SC02-6",
+      "title": "A side that latches mid-sequence for the same phase is served next cycle, not folded into the in-progress sequence",
+      "type": "edge",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 400,
+      "steps": [
+        {"after_ms": 300, "node_id": "L1", "send": "1"},
+        {"after_ms": 2300, "node_id": "L1", "send": "2"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> WALK", "within_ms": 1200,
+         "description": "side 0's own sequence starts immediately"},
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 1 -> WALK", "within_ms": 91500,
+         "description": "side 1 pressed at t=2300ms (mid-side-0's-WALK) is compatible with ARTERIAL_GREEN but arrives too late to be folded into the in-progress ped_serving_mask - it must only start at the NEXT ARTERIAL_GREEN (~90000ms from L1 boot), one full 90s cycle later, not folded/shortened into side 0's already-running sequence"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC03A-1",
+      "title": "(CRITICAL REGRESSION) RAILWAY_PREEMPTION does not deadlock the intersection - arterial keeps cycling, connector permanently suppressed",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 800,
+      "steps": [
+        {"after_ms": 500, "node_id": "RL1", "send": "0"},
+        {"after_ms": 20000, "node_id": "RL1", "send": "1"},
+        {"after_ms": 35000, "node_id": "RL1", "send": "0"},
+        {"after_ms": 50000, "node_id": "RL1", "send": "1"},
+        {"after_ms": 65000, "node_id": "RL1", "send": "0"},
+        {"after_ms": 80000, "node_id": "RL1", "send": "1"},
+        {"after_ms": 95000, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\d+\\s+\\d+\\s+-\\s+1\\s", "within_ms": 2500,
+         "description": "L1's SUPERVISORY column flips NORMAL_OPERATION(3) -> RAILWAY_PREEMPTION(1) within ~1s of RL1's first TRAIN_APPROACHING"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 49000,
+         "description": "arterial continues its own 48s green even though RAILWAY_PREEMPTION is active - direct disproof of the historical bug where a bare 'break' froze fsm->phase at PHASE_ALL_RED_A_TO_B forever"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ALL RED \\(A to B\\)", "within_ms": 53000,
+         "description": "yellow completes normally"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL GREEN", "within_ms": 55000,
+         "description": "CRITICAL: ALL_RED_A_TO_B must transition BACK to ARTERIAL_GREEN (not freeze, and not to CONNECTOR_GREEN) because supervisory==RAILWAY_PREEMPTION - this is the exact fix under regression test. The repeated RL1 direction-alternating presses (every 15s from t=20000 to t=95000) keep re-registering occupancy windows so the crossing stays closed well past this first cycle, proving the arterial loop keeps running rather than the crossing reopening and masking the bug."},
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\d+\\s+\\d+\\s+-\\s+1\\s", "within_ms": 100000,
+         "description": "SUPERVISORY must still read RAILWAY_PREEMPTION(1) at t~=100s given the repeated train pulses - confirms it never silently reverted to NORMAL_OPERATION mid-sequence"}
+      ],
+      "cleanup_wait_ms": 1000,
+      "_note_for_reviewer": "Proving 'more than one full 54s arterial cycle' strictly (i.e. a second, distinct ARTERIAL_GREEN recurrence at ~t=109s) is not expressible with this runner: a check for the same pattern text ('SIGNAL -> ARTERIAL GREEN') is satisfied by the FIRST post-t0 occurrence (~55s) regardless of within_ms, so it cannot selectively target a later recurrence. The checks above instead prove the core regression signature (transitions out of ALL_RED_A_TO_B back to ARTERIAL_GREEN, not frozen, not diverted to CONNECTOR_GREEN) plus that SUPERVISORY is still RAILWAY_PREEMPTION at t=100s (i.e. crossing still closed, so an operator/log reviewer inspecting results/TC-SC03A-1/L1.log can independently count further ARTERIAL YELLOW/GREEN recurrences beyond what the automated regex checks can individually distinguish). CONNECTOR GREEN must never appear at all during this window - this tool cannot assert an absence, so that specific invariant (\"never CONNECTOR GREEN while RAILWAY_PREEMPTION active\") is documented here for a human/log reviewer to confirm from the saved transcript rather than asserted by a check."
+    },
+    {
+      "id": "TC-SC03A-2",
+      "title": "NORMAL_OPERATION -> CENTRAL_OVERRIDE on REQUEST_OVERRIDE acceptance",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 500, "node_id": "C1", "send": "o"},
+        {"after_ms": 600, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 700, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 800, "node_id": "C1", "send": "20000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "Operator: REQUEST_OVERRIDE\\(target=1, movement=0, duration_ms=20000\\) submitted", "within_ms": 1500,
+         "description": "Central's own pre-check passes (bounded 1-300000) and forwards to L1"},
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\d+\\s+\\d+\\s+-\\s+2\\s", "within_ms": 3000,
+         "description": "SUPERVISORY column for L1 becomes CENTRAL_OVERRIDE(2) within ~1s"},
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\d+\\s+\\d+\\s+-\\s+\\d+\\s+\\S+\\s+\\S+\\s+1\\s", "within_ms": 3000,
+         "description": "OVERRIDE column becomes 1 (override_substate==OVR_ACTIVE)"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC03A-3",
+      "title": "CENTRAL_OVERRIDE -> RAILWAY_PREEMPTION when the adjacent crossing becomes active mid-override",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 800,
+      "steps": [
+        {"after_ms": 500, "node_id": "C1", "send": "o"},
+        {"after_ms": 600, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 700, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 800, "node_id": "C1", "send": "60000\n"},
+        {"after_ms": 10000, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\d+\\s+\\d+\\s+-\\s+2\\s", "within_ms": 2000,
+         "description": "CENTRAL_OVERRIDE active before the train approaches"},
+        {"node_id": "L1", "pattern": "Lx 1: override cleared/expired - running safe clearance sequence", "within_ms": 12000,
+         "description": "lx_fsm_terminate_override_locked() runs when the adjacent crossing goes active, interrupting the override"},
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\d+\\s+\\d+\\s+-\\s+1\\s", "within_ms": 13000,
+         "description": "SUPERVISORY jumps straight 2->1 (CENTRAL_OVERRIDE -> RAILWAY_PREEMPTION), skipping NORMAL_OPERATION in between"},
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\d+\\s+\\d+\\s+-\\s+\\d+\\s+\\S+\\s+\\S+\\s+0\\s", "within_ms": 13500,
+         "description": "OVERRIDE column drops back to 0 - the override is not auto-resumed after being interrupted by a train"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-SC03A-4",
+      "title": "RAILWAY_PREEMPTION self-loop - conflicting REQUEST_OVERRIDE is NACK'd",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 800,
+      "steps": [
+        {"after_ms": 500, "node_id": "RL1", "send": "0"},
+        {"after_ms": 3000, "node_id": "C1", "send": "o"},
+        {"after_ms": 3100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 3200, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 3300, "node_id": "C1", "send": "10000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\d+\\s+\\d+\\s+-\\s+1\\s", "within_ms": 2500,
+         "description": "RAILWAY_PREEMPTION active before the conflicting override is sent"},
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> NACK reason=RAILWAY_CONFLICT", "within_ms": 5000,
+         "description": "lx_fsm_on_request_override() rejects with NACK_REASON_RAILWAY_CONFLICT while RAILWAY_PREEMPTION is active"},
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\d+\\s+\\d+\\s+-\\s+1\\s", "within_ms": 6000,
+         "description": "SUPERVISORY remains RAILWAY_PREEMPTION(1), unchanged by the rejected request"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-SC03A-5",
+      "title": "RAILWAY_PREEMPTION -> NORMAL_OPERATION on crossing reopen, no queue warning -> no drain",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 800,
+      "steps": [
+        {"after_ms": 500, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\d+\\s+\\d+\\s+-\\s+1\\s", "within_ms": 2500,
+         "description": "RAILWAY_PREEMPTION active"},
+        {"node_id": "RL1", "pattern": "RLx: flashers OFF \\(gates confirmed open\\)", "within_ms": 55000,
+         "description": "single train, no re-approach: WARNING(5s)+CLOSING(3s)+EXPECTED_ARRIVAL(20s)+OCCUPANCY_WINDOW(20s)+OPENING(3s)~=51s to confirmed OPEN"},
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\d+\\s+\\d+\\s+-\\s+3\\s", "within_ms": 57000,
+         "description": "SUPERVISORY returns to NORMAL_OPERATION(3) as soon as L1 receives CROSSING_OPEN"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW", "within_ms": 85500,
+         "description": "queue_warning_active was never set (no 'w' pressed), so drain_pending must NOT be set: the next CONNECTOR_GREEN (reached via the L1's own ALL_RED_A_TO_B boundary once supervisory is back to NORMAL) must last exactly the normal 30s (LX_PEAK_CONNECTOR_GREEN_MS), not extended. This bounds when CONNECTOR_GREEN must have ended (~54s after L1's next ALL_RED_A_TO_B boundary, itself gated by when the crossing reopened) - see per-case log for exact offsets."}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-SC03A-6",
+      "title": "NORMAL_OPERATION/CENTRAL_OVERRIDE -> FAULT_SAFE via watchdog, recovery via REQUEST_FAULT_CLEAR",
+      "type": "positive",
+      "environment": "B",
+      "skip": true,
+      "skip_reason": "Part 1 requires kill -STOP <pid lx_main 1> for >2s then kill -CONT <pid> to trip the real PA-10 watchdog (lx_watchdog_thread) - this is the ONLY way to drive an Lx into FAULT_SAFE (no keystroke/IPC path exists to force a fault directly). This tool's schema only supports scripted stdin keystrokes to already-running subprocesses, with no step type for sending OS signals to a node's pid, so this case (and its Part 2 REQUEST_FAULT_CLEAR recovery test, which depends on first reaching FAULT_SAFE) cannot be driven through this harness.",
+      "nodes": [],
+      "setup_wait_ms": 0,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 0
+    },
+    {
+      "id": "TC-SC03A-7",
+      "title": "(Critical regression, CC-03) drain-phase granted exactly once per railway reopening, +4s increments, 60s cap",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 800,
+      "steps": [
+        {"after_ms": 500, "node_id": "L1", "send": "w"},
+        {"after_ms": 600, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\d+\\s+\\d+\\s+-\\s+1\\s", "within_ms": 2500,
+         "description": "RAILWAY_PREEMPTION active with queue_warning_active=1 already set"},
+        {"node_id": "RL1", "pattern": "RLx: flashers OFF \\(gates confirmed open\\)", "within_ms": 55000,
+         "description": "single train reopens at ~51s (WARNING5+CLOSING3+ARRIVAL20+OCCUPANCY20+OPENING3)"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN", "within_ms": 57000,
+         "description": "drain_pending set on CROSSING_OPEN; L1's own ALL_RED_A_TO_B boundary (~54s from L1 boot) then enters CONNECTOR_GREEN with drain_active=1"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW", "within_ms": 146000,
+         "description": "base 30s (LX_PEAK_CONNECTOR_GREEN_MS) + full 60s drain cap (LX_DRAIN_MAX_EXTENSION_MS, 15 x 4s increments, queue_warning_active never cleared) = 90s total, so CONNECTOR_GREEN must end at ~54000+90000=144000ms - CRITICAL: must NOT keep extending past the 60s cap even though queue_warning_active is still 1"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL GREEN", "within_ms": 148500,
+         "description": "normal ALL_RED_B_TO_A(2s) follows the drain-extended CONNECTOR_YELLOW(4s) - confirms the FSM resumed ordinary cycling after the drain ended, at ~146000ms"}
+      ],
+      "cleanup_wait_ms": 1000,
+      "_note_for_reviewer": "The doc's 'exactly once per reopening' claim additionally requires proving the SECOND connector green after this (reached without any further RAILWAY_PREEMPTION cycle) lasts a normal undrained 30s. This tool's checks match the FIRST post-t0 occurrence of a given pattern regardless of within_ms, so a second check for 'CONNECTOR YELLOW' cannot selectively target the second occurrence (~t=230s) without also being trivially satisfied by the first occurrence already confirmed above at ~144s - the runner has no per-check custom time-window/since-offset field to express this. A reviewer can confirm the no-double-dip invariant by inspecting the timestamps of the two 'CONNECTOR YELLOW' lines in results/TC-SC03A-7/L1.log after a run with cleanup_wait_ms/checks extended further (second CONNECTOR_GREEN expected ~148500+48000+4000+2000=202500ms, second CONNECTOR_YELLOW expected at ~232500ms if truly undrained)."
+    },
+    {
+      "id": "TC-SC03B-1",
+      "title": "override_validation -> ACTIVE immediately (bounded, safe, no pedestrian clearance)",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 500, "node_id": "C1", "send": "o"},
+        {"after_ms": 600, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 700, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 800, "node_id": "C1", "send": "15000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 2000,
+         "description": "immediate ACK (not ACK_PENDING) - no pedestrian clearance blocking it"},
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\d+\\s+\\d+\\s+-\\s+\\d+\\s+\\S+\\s+\\S+\\s+1\\s", "within_ms": 2500,
+         "description": "override_substate becomes OVR_ACTIVE"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC03B-2",
+      "title": "override_validation -> OVERRIDE_PENDING during ped clearance, auto-activates when clearance completes",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 300, "node_id": "L1", "send": "1"},
+        {"after_ms": 2300, "node_id": "C1", "send": "o"},
+        {"after_ms": 2400, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 2500, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 2600, "node_id": "C1", "send": "20000\n"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> WALK", "within_ms": 1200,
+         "description": "ped clearance begins (WALK at t~=300ms)"},
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK_PENDING", "within_ms": 4000,
+         "description": "override request arrives at t~=2600ms while ped_clearance_active=1 (WALK still running until ~6300ms) -> OVR_PENDING_CLEARANCE, RESULT_ACK_PENDING"},
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> DONT_WALK", "within_ms": 11200,
+         "description": "ped sequence completes normally (~10300ms), unaffected by the pending override"},
+        {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\d+\\s+\\d+\\s+-\\s+\\d+\\s+\\S+\\s+\\S+\\s+1\\s", "within_ms": 12500,
+         "description": "override_substate flips OVR_PENDING_CLEARANCE -> OVR_ACTIVE within the tick right after DONT_WALK - C1's OVERRIDE column becomes 1"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC03B-3",
+      "title": "override_validation -> NACK for invalid duration (Central pre-check, defense-in-depth)",
+      "type": "negative",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 500, "node_id": "C1", "send": "o"},
+        {"after_ms": 600, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 700, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 800, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 1800, "node_id": "C1", "send": "o"},
+        {"after_ms": 1900, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 2000, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 2100, "node_id": "C1", "send": "300001\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "REQUEST_OVERRIDE\\(target=1, movement=0, duration_ms=0\\) rejected by Central pre-check, reason=INVALID_DURATION", "within_ms": 1500,
+         "description": "duration_ms=0 rejected before ever being forwarded to L1"},
+        {"node_id": "C1", "pattern": "REQUEST_OVERRIDE\\(target=1, movement=0, duration_ms=300001\\) rejected by Central pre-check, reason=INVALID_DURATION", "within_ms": 2800,
+         "description": "duration_ms=300001 (>LX_OVERRIDE_DURATION_CAP_MS=300000) also rejected at Central, same defense-in-depth check as lx_fsm_on_request_override() would apply"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC03B-4",
+      "title": "OVERRIDE_PENDING discarded when it expires before the pedestrian clearance it was waiting on finishes",
+      "type": "edge",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 300, "node_id": "L1", "send": "1"},
+        {"after_ms": 800, "node_id": "C1", "send": "o"},
+        {"after_ms": 900, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 1000, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 1100, "node_id": "C1", "send": "3000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK_PENDING", "within_ms": 2500,
+         "description": "override queued behind the still-running WALK (~300ms started, ~10300ms total sequence)"},
+        {"node_id": "L1", "pattern": "Lx 1: override cleared/expired - running safe clearance sequence", "within_ms": 5000,
+         "description": "override_remaining_ms (3000ms from ACK_PENDING at ~1100ms) counts down even while OVR_PENDING_CLEARANCE, expiring at ~4100ms - well before the ped sequence's ~10300ms DONT_WALK, so lx_fsm_terminate_override_locked() runs while still pending"},
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> FLASHING_DONT_WALK", "within_ms": 7200,
+         "description": "the pedestrian sequence itself must NOT be truncated by the discarded override - FDW still lands at its normal ~6300ms"},
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> DONT_WALK", "within_ms": 11200,
+         "description": "ped sequence completes normally at ~10300ms, uninterrupted"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC03B-5",
+      "title": "renewal_validation - valid renew ACKs and restarts the timer, invalid renew NACKs and retains expiry, renew with no active override NACKs UNKNOWN_TARGET",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]},
+        {"node_id": "L2", "binary": "lx_main", "args": ["2"]}
+      ],
+      "setup_wait_ms": 500,
+      "steps": [
+        {"after_ms": 500, "node_id": "C1", "send": "o"},
+        {"after_ms": 600, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 700, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 800, "node_id": "C1", "send": "20000\n"},
+        {"after_ms": 10800, "node_id": "C1", "send": "r"},
+        {"after_ms": 10900, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 11000, "node_id": "C1", "send": "30000\n"},
+        {"after_ms": 12000, "node_id": "C1", "send": "r"},
+        {"after_ms": 12100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 12200, "node_id": "C1", "send": "400000\n"},
+        {"after_ms": 13000, "node_id": "C1", "send": "r"},
+        {"after_ms": 13100, "node_id": "C1", "send": "2\n"},
+        {"after_ms": 13200, "node_id": "C1", "send": "10000\n"}
+      ],
+      "checks": [
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 1500,
+         "description": "(setup) initial override active on L1"},
+        {"node_id": "C1", "pattern": "C1: RENEW_OVERRIDE to 1 -> ACK$", "within_ms": 12000,
+         "description": "(a) valid renewal (extend_duration_ms=30000) ACKs and restarts the timer wholesale"},
+        {"node_id": "C1", "pattern": "C1: RENEW_OVERRIDE to 1 -> NACK reason=INVALID_DURATION", "within_ms": 13500,
+         "description": "(b) extend_duration_ms=400000 (>300000) NACKs; override_remaining_ms must retain the (a) countdown, not reset"},
+        {"node_id": "C1", "pattern": "C1: RENEW_OVERRIDE to 2 -> NACK reason=UNKNOWN_TARGET", "within_ms": 14500,
+         "description": "(c) L2 has no override in flight at all - lx_fsm_on_renew_override() NACKs UNKNOWN_TARGET"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC03B-6",
+      "title": "(Critical regression) override forces green onto the requested movement, holds it through expiry, then resumes the normal cycle through proper yellow/all-red",
+      "type": "positive",
+      "environment": "B",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "C1", "binary": "c_main", "args": []},
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 800,
+      "steps": [
+        {"after_ms": 82000, "node_id": "C1", "send": "o"},
+        {"after_ms": 82100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 82200, "node_id": "C1", "send": "0\n"},
+        {"after_ms": 82300, "node_id": "C1", "send": "15000\n"},
+        {"after_ms": 83000, "node_id": "C1", "send": "o"},
+        {"after_ms": 83100, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 83200, "node_id": "C1", "send": "1\n"},
+        {"after_ms": 83300, "node_id": "C1", "send": "5000\n"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW", "within_ms": 84800,
+         "description": "L1 is in CONNECTOR_GREEN (started ~54000ms, ends ~84000ms) when the override targeting ARTERIAL is requested at t=82000ms - the currently-displayed phase must finish normally, not be cut short"},
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 83500,
+         "description": "first override (target=arterial, duration=15000) ACKs immediately - no ped clearance blocking it"},
+        {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> NACK reason=OUT_OF_RANGE", "within_ms": 84500,
+         "description": "REGRESSION: a second REQUEST_OVERRIDE sent while the first is still CENTRAL_OVERRIDE/OVR_ACTIVE must NACK (NACK_REASON_OUT_OF_RANGE), not silently overwrite the first override's target/duration"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ALL RED \\(B to A\\)", "within_ms": 88800,
+         "description": "ALL_RED_B_TO_A always follows CONNECTOR_YELLOW regardless of override - not the boundary under test"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL GREEN", "within_ms": 90800,
+         "description": "ALL_RED_B_TO_A -> ARTERIAL_GREEN as usual"},
+        {"node_id": "L1", "pattern": "Lx 1: override cleared/expired - running safe clearance sequence", "within_ms": 97800,
+         "description": "override_remaining_ms counts down from the ACK at t~=82300ms with duration 15000ms, expiring at ~97300ms - well INTO the ARTERIAL_GREEN that began at ~90000ms, proving the override held ARTERIAL_GREEN past where PEAK_FIXED's own 48s exit-check would not yet apply anyway, and this checks the override-driven hold is what is in effect"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 139000,
+         "description": "CRITICAL: after the override expires (~97300ms) ARTERIAL_GREEN does NOT immediately yellow - it must resume the ordinary PEAK_FIXED exit-check measured from when THIS ARTERIAL_GREEN itself began (~90000ms), i.e. yellow at ~90000+48000=138000ms, not at ~97300ms and not double-counting - proving the FSM always exits green via a genuine yellow/all-red, never a bare jump"}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-SC04A-1",
+      "title": "OPEN -> WARNING on TRAIN_APPROACHING",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 400,
+      "steps": [
+        {"after_ms": 500, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "RLx: flashers ON \\(train approaching, direction 0\\)", "within_ms": 1200,
+         "description": "OPEN -> WARNING activates flashers immediately"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC04A-2",
+      "title": "WARNING self-loop - second direction approaching does not reset the 5s closing timer",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 400,
+      "steps": [
+        {"after_ms": 500, "node_id": "RL1", "send": "0"},
+        {"after_ms": 2500, "node_id": "RL1", "send": "1"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "RLx: flashers ON \\(train approaching, direction 0\\)", "within_ms": 1200,
+         "description": "initial WARNING entry"},
+        {"node_id": "RL1", "pattern": "RLx: commanding gates DOWN \\(simulated motion, 3000 ms\\)", "within_ms": 6300,
+         "description": "REGRESSION CHECK - tight upper bound: CLOSING must still start at ~5.0s from the t=500ms first press (i.e. by ~5800ms), NOT reset to ~7.0s by the second direction registering at t=2500ms (register_window() must not touch state_elapsed_ms)"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC04A-3",
+      "title": "WARNING -> CLOSING at exactly 5000ms",
+      "type": "edge",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 400,
+      "steps": [
+        {"after_ms": 500, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "RLx: commanding gates DOWN \\(simulated motion, 3000 ms\\)", "within_ms": 6200,
+         "description": "RLX_WARNING_TO_CLOSING_MS=5000, +1 railway tick (1000ms granularity) +overhead slack. NOTE: the WARNING->FAULT 60s diagnostic-timeout branch (RLX_WARNING_DIAGNOSTIC_TIMEOUT_MS) is confirmed dead code per rlx_fsm.c's own comment - RLX_WARNING_TO_CLOSING_MS always fires first and resets state_elapsed_ms - so no test case is written for that branch; this check (always going to CLOSING at 5s) is its negative control."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC04A-4",
+      "title": "CLOSING -> CLOSED when both gates confirm before deadline",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 400,
+      "steps": [
+        {"after_ms": 500, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "RLx: commanding gates DOWN \\(simulated motion, 3000 ms\\)", "within_ms": 6200,
+         "description": "WARNING -> CLOSING at ~5.0s"},
+        {"node_id": "RL1", "pattern": "RLx: train signal PROCEED for direction 0 \\(gates confirmed closed\\)", "within_ms": 9200,
+         "description": "gates confirm closed after RLX_GATE_MOTION_MS=3000ms of simulated motion, i.e. ~8.0s from the initial press, well before the 15s RLX_CLOSING_DEADLINE_MS"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC04A-5",
+      "title": "(Regression) CLOSING -> FAULT when confirmation is missing at the deadline - fault forces a real gate-close command",
+      "type": "negative",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 400,
+      "steps": [
+        {"after_ms": 500, "node_id": "RL1", "send": "x"},
+        {"after_ms": 600, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "\\[DEMO\\] Next gate motion armed to fail confirmation \\(RC-06 fault path\\)", "within_ms": 1200,
+         "description": "demo fault armed"},
+        {"node_id": "RL1", "pattern": "RLx: commanding gates DOWN \\(simulated motion, 3000 ms\\)", "within_ms": 6300,
+         "description": "WARNING -> CLOSING at ~5.0s from the '0' press"},
+        {"node_id": "RL1", "pattern": "RLx: gate FAILED TO CONFIRM \\(simulated fault\\)", "within_ms": 9300,
+         "description": "armed fault prevents confirmation after the 3000ms motion completes (~8.0s)"},
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\) - holding STOP on all train signals, commanding gates DOWN", "within_ms": 21300,
+         "description": "RLX_CLOSING_DEADLINE_MS=15000 from entering CLOSING (~5.0s) fires at ~20.0s; enter_fault() unconditionally re-issues rlx_gate_command_close() (the audit-fix regression under test - previously fault only latched the flag without forcing a real gate-close command). NOTE: this tool's regex matching returns the first line matching a pattern in the transcript, so it cannot independently distinguish this second 'commanding gates DOWN' call (identical text to the first, ~5.0s one) from the first - the FAULT latched line above is the uniquely-identifying signal used here instead."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC04B-1",
+      "title": "CLOSED -> TRAIN_PRESENT at expected arrival time",
+      "type": "positive",
+      "environment": "A",
+      "skip": true,
+      "skip_reason": "enter_train_present() has no printf of its own (state-only transition), and map_to_crossing_state() maps both RLX_CLOSED and RLX_TRAIN_PRESENT to the same external CROSSING_CLOSED, so there is no direct log signal for this transition at all. The doc's own suggested indirect proof (re-press the train-approaching key just after the 20s expected-arrival mark and look for a second 'train signal PROCEED for direction 0' line) is not reliably distinguishable by this tool: its checks match the FIRST occurrence of a pattern in the transcript regardless of within_ms, and 'PROCEED for direction 0' already occurs once earlier (at CLOSING->CLOSED, ~8s) - a check for the same text later would trivially pass off that earlier line without proving the second occurrence exists. The doc itself flags this as \"khó quan sát trực tiếp qua log ... cần thêm một dòng debug tạm thời\" (would need extra debug instrumentation not present in the current source) - matching this task's skip criterion of a transition that cannot be verified via the currently-available UI/log surface.",
+      "nodes": [],
+      "setup_wait_ms": 0,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 0
+    },
+    {
+      "id": "TC-SC04B-2",
+      "title": "TRAIN_PRESENT -> OPENING only once ALL occupancy windows expire (two staggered windows)",
+      "type": "edge",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 400,
+      "steps": [
+        {"after_ms": 500, "node_id": "RL1", "send": "0"},
+        {"after_ms": 38500, "node_id": "RL1", "send": "1"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "RLx: train signal PROCEED for direction 0 \\(gates confirmed closed\\)", "within_ms": 9200,
+         "description": "CLOSED entered at ~8.0s from the first '0' press, direction 0 window active"},
+        {"node_id": "RL1", "pattern": "RLx: all train signals -> STOP \\(crossing reopening\\)", "within_ms": 61500,
+         "description": "direction 0's window (registered at CLOSED entry ~8.0s, live countdown starts at TRAIN_PRESENT entry ~28.0s from the '0' press, i.e. ~29.5s from t0 given setup_wait_ms=400+the 500ms initial-press offset - expires ~49.5s from t0) plus direction 1's window (registered mid-TRAIN_PRESENT at t=38500ms with a live 20000ms countdown, expiring ~58500ms from t0) - OPENING can only begin once BOTH expire, i.e. ~58.5s from t0, not at direction 0's earlier ~49.5s expiry. This check's within_ms is intentionally close to the expected ~58.5-59s to catch a regression where a single window's expiry incorrectly triggers OPENING early; it cannot independently prove OPENING did NOT already occur earlier (~49.5s) since this tool has no absence/negative check - a reviewer should confirm via results/TC-SC04B-2/RL1.log that no 'commanding gates UP' line exists before ~58s."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC04B-3",
+      "title": "OPENING -> RECLOSING when a new train approaches mid-open",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 400,
+      "steps": [
+        {"after_ms": 500, "node_id": "RL1", "send": "0"},
+        {"after_ms": 49500, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "RLx: all train signals -> STOP \\(crossing reopening\\)", "within_ms": 50500,
+         "description": "single train, no second window this time: OPENING begins at ~8.0+20.0+20.0=48.0s from the first press (~48.5s from t0)"},
+        {"node_id": "RL1", "pattern": "RLx: reclosing - aborting gate-open motion, flashers remain active", "within_ms": 51000,
+         "description": "a new TRAIN_APPROACHING at t=49500ms (~1s into the 3000ms opening motion, before OPEN is confirmed) must abort the open and reclose, per OPENING -> RECLOSING - this line is unique text, unambiguous for regex matching unlike the repeated 'commanding gates DOWN/UP' lines"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC04B-4",
+      "title": "OPENING -> FAULT when gates fail to confirm open by the deadline, then recovery via the (now-available) rlx_gate_force_confirmed_open()/MSG_REQUEST_FAULT_CLEAR path",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 400,
+      "steps": [
+        {"after_ms": 500, "node_id": "RL1", "send": "0"},
+        {"after_ms": 40000, "node_id": "RL1", "send": "x"},
+        {"after_ms": 64000, "node_id": "RL1", "send": "f"},
+        {"after_ms": 65000, "node_id": "RL1", "send": "r"},
+        {"after_ms": 65500, "node_id": "RL1", "send": "f"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "\\[DEMO\\] Next gate motion armed to fail confirmation \\(RC-06 fault path\\)", "within_ms": 40600,
+         "description": "demo fault armed before the opening motion starts (~48.5s from t0)"},
+        {"node_id": "RL1", "pattern": "RLx: all train signals -> STOP \\(crossing reopening\\)", "within_ms": 50000,
+         "description": "OPENING begins at ~8.0+20.0+20.0=48.0s from the '0' press (~48.5s from t0), commanding gates UP but armed to never confirm"},
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 65000,
+         "description": "RLX_OPENING_DEADLINE_MS=15000 from entering OPENING (~48.5s) fires at ~63.5s from t0 - gates never confirmed open, enter_fault() latches FAULT_GATE_CONFIRM_MISSING and re-commands gates DOWN"},
+        {"node_id": "RL1", "pattern": "\\[rlx_sensor\\] fault-clear result=3 reason=4", "within_ms": 64800,
+         "description": "first 'f' (demo fault-clear) attempted at t=64000ms BEFORE forcing the gate open - rlx_fsm_on_fault_clear() correctly NACKs (RESULT_NACK=3, NACK_REASON_FAULT_ACTIVE=4) because gates_confirmed_open() is still false (the post-fault re-close motion from the previous check is in progress or just confirmed closed) - RC-10 requires live re-verification, not just latched-flag clearing"},
+        {"node_id": "RL1", "pattern": "\\[DEMO\\] Gate mechanism simulated as physically repaired - now confirmed OPEN", "within_ms": 66000,
+         "description": "'r' (rlx_gate_force_confirmed_open(), RC-09/RC-10 demo path added to rlx_sensor.c) simulates the physical repair - this key did not exist when the test-plan doc was written and is what resolves what the doc calls a permanent known gap for this branch"},
+        {"node_id": "RL1", "pattern": "\\[rlx_sensor\\] fault-clear result=1 reason=0", "within_ms": 66500,
+         "description": "second 'f' now ACKs (RESULT_ACK=1, NACK_REASON_NONE=0) because gates_confirmed_open()==1 after the forced repair - FAULT -> OPEN with RESULT_ACK is reachable via the current keyboard interface, contrary to the test-plan document's original 'known gap - unreachable by any demo key' finding, which is now stale."}
+      ],
+      "cleanup_wait_ms": 1000
+    },
+    {
+      "id": "TC-SC04B-5",
+      "title": "CLOSED -> FAULT via gate-state contradiction, now reachable using rlx_gate_force_confirmed_open()",
+      "type": "negative",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "RL1", "binary": "rlx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 400,
+      "steps": [
+        {"after_ms": 500, "node_id": "RL1", "send": "0"},
+        {"after_ms": 15000, "node_id": "RL1", "send": "r"},
+        {"after_ms": 15200, "node_id": "RL1", "send": "0"}
+      ],
+      "checks": [
+        {"node_id": "RL1", "pattern": "RLx: train signal PROCEED for direction 0 \\(gates confirmed closed\\)", "within_ms": 9200,
+         "description": "CLOSED entered normally at ~8.0s, gates genuinely confirmed closed"},
+        {"node_id": "RL1", "pattern": "\\[DEMO\\] Gate mechanism simulated as physically repaired - now confirmed OPEN", "within_ms": 15700,
+         "description": "'r' at t=15000ms forces g_confirmed_open=1/g_confirmed_closed=0 while rlx_fsm's state is still RLX_CLOSED - manufactures exactly the 'gate state contradicts CLOSED' condition the test-plan document says has no available trigger"},
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 16200,
+         "description": "REGRESSION FINDING (this test-plan doc's stated known gap is now resolved by the newer 'r' demo key): pressing '0' again at t=15200ms while still RLX_CLOSED re-enters the RLX_CLOSED case of rlx_fsm_simulate_train_approaching(), which calls check_gate_contradiction_closed() - since gates_confirmed_closed() is now false (forced open by 'r'), this immediately raises FAULT_GATE_CONFIRM_MISSING. The doc's original finding (\"no key/IPC sequence in the current build can trigger this branch\") predates the rlx_gate_force_confirmed_open()/'r' key existing in rlx_sensor.c/rlx_gate.c and should be treated as stale, not as a permanent limitation."}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC05-1",
+      "title": "PA-07: exactly 3 consecutive missed heartbeats before UNAVAILABLE",
+      "type": "edge",
+      "environment": "B",
+      "skip": true,
+      "skip_reason": "Requires kill -STOP <pid lx_main 1> to stop its 1Hz heartbeat thread entirely (then kill -CONT to clean up) while observing C1's 1Hz-refreshed AVAILABILITY column tick-by-tick. This tool's schema only supports scripted stdin keystrokes to already-running subprocesses - there is no step type for sending OS signals to a node's pid, and no keystroke exists to make a running lx_main stop sending heartbeats without actually pausing the process, so this case cannot be driven through this harness.",
+      "nodes": [],
+      "setup_wait_ms": 0,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 0
+    },
+    {
+      "id": "TC-SC05-2",
+      "title": "DEGRADED_LOCAL - Lx/RLx continue operating normally with no Central connected",
+      "type": "positive",
+      "environment": "A",
+      "skip": false,
+      "skip_reason": null,
+      "nodes": [
+        {"node_id": "L1", "binary": "lx_main", "args": ["1"]}
+      ],
+      "setup_wait_ms": 400,
+      "steps": [
+        {"after_ms": 300, "node_id": "L1", "send": "1"}
+      ],
+      "checks": [
+        {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> WALK", "within_ms": 1200,
+         "description": "pedestrian sequencing works with no c_main running at all"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 48800,
+         "description": "PEAK_FIXED phase cycling proceeds on schedule with zero Central connectivity - lx_fsm.c never reads fsm->link_state in any SC-01..SC-04 transition, so behaviour is bit-for-bit identical to environment (B)/(C) by construction, not via any active fallback logic"},
+        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN", "within_ms": 54800,
+         "description": "full cycle continues normally"}
+      ],
+      "cleanup_wait_ms": 500
+    },
+    {
+      "id": "TC-SC05-3",
+      "title": "Resync on heartbeat recovery - instant AVAILABLE, and the RESYNCHRONISING display known gap",
+      "type": "positive",
+      "environment": "B",
+      "skip": true,
+      "skip_reason": "This case's precondition is TC-SC05-1's UNAVAILABLE state, which itself requires kill -STOP/-CONT against the lx_main process (no stdin-only path exists to stop a running node's heartbeat). Since this tool's schema has no step type for sending OS signals to a node's pid, TC-SC05-1 is skipped and this dependent case is skipped for the same reason. (Separately, the doc's own 'Known gap' half of this case - that link_state is hard-coded LINK_CENTRAL_CONNECTED in every outgoing heartbeat/status payload in lx_comm.c/rlx_comm.c, so no RESYNCHRONISING state is ever genuinely observable - is a source-level limitation, not a test-automation one; it would remain true even with signal-sending support.)",
+      "nodes": [],
+      "setup_wait_ms": 0,
+      "steps": [],
+      "checks": [],
+      "cleanup_wait_ms": 0
+    }
+  ]
+}
