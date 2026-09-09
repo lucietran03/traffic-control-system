@@ -1,0 +1,102 @@
+# C/C++ compiled files
+*.o
+*.obj
+*.lo
+*.a
+*.lib
+*.so
+*.so.*
+*.dll
+*.dylib
+*.exe
+*.out
+
+# Debug and profiling files
+*.d
+*.dep
+*.gcda
+*.gcno
+*.gcov
+*.prof
+*.map
+*.core
+core
+core.*
+
+# QNX Momentics build output
+Debug/
+Release/
+build/
+build-*/
+bin/
+obj/
+o/
+x86/
+x86_64/
+arm/
+aarch64/
+armle-v7/
+aarch64le/
+nto-*/
+
+# QNX-generated metadata and launch files
+.metadata/
+.settings/
+.launches/
+*.launch
+
+# Eclipse / QNX Momentics workspace files
+.project
+.cproject
+.buildpath
+.externalToolBuilders/
+.recommenders/
+
+# CMake-generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+_deps/
+
+# Make-generated dependency files
+*.mk.d
+*.make.d
+
+# Runtime output
+logs/
+*.log
+*.pid
+*.trace
+*.dump
+
+# Test and coverage output
+test-results/
+coverage/
+*.xml.tmp
+
+# Temporary and backup files
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Editor configuration
+.vscode/
+.idea/
+*.code-workspace
+
+# Local environment and machine-specific configuration
+.env
+.env.*
+!.env.example
+config/local/
+config/*.local.*
