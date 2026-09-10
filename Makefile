@@ -87,7 +87,7 @@ QCC_WARN_FLAGS := -Wall -Wextra
 
 # --- Host syntax-check toolchain ---------------------------------------------
 HOSTCC ?= $(shell command -v gcc 2>/dev/null || command -v clang 2>/dev/null || echo cc)
-HOST_STD := -std=c11
+HOST_STD := -std=gnu11
 STUB_DIR := tools/host_syntax_stubs
 
 # --- Layout --------------------------------------------------------------

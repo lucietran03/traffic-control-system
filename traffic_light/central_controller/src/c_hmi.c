@@ -77,4 +77,3 @@ void c_hmi_render(const c_mode_eng_t *eng)
     printf("----------------------------\n");
     fflush(stdout);
 }
-
