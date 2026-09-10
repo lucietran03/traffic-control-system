@@ -1,0 +1,11 @@
+---- C1 network status ----
+ID    ROLE          MODE      PHASE  CROSSING_STATE   SUPERVISORY  FAULTS   SENSOR   OVERRIDE  AVAILABILITY
+L1    INTERSECTION  0         0      -                3            0        0        0         AVAILABLE   
+L2    INTERSECTION  0         3      -                3            0        0        0         AVAILABLE   
+L3    INTERSECTION  0         0      -                0            0        0        0         UNAVAILABLE 
+L4    INTERSECTION  0         0      -                0            0        0        0         UNAVAILABLE 
+L5    INTERSECTION  0         0      -                0            0        0        0         UNAVAILABLE 
+L6    INTERSECTION  0         0      -                0            0        0        0         UNAVAILABLE 
+RL1   RAILWAY       0         -      2                0            0        -        0         AVAILABLE   
+RL2   RAILWAY       0         -      0                0            0        -        0         UNAVAILABLE 
+RL3   RAILWAY       0         -      0                0            0        -        0         UNAVAILABLE 

@@ -304,4 +304,4 @@ async function poll() {
 
 buildOverviewOnce();
 poll();
-setInterval(poll, 500);
+setInterval(poll, 1000);

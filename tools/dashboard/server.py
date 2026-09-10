@@ -42,8 +42,8 @@ ROW_RE = re.compile(
     r"(?P<phase>\d+|-)\s+"
     r"(?P<crossing>\d+|-)\s+"
     r"(?P<supervisory>\d+)\s+"
-    r"(?P<faults>0x[0-9a-fA-F]+)\s+"
-    r"(?P<sensor>0x[0-9a-fA-F]+|-)\s+"
+    r"(?P<faults>(?:0x)?[0-9a-fA-F]+)\s+"
+    r"(?P<sensor>(?:0x)?[0-9a-fA-F]+|-)\s+"
     r"(?P<override>\d+)\s+"
     r"(?P<availability>AVAILABLE|UNAVAILABLE)\s*$"
 )
@@ -79,14 +79,33 @@ def tail_log(path):
     up the most recent state of every node on its first read, instead of
     showing nothing until the next table print.
     """
+    if path == "-":
+        import sys
+        while True:
+            line = sys.stdin.readline()
+            if not line:
+                break
+            row = parse_line(line)
+            if row:
+                with state_lock:
+                    latest_state["nodes"][row["id"]] = row
+                    latest_state["last_update_ts"] = time.time()
+        return
+
     while not Path(path).exists():
         time.sleep(0.5)
     with open(path, "r", errors="replace") as f:
         buf = ""
         while True:
+            try:
+                if Path(path).stat().st_size < f.tell():
+                    f.seek(0)
+                    buf = ""
+            except OSError:
+                pass
             chunk = f.read()
             if not chunk:
-                time.sleep(0.2)
+                time.sleep(0.1)
                 continue
             buf += chunk
             *complete, buf = buf.split("\n")
@@ -126,7 +145,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--log", required=True, help="Path to c_main's redirected stdout log")
+    ap.add_argument("--log", required=True, help="Path to c_main's redirected stdout log (use '-' for stdin)")
     ap.add_argument("--port", type=int, default=8080)
     args = ap.parse_args()
 
@@ -134,6 +153,7 @@ def main():
     t = threading.Thread(target=tail_log, args=(args.log,), daemon=True)
     t.start()
 
+    socketserver.TCPServer.allow_reuse_address = True
     with socketserver.ThreadingTCPServer(("0.0.0.0", args.port), Handler) as httpd:
         print(f"Dashboard running: http://localhost:{args.port}  (tailing {args.log})")
         print("Ctrl+C to stop. This does not affect c_main or any QNX process.")
@@ -145,3 +165,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
