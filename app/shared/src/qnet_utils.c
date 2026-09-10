@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/dispatch.h>
 #include <sys/neutrino.h>
+#include <sys/netmgr.h>
 
 /* Index == controller_id_t value; keep in sync with sys_types.h. */
 static const char *const ATTACH_SUFFIX[CTRL_UNKNOWN] = {
