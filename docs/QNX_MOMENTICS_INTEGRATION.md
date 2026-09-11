@@ -42,22 +42,22 @@ The system consists of three independent executable applications:
 
 *Note: Update the `Makefile` inside each project folder by modifying the include flag (`INCLUDES += -Iincludes`) to match the local directory setup.*
 
-## 3. Target VM Configuration
-**Goal**: Generate exactly 3 Virtual Machine Targets (`VM_x86_Target01`, `VM_x86_Target03`, `VM_x86_Target03`) to fully simulate the distributed nodes (Central, Intersection, Railway) and connect the IDE to them for compilation and deployment.
+## 3. Target VM Configuration (10 Independendent Nodes)
+**Goal**: Generate exactly 10 Virtual Machine Targets within the launch manager to map the distributed cluster topology.
 
-Create the following lauch targets
-
-| Target Name | Intended Executable Deployment |
-|:---|:---|
-| `VM_x86_Target01` | `Central_Controller` |
-| `VM_x86_Target02` | `Intersection_Controller` |
-| `VM_x86_Target03` | `Railway_Controller` |
+| Target Launch Name | System Entity Assignment | Target Launch Name | System Entity Assignment |
+|:---|:---|:---|:---|
+| `VM_x86_Target01` | Central Supervisor (`C1`) | `VM_x86_Target06` | Intersection Controller (`L5`) |
+| `VM_x86_Target02` | Intersection Controller (`L1`) | `VM_x86_Target07` | Intersection Controller (`L6`) |
+| `VM_x86_Target03` | Intersection Controller (`L2`) | `VM_x86_Target08` | Railway Crossing Controller (`RL1`) |
+| `VM_x86_Target04` | Intersection Controller (`L3`) | `VM_x86_Target09` | Railway Crossing Controller (`RL2`) |
+| `VM_x86_Target05` | Intersection Controller (`L4`) | `VM_x86_Target10` | Railway Crossing Controller (`RL3`) |
 
 | Step | Action | Description |
 |------|--------|-------------|
-| 3.1 | New Target | In the launch bar at the top, click dropdown and select New Launch Target. |
-| 3.2 | VM Settings | Select QNX Virtual Machine Target. Set Target Name, VM Platform to `vbox`, and CPU Architecture to `x86_64`. |
-| 3.3 | Finalise Target | Click Finish. The IDE generates the VM and displays it in the target list. Repeat Steps 3.1 - 3.3 twice more to create 2 other vm. |
+| 3.1 | New Target | In the launch bar at the top, click the dropdown menu and select **New Launch Target**. |
+| 3.2 | VM Settings | Select QNX Virtual Machine Target. Set the Target Name (from `VM_x86_Target01` to `VM_x86_Target10`), VM Platform to `vbox`, and CPU Architecture to `x86_64`. |
+| 3.3 | Finalize Target | Click Finish. Repeat this sequence until all 10 target profiles are registered in the IDE target tree. |
 
 ## 4. Compilation & Build Process
 **Goal**: Compile each distributed nodes into executable binaries.
@@ -95,7 +95,14 @@ Workspace/
 └── VM Targets/
     ├── VM_x86_Target01
     ├── VM_x86_Target02
-    └── VM_x86_Target03
+    ├── VM_x86_Target03
+    ├── VM_x86_Target04
+    ├── VM_x86_Target05
+    ├── VM_x86_Target06
+    ├── VM_x86_Target07
+    ├── VM_x86_Target08
+    ├── VM_x86_Target09
+    └── VM_x86_Target10
 ```
 
 Each project can now be deployed independently to its corresponding QNX Virtual Machine, enabling simulation of the complete distributed Traffic Control System.
