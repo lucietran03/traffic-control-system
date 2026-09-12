@@ -7,7 +7,7 @@ already-running `c_main` process, which already prints a full status table
 once per second via c_hmi_render() (app/central/src/c_hmi.c) - this script
 just tails that output, parses the table, and serves it as JSON.
 
-The frontend (static/) polls /state.json every ~500ms - plain HTTP, no
+The frontend (static/) polls /state.json once per second (every ~1000ms) - plain HTTP, no
 WebSocket library, no pip install required (stdlib only), so it runs
 anywhere Python 3 is available, independent of the QNX toolchain.
 

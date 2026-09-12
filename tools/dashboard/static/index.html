@@ -13,8 +13,19 @@
 
   <main>
     <section id="overview-panel">
-      <h2>Network overview <span class="hint">(click a node for details)</span></h2>
+      <div class="overview-header">
+        <h2>Network overview <span class="hint">(click a node for details)</span></h2>
+        <div class="view-toggle">
+          <button id="btn-view-map" type="button" class="view-btn active">Map</button>
+          <button id="btn-view-table" type="button" class="view-btn">Raw table</button>
+        </div>
+      </div>
       <svg id="overview-svg" viewBox="0 0 900 480" preserveAspectRatio="xMidYMid meet"></svg>
+      <table id="raw-table" class="hidden"></table>
+      <details id="code-legend-details">
+        <summary>Status code legend</summary>
+        <div id="code-legend"></div>
+      </details>
     </section>
 
     <aside id="detail-panel">

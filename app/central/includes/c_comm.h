@@ -2,6 +2,7 @@
 #define C_COMM_H
 
 #include <stdint.h>
+#include <pthread.h>
 
 #include "sys_types.h"
 #include "ipc_msg.h"
@@ -30,9 +31,27 @@
  * c_comm.c's doc comment on on_command_reply() for why that matters.
  */
 
+/* Must be called once from main(), right after ctx.console_io_lock is
+ * pthread_mutex_init()'d and before the client thread starts, so that
+ * on_command_reply() (c_comm.c, runs on the CLIENT thread) can serialise
+ * its own c_logger_log() calls against c_hmi_render()'s 1 Hz status table
+ * and c_operator.c's interactive prompts - every c_comm_send_*()/
+ * broadcast function below can complete asynchronously at any time, from
+ * a thread neither c_main.c's on_pulse() nor c_operator.c's reader thread
+ * coordinates with otherwise, so without this it reopens exactly the
+ * terminal-splicing race console_io_lock exists to close. */
+void c_comm_set_console_io_lock(pthread_mutex_t *lock);
+
 /* UC-07/SD-03 (the "operator requests a mode change" opt block):
  * MSG_SET_MODE(target, mode). */
 void c_comm_send_set_mode(ipc_client_queue_t *q, controller_id_t target, operating_mode_t mode);
+
+/* DP-01/DP-02 peak-hour auto-switch + demo aid (c_mode_eng_auto_check(),
+ * c_operator.c's 'd'/'a' commands): sends MSG_SET_MODE(mode) to every
+ * L1-L6 in turn (never RLx, which has no operating_mode_t of its own).
+ * Mirrors c_comm_broadcast_timing_profile()'s shape - one call, whole
+ * chain, rather than the caller looping over c_comm_send_set_mode() itself. */
+void c_comm_broadcast_set_mode(ipc_client_queue_t *q, operating_mode_t mode);
 
 /* Single-target MSG_SET_TIMING_PROFILE(target, profile_id, offset_ms).
  * Used internally by c_comm_broadcast_timing_profile() below; exposed

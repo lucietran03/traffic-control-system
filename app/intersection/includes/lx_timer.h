@@ -35,6 +35,19 @@
 /* PA-11: override duration cap (5 minutes). */
 #define LX_OVERRIDE_DURATION_CAP_MS 300000u
 
+/*
+ * DP-02/SC-05: PLACEHOLDER schedule used only by lx_fsm_local_clock_mode_
+ * check() while link_state != LINK_CENTRAL_CONNECTED (Central is
+ * unreachable, so this Lx falls back to its own clock). Deliberately the
+ * same PoC placeholder pair as c_mode_eng.h's
+ * C_MODE_ENG_DEFAULT_PEAK_START_HOUR/_END_HOUR on the Central side - kept
+ * as two independent #defines (not a shared header) since app/intersection
+ * and app/central are separate executables with no shared config-loading
+ * mechanism, but they must be changed together if the team ever picks a
+ * real boundary hour. */
+#define LX_LOCAL_PEAK_START_HOUR    6u
+#define LX_LOCAL_PEAK_END_HOUR      9u
+
 /* lx_main.c arms IPC_PULSE_PHASE_TIMER at this fixed period - see the
  * fixed-tick design comment on lx_fsm_on_phase_timer() in lx_fsm.c. */
 #define LX_PHASE_TICK_MS            100u

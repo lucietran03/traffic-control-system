@@ -39,12 +39,12 @@ static const char *lx_signal_phase_name(signal_phase_t phase)
 
 void lx_signal_show_phase(controller_id_t id, signal_phase_t phase)
 {
-    printf("Lx %d: SIGNAL -> %s\n", (int)id, lx_signal_phase_name(phase));
+    printf("Lx %d: signal phase now %s\n", (int)id, lx_signal_phase_name(phase));
 }
 
 void lx_signal_apply_fault_safe(controller_id_t id)
 {
-    printf("Lx %d: FAULT_SAFE - holding safe outputs (all-red/dark)\n", (int)id);
+    printf("Lx %d: entering FAULT_SAFE mode - holding safe outputs (all-red/dark)\n", (int)id);
 }
 
 void lx_signal_show_override_clearance(controller_id_t id)

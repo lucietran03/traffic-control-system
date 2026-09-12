@@ -1,5 +1,5 @@
 /* Read-only live dashboard client. Polls /state.json (served by
- * server.py, which tails c_main's stdout) every 500ms and redraws.
+ * server.py, which tails c_main's stdout) every 1000ms and redraws.
  * No WebSocket, no build step, no dependency - plain DOM/SVG. */
 
 const PHASE_NAMES = [
@@ -163,6 +163,105 @@ function decodeBits(value, table) {
   return out;
 }
 
+// value -> "N (NAME)" using a plain lookup array (e.g. MODE_NAMES), or just
+// "N" if there's no name at that index. "-" for null/undefined (fields that
+// don't apply to a given role, e.g. PHASE for a railway node).
+function fmtEnum(value, names) {
+  if (value === null || value === undefined) return "-";
+  const name = names[value];
+  return name !== undefined ? `${value} (${name})` : String(value);
+}
+
+// value -> "0xN (BIT_A, BIT_B)" using a [bitmask, name] table, or just the
+// hex value if no bits are set. "-" for null/undefined.
+function fmtBits(value, table) {
+  if (value === null || value === undefined) return "-";
+  const names = decodeBits(value, table);
+  const hex = "0x" + value.toString(16);
+  return names.length ? `${hex} (${names.join(", ")})` : hex;
+}
+
+// Builds the collapsible "Status code legend" panel directly from the same
+// decode tables used everywhere else on the page (MODE_NAMES, PHASE_NAMES,
+// SUPERVISORY_NAMES, CROSSING_NAMES, FAULT_BITS, SENSOR_BITS), so the legend
+// can never drift out of sync with the actual decode logic. Static content -
+// built once at startup, not on every poll.
+function buildCodeLegend() {
+  const container = document.getElementById("code-legend");
+  if (!container) return;
+
+  function valueTable(title, names) {
+    const rows = names.map((name, i) => `<tr><td>${i}</td><td>${name}</td></tr>`).join("");
+    return `<div class="legend-block"><h3>${title}</h3><table class="legend-table"><tbody>${rows}</tbody></table></div>`;
+  }
+
+  function bitTable(title, bits) {
+    const rows = bits.map(([bit, name]) => `<tr><td>0x${bit.toString(16)}</td><td>${name}</td></tr>`).join("");
+    return `<div class="legend-block"><h3>${title}</h3><table class="legend-table"><tbody>${rows}</tbody></table></div>`;
+  }
+
+  container.innerHTML =
+    valueTable("Mode", MODE_NAMES) +
+    valueTable("Phase", PHASE_NAMES) +
+    valueTable("Supervisory state", SUPERVISORY_NAMES) +
+    valueTable("Crossing state", CROSSING_NAMES) +
+    bitTable("Fault bits", FAULT_BITS) +
+    bitTable("Sensor bits", SENSOR_BITS);
+}
+
+// Reproduces c_main's own status-table layout (app/central/src/c_hmi.c)
+// exactly, one row per node currently reported in state.json (the 9
+// intersection/railway controllers - C1 itself isn't one of these rows),
+// with every numeric/hex cell decoded inline via the same tables as the
+// legend so the table is self-explanatory even with the legend collapsed.
+function renderRawTable(state) {
+  const table = document.getElementById("raw-table");
+  if (!table) return;
+  const nodes = state.nodes || {};
+  const ids = [...LX_IDS, ...RLX_IDS];
+
+  const headers = ["ID", "ROLE", "MODE", "PHASE", "CROSSING_STATE", "SUPERVISORY", "FAULTS", "SENSOR", "OVERRIDE", "AVAILABILITY"];
+  let html = "<thead><tr>" + headers.map(h => `<th>${h}</th>`).join("") + "</tr></thead><tbody>";
+
+  for (const id of ids) {
+    const node = nodes[id];
+    if (!node) {
+      html += `<tr><td>${id}</td><td colspan="9">no data yet</td></tr>`;
+      continue;
+    }
+    const cells = [
+      node.id,
+      node.role,
+      fmtEnum(node.mode, MODE_NAMES),
+      fmtEnum(node.phase, PHASE_NAMES),
+      fmtEnum(node.crossing_state, CROSSING_NAMES),
+      fmtEnum(node.supervisory, SUPERVISORY_NAMES),
+      fmtBits(node.faults, FAULT_BITS),
+      fmtBits(node.sensor_status, SENSOR_BITS),
+      node.override_active ? 1 : 0,
+      node.availability,
+    ];
+    html += "<tr>" + cells.map(v => `<td>${v}</td>`).join("") + "</tr>";
+  }
+  html += "</tbody>";
+  table.innerHTML = html;
+}
+
+// Map / Raw table toggle - purely local display state, never touches the
+// server or sends anything anywhere. Defaults to the map (see index.html's
+// initial classes/hidden state).
+function setOverviewView(view) {
+  const svg = document.getElementById("overview-svg");
+  const table = document.getElementById("raw-table");
+  const mapBtn = document.getElementById("btn-view-map");
+  const tableBtn = document.getElementById("btn-view-table");
+  const showTable = view === "table";
+  svg.classList.toggle("hidden", showTable);
+  table.classList.toggle("hidden", !showTable);
+  mapBtn.classList.toggle("active", !showTable);
+  tableBtn.classList.toggle("active", showTable);
+}
+
 function selectNode(id) {
   selectedId = id;
   document.getElementById("detail-empty").classList.add("hidden");
@@ -272,6 +371,7 @@ let lastState = null;
 function render() {
   if (lastState) {
     updateOverview(lastState);
+    renderRawTable(lastState);
     renderDetail(lastState);
   }
 }
@@ -302,6 +402,10 @@ async function poll() {
   }
 }
 
+document.getElementById("btn-view-map").addEventListener("click", () => setOverviewView("map"));
+document.getElementById("btn-view-table").addEventListener("click", () => setOverviewView("table"));
+
 buildOverviewOnce();
+buildCodeLegend();
 poll();
 setInterval(poll, 1000);

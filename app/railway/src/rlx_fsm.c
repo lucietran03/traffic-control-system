@@ -229,7 +229,15 @@ void rlx_fsm_init(rlx_fsm_t *fsm, controller_id_t self_id)
      * main()), not in this struct. */
     fsm->faults = FAULT_NONE;
     fsm->fault_report_pending = 0;
-    fsm->link_state = LINK_CENTRAL_CONNECTED;
+    /* Not yet connected to C1 at process start-up, same as lx_fsm_init() -
+     * rlx_comm.c's heartbeat reply callback (rlx_fsm_on_heartbeat_result())
+     * will flip this to LINK_CENTRAL_CONNECTED once the first HEARTBEAT is
+     * actually ACKed. Previously started optimistically CONNECTED before
+     * any heartbeat had even been sent - corrected for consistency with
+     * the Lx side now that link_state is a real observation, not a
+     * placeholder. */
+    fsm->link_state = LINK_DEGRADED_LOCAL;
+    fsm->missed_heartbeat_acks = 0;
 }
 
 void rlx_fsm_simulate_train_approaching(rlx_fsm_t *fsm, uint32_t direction)
@@ -342,11 +350,12 @@ void rlx_fsm_on_tick(rlx_fsm_t *fsm)
          * never reach 60s while still in RLX_WARNING. It was dead code
          * under every input, not just an edge case. RC-11's "stuck
          * active" scenario means the physical TRAIN_APPROACHING sensor
-         * line stays continuously asserted, which this discrete simulated
-         * event (rlx_fsm_simulate_train_approaching(), a demo shim - no
-         * real rlx_sensor.c exists yet) cannot represent; a real
-         * implementation belongs in rlx_sensor.c once it reads an actual
-         * continuous sensor line, not here.
+         * line stays continuously asserted, which rlx_sensor.c's discrete
+         * keypress-simulated event cannot represent - this diagnostic is
+         * an accepted Core limitation (same class as RC-11's documented
+         * silent-sensor gap), not work deferred to a not-yet-written
+         * file; a real implementation would need an actual continuous
+         * sensor line, which this Core design does not have.
          */
         if (fsm->state_elapsed_ms >= RLX_WARNING_TO_CLOSING_MS) {
             enter_closing(fsm);
@@ -435,7 +444,33 @@ void rlx_fsm_fill_status(const rlx_fsm_t *fsm, status_report_payload_t *status)
     status->role = ROLE_RAILWAY;
     status->crossing_state = (uint32_t)map_to_crossing_state(fsm->state);
     status->faults = fsm->faults;
+    status->link_state = (uint32_t)fsm->link_state;
     pthread_mutex_unlock((pthread_mutex_t *)&fsm->lock);
+}
+
+int rlx_fsm_on_heartbeat_result(rlx_fsm_t *fsm, int acked)
+{
+    int transition = 0;
+
+    pthread_mutex_lock(&fsm->lock);
+    if (acked) {
+        if (fsm->link_state != LINK_CENTRAL_CONNECTED) {
+            fsm->link_state = LINK_CENTRAL_CONNECTED;
+            transition = 2;
+        }
+        fsm->missed_heartbeat_acks = 0;
+    } else {
+        if (fsm->missed_heartbeat_acks < 0xFFFFFFFFu) {
+            fsm->missed_heartbeat_acks++;
+        }
+        if (fsm->missed_heartbeat_acks >= 3 && fsm->link_state == LINK_CENTRAL_CONNECTED) {
+            fsm->link_state = LINK_DEGRADED_LOCAL;
+            transition = 1;
+        }
+    }
+    pthread_mutex_unlock(&fsm->lock);
+
+    return transition;
 }
 
 void rlx_fsm_report_watchdog_trip(rlx_fsm_t *fsm)

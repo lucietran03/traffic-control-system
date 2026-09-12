@@ -18,8 +18,7 @@
  * functions to decide what to build/validate, then posts the result itself
  * via ipc_client_post().
  *
- * Explicitly OUT of scope here - left as TODO hooks elsewhere until these
- * files exist:
+ * Explicitly OUT of scope here - implemented in the following files instead:
  *   - heartbeat/staleness tracking                          -> c_watchdog_mon.c
  *   - terminal/HMI rendering (UC-09)                         -> c_hmi.c
  *   - parsing/recording inbound STATUS/HEARTBEAT/
@@ -107,6 +106,18 @@ typedef struct {
     c_controller_view_t controllers[9];   /* index 0-5 = L1-L6, index 6-8 = RL1-RL3 (see c_mode_eng_controller_index()) */
     c_mode_schedule_t   schedule;
     uint32_t            next_profile_id;
+
+    /* DP-01/DP-02 auto peak-hour switching + demo aid (c_operator.c's 'd'/
+     * 'a' commands, c_main.c's on_pulse()). demo_hour_override_active/
+     * demo_hour let a live demo force a chosen hour instead of waiting for
+     * a real clock boundary; last_auto_mode/last_auto_mode_valid record
+     * the mode the schedule last implied, so c_mode_eng_auto_check() only
+     * fires when that computed mode actually changes, not on every 1 Hz
+     * tick. All four are zeroed by c_mode_eng_init(). */
+    uint8_t          demo_hour_override_active;
+    uint8_t          demo_hour;
+    operating_mode_t last_auto_mode;
+    uint8_t          last_auto_mode_valid;
 } c_mode_eng_t;
 
 /* One-time setup: populates every controllers[] slot's id/role, seeds
@@ -124,6 +135,28 @@ int c_mode_eng_controller_index(controller_id_t id);
  * MODE_OFF_PEAK_SENSOR. current_hour (0-23) is caller-supplied - this file
  * does not read the wall clock itself. */
 operating_mode_t c_mode_eng_select_mode(const c_mode_eng_t *eng, uint8_t current_hour);
+
+/*
+ * DP-01/DP-02 auto peak-hour switching, built on top of
+ * c_mode_eng_select_mode() above (previously unused by any caller). Computes
+ * the mode current_hour implies and compares it against eng->last_auto_mode.
+ * Returns 1 (and updates eng->last_auto_mode/last_auto_mode_valid, writes
+ * the new mode to *out_mode) only when it differs from the last check - the
+ * very first call ever made just seeds the baseline and returns 0, so
+ * process start-up never fires a surprise broadcast. Caller (c_main.c's
+ * on_pulse()) is responsible for actually broadcasting *out_mode when this
+ * returns 1 - this file does not send anything itself (see this header's
+ * top-of-file doc comment on IPC ownership).
+ */
+int c_mode_eng_auto_check(c_mode_eng_t *eng, uint8_t current_hour, operating_mode_t *out_mode);
+
+/* Sets last_commanded_mode for every L1-L6 controller (index 0-5 only,
+ * never RL1-RL3 - railway controllers have no operating_mode_t of their
+ * own, see c_controller_view_t). Pure bookkeeping, same "what C1 last told
+ * this controller" role as c_operator.c's handle_set_mode() already keeps
+ * for a single Lx - this is that same update applied to all six at once,
+ * for c_mode_eng_auto_check()'s broadcast and c_operator.c's 'd' command. */
+void c_mode_eng_mark_all_lx_commanded(c_mode_eng_t *eng, operating_mode_t mode);
 
 /*
  * TC-01..05: fills one ipc_request_t per chain entry into out_requests -

@@ -16,9 +16,9 @@
  * crossing with its identity selected by argv[1] (1-3 -> RL1-RL3), same
  * convention as lx_main.c. Wires up the two-thread IPC pattern from
  * app/shared/README.md ("Threading pattern") only - train detection,
- * gate/flasher/train-signal actuation, and fault handling belong in
- * rlx_fsm.c/rlx_timer.c/rlx_gate.c/rlx_signal.c/rlx_sensor.c/rlx_comm.c
- * and are left as TODO hooks below.
+ * gate/flasher/train-signal actuation, and fault handling are
+ * implemented in rlx_fsm.c/rlx_timer.c/rlx_gate.c/rlx_signal.c/
+ * rlx_sensor.c/rlx_comm.c and wired in below.
  */
 
 typedef struct {

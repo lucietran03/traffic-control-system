@@ -62,7 +62,7 @@ void c_hmi_render(const c_mode_eng_t *eng)
             snprintf(crossing_buf, sizeof(crossing_buf), "-");
         }
 
-        printf("%-5s %-13s %-9u %-6s %-16s %-12u %#-8x %-8s %-9u %-12s\n",
+        printf("%-5s %-13s %-9u %-6s %-16s %-12u %#-8x %-9s %-8u %-12s\n",
                controller_name(c->id),
                role_name(c->role),
                (unsigned)c->last_reported_mode,
