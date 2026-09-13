@@ -201,15 +201,22 @@ static void on_pulse(int code, void *ctx_ptr)
         if (mode_changed) {
             /* Never call a blocking/queueing send while mode_eng_lock is
              * held - same convention already used by every c_operator.c
-             * handler. console_io_lock only guards the log line here (its
-             * own splice hazard, same as the MSG_FAULT_REPORT case above);
-             * c_comm_broadcast_set_mode() itself needs no lock. */
+             * handler (mode_eng_lock was already released above, so this
+             * is fine). console_io_lock stays held across BOTH the log
+             * line AND c_comm_broadcast_set_mode() itself - not just the
+             * log line - because c_comm_send_set_mode() (called 6 times
+             * inside the broadcast) can itself call c_logger_log() on its
+             * "outgoing queue full" path; every other call site of that
+             * sender already runs under console_io_lock via c_operator.c's
+             * reader-thread switch, and ipc_client_post() only enqueues
+             * (never blocks), so holding the lock across the whole
+             * broadcast is safe, matching that same precedent. */
             pthread_mutex_lock(&ctx->console_io_lock);
             c_logger_log("Auto peak-hour switch: hour=%u -> mode=%s, broadcasting to all Lx",
                          (unsigned)current_hour,
                          (auto_mode == MODE_PEAK_FIXED) ? "PEAK_FIXED" : "OFF_PEAK_SENSOR");
-            pthread_mutex_unlock(&ctx->console_io_lock);
             c_comm_broadcast_set_mode(ctx->client_queue, auto_mode);
+            pthread_mutex_unlock(&ctx->console_io_lock);
         }
 
         /* console_io_lock is always acquired BEFORE mode_eng_lock, never
