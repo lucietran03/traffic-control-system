@@ -93,6 +93,9 @@ static void on_pulse(int code, void *ctx_ptr)
         break;
     case IPC_PULSE_HEARTBEAT_TICK:
         lx_comm_send_heartbeat(ctx->self_id, &ctx->fsm, ctx->client_queue);
+        /* DP-02/SC-05: no-op while link_state == LINK_CENTRAL_CONNECTED;
+         * see lx_fsm_local_clock_mode_check()'s doc comment in lx_fsm.h. */
+        lx_fsm_local_clock_mode_check(&ctx->fsm);
         break;
     default:
         break;

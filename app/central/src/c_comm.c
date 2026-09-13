@@ -22,6 +22,13 @@
  * writes rather than fabricating a value nobody else provides.
  */
 
+static pthread_mutex_t *g_console_io_lock = NULL;
+
+void c_comm_set_console_io_lock(pthread_mutex_t *lock)
+{
+    g_console_io_lock = lock;
+}
+
 static const char *verb_name(uint32_t verb)
 {
     switch ((msg_type_t)verb) {
@@ -82,18 +89,31 @@ static void on_command_reply(controller_id_t target_id, const ipc_request_t *ori
 {
     (void)ctx;
 
+    /* Runs on the CLIENT thread (see this function's doc comment above) -
+     * console_io_lock (if set - see c_comm_set_console_io_lock()) keeps
+     * this asynchronous log line from splicing into c_hmi_render()'s
+     * table or an in-progress operator prompt, same hazard as every other
+     * c_logger_log() call site in this codebase. g_console_io_lock is
+     * only NULL before main() calls c_comm_set_console_io_lock(), which
+     * happens before the client thread starts, so every real reply here
+     * finds it set. */
+    if (g_console_io_lock != NULL) {
+        pthread_mutex_lock(g_console_io_lock);
+    }
+
     if (!send_ok) {
         c_logger_log("C1: %s to %d send failed (peer unreachable or send error)",
                      verb_name(original_req->verb), (int)target_id);
-        return;
-    }
-
-    if ((msg_result_t)reply->result == RESULT_NACK) {
+    } else if ((msg_result_t)reply->result == RESULT_NACK) {
         c_logger_log("C1: %s to %d -> NACK reason=%s",
                      verb_name(original_req->verb), (int)target_id, nack_reason_name(reply->reason));
     } else {
         c_logger_log("C1: %s to %d -> %s",
                      verb_name(original_req->verb), (int)target_id, result_name(reply->result));
+    }
+
+    if (g_console_io_lock != NULL) {
+        pthread_mutex_unlock(g_console_io_lock);
     }
 }
 
@@ -110,6 +130,15 @@ void c_comm_send_set_mode(ipc_client_queue_t *q, controller_id_t target, operati
 
     if (ipc_client_post(q, target, &req, on_command_reply, NULL) != 0) {
         c_logger_log("C1: SET_MODE to %d dropped - outgoing queue full or stopping", (int)target);
+    }
+}
+
+void c_comm_broadcast_set_mode(ipc_client_queue_t *q, operating_mode_t mode)
+{
+    int i;
+
+    for (i = 0; i < 6; i++) {
+        c_comm_send_set_mode(q, (controller_id_t)(CTRL_L1 + i), mode);
     }
 }
 

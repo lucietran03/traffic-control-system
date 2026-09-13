@@ -26,8 +26,9 @@
  * lx_fsm_on_*() verb/pulse handlers directly from ipc_server_run()'s
  * on_request()/on_pulse() callbacks, which must never block (see
  * app/shared/README.md "Threading pattern") - the lock here is expected
- * to be uncontended/short, same constraint c_main.c's TODO comment notes
- * for its own future locking.
+ * to be uncontended/short, the same constraint c_main.c's central_context_t
+ * doc comment notes for its own mode_eng_lock (resolved there from a TODO
+ * once c_operator.c's operator-console thread was added).
  *
  * Known follow-up items previously listed here have been closed:
  *   - SC-02/TL-05/TL-06/UC-02 pedestrian WALK/FLASHING_DONT_WALK/
@@ -197,6 +198,16 @@ typedef struct {
      */
     uint8_t                  ped_clearance_active;
     connectivity_state_t     link_state;
+    /*
+     * PA-07: consecutive outgoing HEARTBEATs that did not reach C1 (either
+     * ipc_client_post() dropped it synchronously, or send_ok/reply->result
+     * from the async reply callback showed no real ACK). Owned entirely by
+     * lx_fsm_on_heartbeat_result(), called from lx_comm.c's heartbeat
+     * reply callback (CLIENT thread) - never touched anywhere else.
+     * Reaching 3 flips link_state to LINK_DEGRADED_LOCAL; any single
+     * successful ACK resets it to 0 and flips link_state back.
+     */
+    uint32_t                 missed_heartbeat_acks;
     uint32_t                 active_profile_id;
     uint32_t                 assigned_offset_ms;
     /*
@@ -279,11 +290,54 @@ void lx_fsm_report_watchdog_trip(lx_fsm_t *fsm);
 void lx_fsm_on_phase_timer(lx_fsm_t *fsm);
 
 /* Fills the fields this FSM owns in a status report (mode, signal_phase,
- * supervisory_state, active_profile_id, override_active, faults, role).
- * link_state is intentionally left untouched - lx_comm.c (not yet
- * written) owns that field and is responsible for actually sending the
- * populated status out. */
+ * supervisory_state, active_profile_id, override_active, faults, role,
+ * link_state). link_state is now a real observation (see
+ * lx_fsm_on_heartbeat_result() below), not a placeholder - lx_comm.c no
+ * longer overwrites it with a hardcoded value before sending. */
 void lx_fsm_fill_status(const lx_fsm_t *fsm, status_report_payload_t *status);
+
+/*
+ * PA-07/SC-05: called from lx_comm.c's heartbeat reply callback (runs on
+ * the CLIENT thread - the only thing this function ever locks is
+ * fsm->lock, never nested with anything else, so there is no ordering
+ * hazard against the server-thread lx_fsm_on_*()/lx_fsm_on_phase_timer()
+ * callers) once per outgoing HEARTBEAT's outcome is known. Pass acked=1
+ * for a real RESULT_ACK reply, 0 for anything else (send failure, no
+ * reply, NACK/ERROR, or a synchronous ipc_client_post() drop).
+ *
+ * Returns:
+ *   0 = no link_state transition happened this call
+ *   1 = just entered LINK_DEGRADED_LOCAL (3rd consecutive miss)
+ *   2 = just reconnected (this ACK moved link_state away from
+ *       LINK_DEGRADED_LOCAL back to LINK_CENTRAL_CONNECTED)
+ * The caller (lx_comm.c) logs these transitions - this function never
+ * prints anything itself, matching every other lx_fsm_* function.
+ *
+ * Modelling note (see the plan's "scoping decision"): SC-05's
+ * LINK_RESYNCHRONISING is not held as a separate observable window here -
+ * the heartbeat whose ACK proves reconnection already carries this FSM's
+ * complete current state (lx_fsm_fill_status() reuses the same snapshot
+ * shape for both HEARTBEAT and STATUS, per PA-08), so there is no
+ * additional "send full state" step to sequence before flipping straight
+ * back to LINK_CENTRAL_CONNECTED.
+ */
+int lx_fsm_on_heartbeat_result(lx_fsm_t *fsm, int acked);
+
+/*
+ * DP-02/SC-05 ("DEGRADED_LOCAL -> DEGRADED_LOCAL: local schedule changes /
+ * select Peak or Off-Peak mode locally"): while link_state !=
+ * LINK_CENTRAL_CONNECTED, this controller's own clock - not Central -
+ * selects PEAK_FIXED vs OFF_PEAK_SENSOR, using the same placeholder
+ * schedule hours as c_mode_eng.h's Central-side default (LX_LOCAL_PEAK_
+ * START_HOUR/_END_HOUR in lx_timer.h). While connected, this is a no-op:
+ * Central stays the sole authority for mode selection. Reuses the exact
+ * same pending_mode/mode_change_pending deferred-apply fields
+ * lx_fsm_on_set_mode() already uses, so TL-04's "apply only at the next
+ * safe ALL_RED boundary" applies here with no changes to
+ * lx_fsm_advance_phase_locked(). Idempotent - safe to call every tick.
+ * Called from lx_main.c's on_pulse() IPC_PULSE_HEARTBEAT_TICK case.
+ */
+void lx_fsm_local_clock_mode_check(lx_fsm_t *fsm);
 
 /*
  * MSG_REQUEST_FAULT_CLEAR handler (C1 -> Lx), symmetric to RLx's

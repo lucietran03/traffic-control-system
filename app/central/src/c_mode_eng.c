@@ -40,6 +40,13 @@ void c_mode_eng_init(c_mode_eng_t *eng)
     eng->schedule.peak_end_hour   = C_MODE_ENG_DEFAULT_PEAK_END_HOUR;
 
     eng->next_profile_id = 1;
+
+    /* memset() above only covers eng->controllers[] - these top-level
+     * scalars need their own explicit zeroing. */
+    eng->demo_hour_override_active = 0;
+    eng->demo_hour                 = 0;
+    eng->last_auto_mode            = MODE_PEAK_FIXED;
+    eng->last_auto_mode_valid      = 0;
 }
 
 int c_mode_eng_controller_index(controller_id_t id)
@@ -59,6 +66,39 @@ operating_mode_t c_mode_eng_select_mode(const c_mode_eng_t *eng, uint8_t current
         return MODE_PEAK_FIXED;
     }
     return MODE_OFF_PEAK_SENSOR;
+}
+
+int c_mode_eng_auto_check(c_mode_eng_t *eng, uint8_t current_hour, operating_mode_t *out_mode)
+{
+    operating_mode_t computed = c_mode_eng_select_mode(eng, current_hour);
+
+    if (!eng->last_auto_mode_valid) {
+        /* First-ever call just seeds the baseline - report no change so
+         * process start-up never fires a surprise broadcast on top of
+         * whatever mode each Lx already booted into on its own. */
+        eng->last_auto_mode       = computed;
+        eng->last_auto_mode_valid = 1;
+        return 0;
+    }
+
+    if (computed == eng->last_auto_mode) {
+        return 0;
+    }
+
+    eng->last_auto_mode = computed;
+    if (out_mode != NULL) {
+        *out_mode = computed;
+    }
+    return 1;
+}
+
+void c_mode_eng_mark_all_lx_commanded(c_mode_eng_t *eng, operating_mode_t mode)
+{
+    int i;
+
+    for (i = 0; i < 6; i++) {
+        eng->controllers[i].last_commanded_mode = mode;
+    }
 }
 
 int c_mode_eng_build_timing_profile(uint32_t profile_id, const c_arterial_offset_t *chain,

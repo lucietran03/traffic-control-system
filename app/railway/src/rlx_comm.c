@@ -3,6 +3,10 @@
 
 #include "rlx_comm.h"
 
+/* Shared by rlx_comm_send_fault_report()/rlx_comm_broadcast_crossing_
+ * status_if_changed() below - deliberately NOT reused for the heartbeat
+ * send, which needs its own dedicated callback (on_heartbeat_reply(),
+ * below) to drive PA-07 tracking; this one stays exactly as before. */
 static void on_reply_log_failure(controller_id_t target_id, const ipc_request_t *original_req,
                                   const ipc_reply_t *reply, int send_ok, void *ctx)
 {
@@ -11,6 +15,29 @@ static void on_reply_log_failure(controller_id_t target_id, const ipc_request_t 
     (void)ctx;
     if (!send_ok) {
         fprintf(stderr, "RLx: message to %d failed to send\n", (int)target_id);
+    }
+}
+
+/* PA-07: ctx is the sending rlx_fsm_t* - see lx_comm.c's on_heartbeat_
+ * reply() for the full rationale (identical shape here). */
+static void on_heartbeat_reply(controller_id_t target_id, const ipc_request_t *original_req,
+                                const ipc_reply_t *reply, int send_ok, void *ctx)
+{
+    rlx_fsm_t *fsm = (rlx_fsm_t *)ctx;
+    int acked = send_ok && reply != NULL && (msg_result_t)reply->result == RESULT_ACK;
+    int transition;
+
+    (void)original_req;
+
+    if (!send_ok) {
+        fprintf(stderr, "RLx: HEARTBEAT to %d failed to send\n", (int)target_id);
+    }
+
+    transition = rlx_fsm_on_heartbeat_result(fsm, acked);
+    if (transition == 1) {
+        fprintf(stderr, "RLx: 3 consecutive HEARTBEATs unacknowledged - entering DEGRADED_LOCAL (PA-07)\n");
+    } else if (transition == 2) {
+        fprintf(stderr, "RLx: HEARTBEAT acknowledged by C1 - reconnected, resuming CENTRAL_CONNECTED (PA-08)\n");
     }
 }
 
@@ -27,19 +54,20 @@ void rlx_comm_send_heartbeat(controller_id_t self_id, rlx_fsm_t *fsm, ipc_client
      * lx_comm.c) until a clock API is added. */
     req.timestamp_ms = 0;
 
+    /* rlx_fsm_fill_status() only fills role/crossing_state/faults/
+     * link_state for ROLE_RAILWAY - mode/signal_phase/supervisory_state
+     * are not meaningful here and stay 0. link_state is now the real
+     * observation rlx_fsm_on_heartbeat_result() maintains, not a
+     * hardcoded placeholder. */
     rlx_fsm_fill_status(fsm, &req.payload.heartbeat.summary);
-    /* rlx_fsm_fill_status() only fills role/crossing_state/faults for
-     * ROLE_RAILWAY - mode/signal_phase/supervisory_state are not
-     * meaningful here and stay 0. link_state has the same placeholder gap
-     * as lx_comm.c's heartbeat: no connectivity-tracking logic exists yet
-     * to report anything else honestly. */
-    req.payload.heartbeat.summary.link_state = (uint32_t)LINK_CENTRAL_CONNECTED;
 
     /* Verifier-audit fix: ipc_client_post() returns -1 (queue full or
-     * stopping) WITHOUT ever invoking on_reply_log_failure - log the
-     * drop here, the only point that can observe it. */
-    if (ipc_client_post(client_queue, CTRL_C1, &req, on_reply_log_failure, NULL) != 0) {
+     * stopping) WITHOUT ever invoking on_heartbeat_reply - log the drop
+     * here, the only point that can observe it, and count it as a miss
+     * for PA-07 the same as an unacknowledged send. */
+    if (ipc_client_post(client_queue, CTRL_C1, &req, on_heartbeat_reply, fsm) != 0) {
         fprintf(stderr, "RLx: HEARTBEAT to C1 dropped - outgoing queue full or stopping\n");
+        (void)rlx_fsm_on_heartbeat_result(fsm, 0);
     }
 }
 

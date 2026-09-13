@@ -204,9 +204,10 @@ static void lx_fsm_ped_service_tick_locked(lx_fsm_t *fsm)
  */
 static void lx_fsm_terminate_override_locked(lx_fsm_t *fsm)
 {
-    /* TODO(lx_signal.c): drive the actual safe-clearance signal sequence
-     * for the overridden movement before resuming normal sequencing;
-     * this FSM only owns state, not actuation. */
+    /* Logs/records the override-clearance transition; the actual
+     * yellow -> all-red clearance sequencing is driven by the ordinary
+     * phase-timer/lx_signal_show_phase() path once supervisory reverts
+     * to NORMAL_OPERATION below. */
     lx_signal_show_override_clearance(fsm->self_id);
     fsm->override_substate = OVR_NONE;
     fsm->override_remaining_ms = 0;
@@ -387,9 +388,11 @@ void lx_fsm_init(lx_fsm_t *fsm, controller_id_t self_id)
     fsm->override_duration_ms = 0;
     fsm->override_remaining_ms = 0;
     fsm->ped_clearance_active = 0;
-    /* Judgment call: not yet connected to C1 at process start-up;
-     * lx_comm.c (not yet written) will update this once it exists. */
+    /* Not yet connected to C1 at process start-up - lx_comm.c's heartbeat
+     * reply callback (lx_fsm_on_heartbeat_result()) will flip this to
+     * LINK_CENTRAL_CONNECTED once the first HEARTBEAT is actually ACKed. */
     fsm->link_state = LINK_DEGRADED_LOCAL;
+    fsm->missed_heartbeat_acks = 0;
     fsm->active_profile_id = 0;
     fsm->assigned_offset_ms = 0;
     fsm->offset_apply_pending = 0;
@@ -753,6 +756,20 @@ void lx_fsm_on_request_override(lx_fsm_t *fsm, const request_override_payload_t 
         /* PA-11: (0, 300000] ms. */
         reply->result = RESULT_NACK;
         reply->reason = NACK_REASON_INVALID_DURATION;
+    } else if (payload->target_movement != (uint32_t)OVERRIDE_MOVEMENT_ARTERIAL &&
+               payload->target_movement != (uint32_t)OVERRIDE_MOVEMENT_CONNECTOR) {
+        /* Defense-in-depth fix, same rationale as lx_fsm_on_set_mode()'s
+         * equivalent check: this FSM, not c_operator.c, is the documented
+         * authoritative validator for wire input - the wire contract has
+         * no guarantee the sender is always a well-behaved operator.
+         * c_operator.c already only offers 0/1, so this NACK is
+         * unreachable from the operator console today, but without it an
+         * out-of-range value would silently default to
+         * OVERRIDE_MOVEMENT_ARTERIAL wherever override_target_movement is
+         * tested (every call site only ever checks
+         * `== OVERRIDE_MOVEMENT_CONNECTOR`), instead of being rejected. */
+        reply->result = RESULT_NACK;
+        reply->reason = NACK_REASON_OUT_OF_RANGE;
     } else if (fsm->supervisory == SUPERVISORY_RAILWAY_PREEMPTION) {
         /* CC-02: cannot grant an override that conflicts with an active
          * railway pre-emption. */
@@ -854,10 +871,11 @@ void lx_fsm_on_crossing_status(lx_fsm_t *fsm, const crossing_status_payload_t *p
                 lx_fsm_terminate_override_locked(fsm);
             }
             fsm->supervisory = SUPERVISORY_RAILWAY_PREEMPTION;
-            /* Actual suppression - holding the toward-crossing approach
-             * red once its in-progress minimum green+yellow+all-red
-             * completes, never truncated - happens in the ALL_RED
-             * boundary check inside lx_fsm_advance_phase_locked(). */
+            /* Actual suppression: if a connector green is already running,
+             * lx_fsm_on_phase_timer()'s PHASE_CONNECTOR_GREEN case cuts it
+             * to its minimum-green requirement (CC-01/CC-02); either way,
+             * lx_fsm_advance_phase_locked()'s ALL_RED boundary check never
+             * lets a NEW connector green start while this stays active. */
         } else if (fsm->supervisory == SUPERVISORY_RAILWAY_PREEMPTION) {
             /* SC-03A: resume normal mode. Never auto-resumes an
              * interrupted override - it was already cancelled via safe
@@ -917,8 +935,7 @@ void lx_fsm_on_phase_timer(lx_fsm_t *fsm)
     lx_fsm_check_fault_locked(fsm);
 
     if (fsm->supervisory == SUPERVISORY_FAULT_SAFE) {
-        /* TODO(lx_signal.c): apply the actual safe-state outputs
-         * (all-red/dark per RC-06/PA-10). This FSM only owns state. */
+        /* Apply the fault-safe outputs (all-red/dark per RC-06/PA-10). */
         lx_signal_apply_fault_safe(fsm->self_id);
         pthread_mutex_unlock(&fsm->lock);
         return;
@@ -1069,6 +1086,39 @@ void lx_fsm_on_phase_timer(lx_fsm_t *fsm)
              * ordering keeps the override's priority explicit either way. */
             break;
         }
+
+        if (fsm->supervisory == SUPERVISORY_RAILWAY_PREEMPTION && fsm->green_elapsed_ms >= LX_MIN_GREEN_MS) {
+            /*
+             * CC-01/CC-02/UC-05 step 2/SD-05 fix: cut this already-running
+             * toward-crossing green to its MINIMUM-green requirement, not
+             * its full or extended duration, once an active railway
+             * closure needs it suppressed. lx_fsm_on_crossing_status()'s
+             * own doc comment claims this happens "once its in-progress
+             * minimum green ... completes", but the ordinary
+             * PEAK_FIXED/OFF_PEAK_SENSOR/CC-03 checks below - and the
+             * ALL_RED boundary check in lx_fsm_advance_phase_locked() -
+             * only ever prevent a NEW connector green from starting during
+             * pre-emption; neither one truncates a green already in
+             * progress, which could otherwise run up to its full 30 s
+             * (PEAK_FIXED) or 40 s (OFF_PEAK_SENSOR/CC-03 drain-extended)
+             * duration - well past the ~25 s adjacent-intersection
+             * clearance allowance RC-03's 45 s warning-to-arrival budget
+             * assumes (Appendix B4). Checked every 100 ms tick (not
+             * modulo-gated like the ordinary extension checks) so the
+             * cutoff fires on the exact tick minimum green is satisfied,
+             * whether pre-emption began before or after that point.
+             * Mutually exclusive with the override check above (railway
+             * pre-emption always evicts an active override first, see
+             * lx_fsm_on_crossing_status()) and takes precedence over any
+             * in-flight CC-03 drain - a fresh drain episode is armed again
+             * on the next reopening via the usual drain_pending path.
+             */
+            fsm->drain_active = 0;
+            fsm->drain_extending = 0;
+            fsm->drain_extension_total_ms = 0;
+            lx_fsm_advance_phase_locked(fsm);
+            break;
+        }
         /*
          * CC-03/UC-05/SD-05: once this connector green's ordinary exit
          * point has actually been reached (drain_extending latches true
@@ -1174,10 +1224,68 @@ void lx_fsm_fill_status(const lx_fsm_t *fsm, status_report_payload_t *status)
     if (fsm->queue_warning_active)     { status->sensor_status |= SENSOR_QUEUE_WARNING; }
     status->active_profile_id = fsm->active_profile_id;
     status->override_active   = (uint8_t)((fsm->override_substate == OVR_ACTIVE) ? 1u : 0u);
-    /* status->link_state intentionally left untouched - see this
-     * function's doc comment in lx_fsm.h. */
+    status->link_state        = (uint32_t)fsm->link_state;
 
     pthread_mutex_unlock((pthread_mutex_t *)&fsm->lock);
+}
+
+int lx_fsm_on_heartbeat_result(lx_fsm_t *fsm, int acked)
+{
+    int transition = 0;
+
+    pthread_mutex_lock(&fsm->lock);
+    if (acked) {
+        if (fsm->link_state != LINK_CENTRAL_CONNECTED) {
+            fsm->link_state = LINK_CENTRAL_CONNECTED;
+            transition = 2;
+        }
+        fsm->missed_heartbeat_acks = 0;
+    } else {
+        if (fsm->missed_heartbeat_acks < 0xFFFFFFFFu) {
+            fsm->missed_heartbeat_acks++;
+        }
+        if (fsm->missed_heartbeat_acks >= 3 && fsm->link_state == LINK_CENTRAL_CONNECTED) {
+            fsm->link_state = LINK_DEGRADED_LOCAL;
+            transition = 1;
+        }
+    }
+    pthread_mutex_unlock(&fsm->lock);
+
+    return transition;
+}
+
+void lx_fsm_local_clock_mode_check(lx_fsm_t *fsm)
+{
+    time_t now;
+    struct tm tm_now;
+    uint8_t hour;
+    operating_mode_t schedule_mode;
+
+    pthread_mutex_lock(&fsm->lock);
+    if (fsm->link_state == LINK_CENTRAL_CONNECTED) {
+        /* Central stays the sole mode authority while connected - this
+         * fallback only acts while disconnected (SC-05). */
+        pthread_mutex_unlock(&fsm->lock);
+        return;
+    }
+
+    now = time(NULL);
+    localtime_r(&now, &tm_now);
+    hour = (uint8_t)tm_now.tm_hour;
+    schedule_mode = (hour >= LX_LOCAL_PEAK_START_HOUR && hour < LX_LOCAL_PEAK_END_HOUR)
+                        ? MODE_PEAK_FIXED : MODE_OFF_PEAK_SENSOR;
+
+    /* Same deferred-apply shape as lx_fsm_on_set_mode() - see this
+     * function's doc comment in lx_fsm.h for why duplicating these three
+     * lines here (rather than refactoring the two call sites to share a
+     * helper) is the deliberate, lower-risk choice this close to a demo. */
+    if (schedule_mode == fsm->mode) {
+        fsm->mode_change_pending = 0;
+    } else {
+        fsm->pending_mode = schedule_mode;
+        fsm->mode_change_pending = 1;
+    }
+    pthread_mutex_unlock(&fsm->lock);
 }
 
 void lx_fsm_on_request_fault_clear(lx_fsm_t *fsm, ipc_reply_t *reply)

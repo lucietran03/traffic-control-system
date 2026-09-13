@@ -22,9 +22,10 @@
  *
  * mode_eng_lock: c_mode_eng_t was originally touched by exactly one
  * thread (the server thread, sequentially through ipc_server_run()'s
- * MsgReceive() loop - see c_main.c's central_context_t doc comment,
- * which flagged a mutex as still-TODO). This operator thread is a SECOND
- * thread that now reads c_mode_eng_t (c_mode_eng_controller_index(),
+ * MsgReceive() loop - see c_main.c's central_context_t doc comment, which
+ * used to flag this mutex as a TODO before the operator-console thread
+ * below was added). This operator thread is a SECOND thread that now
+ * reads c_mode_eng_t (c_mode_eng_controller_index(),
  * c_mode_eng_validate_override_request(), c_mode_eng_next_profile_id(),
  * c_mode_eng_get_chain()) and writes small per-controller bookkeeping
  * fields (last_commanded_mode, last_applied_profile_id,
@@ -34,11 +35,23 @@
  * single operator command; never across the non-blocking
  * ipc_client_post() call itself (c_comm.c's senders), which needs no
  * lock at all - they only ever touch a stack-local ipc_request_t.
+ *
+ * console_io_lock: serialises this thread's stdout/stdin (the printed
+ * prompts/results of every handle_*() call below) against c_main.c's 1 Hz
+ * c_hmi_render() status-table print and the MSG_FAULT_REPORT log line -
+ * without it, an asynchronous table refresh or fault-report log can
+ * splice itself into the middle of an in-progress operator prompt,
+ * which is unreadable during a live demo. Always acquired OUTSIDE (before)
+ * mode_eng_lock, never the reverse - see c_main.c's on_pulse() for why
+ * that ordering is a hard requirement, not stylistic. Taken by this
+ * file's reader-thread switch around each handle_*() call; never held
+ * across the blocking scanf() itself.
  */
 typedef struct {
     ipc_client_queue_t *client_queue;
     c_mode_eng_t        *mode_eng;
     pthread_mutex_t      *mode_eng_lock;
+    pthread_mutex_t      *console_io_lock;
 } c_operator_args_t;
 
 /*
@@ -61,6 +74,10 @@ typedef struct {
  *   r = RENEW_OVERRIDE for an Lx                    (UC-08, SD-07)
  *   c = CANCEL_OVERRIDE for an Lx                   (UC-08, SD-07)
  *   f = REQUEST_FAULT_CLEAR for an Lx or RLx         (UC-06 alt 7.1, SD-06, SC-03A)
+ *   d = force a simulated hour (0-23), for demoing DP-01/DP-02 peak-hour
+ *       switching on demand instead of waiting for a real clock boundary
+ *   a = resume automatic (real wall-clock) peak-hour switching, cancelling
+ *       a prior 'd'
  *   h / ? = show the help menu again
  *   q = stop operator console (this thread only)
  */

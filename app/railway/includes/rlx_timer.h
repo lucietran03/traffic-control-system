@@ -22,12 +22,16 @@
 #define RLX_OPENING_DEADLINE_MS   15000u  /* Placeholder, same reasoning as RLX_CLOSING_DEADLINE_MS */
 #define RLX_WARNING_DIAGNOSTIC_TIMEOUT_MS 60000u  /* RESERVED, not currently referenced: RC-11's
                                                     * "stuck active" fault needs a continuously-
-                                                    * asserted sensor line to detect, which the
-                                                    * current discrete simulated TRAIN_APPROACHING
-                                                    * event cannot represent - see the comment in
-                                                    * rlx_fsm.c's rlx_fsm_on_tick() RLX_WARNING case.
-                                                    * Kept as a placeholder value for rlx_sensor.c to
-                                                    * use once it exists. */
+                                                    * asserted sensor line to detect, which
+                                                    * rlx_sensor.c's discrete keypress-simulated
+                                                    * TRAIN_APPROACHING event cannot represent - see
+                                                    * the comment in rlx_fsm.c's rlx_fsm_on_tick()
+                                                    * RLX_WARNING case. This diagnostic remains an
+                                                    * accepted Core limitation (like RC-11's
+                                                    * documented silent-sensor gap), not something
+                                                    * deferred to a not-yet-written file - kept only
+                                                    * as a placeholder value for a future real
+                                                    * continuous-sensor implementation. */
 
 /*
  * Decrements *remaining_ms by tick_ms, clamped at 0 - never underflows

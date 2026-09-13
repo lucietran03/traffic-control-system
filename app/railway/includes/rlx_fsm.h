@@ -46,6 +46,10 @@ typedef struct {
     fault_flags_t            faults;
     uint8_t                  fault_report_pending;
     connectivity_state_t     link_state;
+    /* PA-07: same role as lx_fsm_t's field of the same name - see that
+     * struct's doc comment in lx_fsm.h. Owned by rlx_fsm_on_heartbeat_
+     * result(), called from rlx_comm.c's heartbeat reply callback. */
+    uint32_t                 missed_heartbeat_acks;
     pthread_mutex_t          lock;
 } rlx_fsm_t;
 
@@ -88,11 +92,24 @@ crossing_state_t rlx_fsm_get_crossing_state(const rlx_fsm_t *fsm);
  * other). */
 uint8_t rlx_fsm_take_fault_report_pending(rlx_fsm_t *fsm);
 
-/* Fills role=ROLE_RAILWAY, crossing_state, and faults into *status. Caller
- * owns link_state and everything else (mode/signal_phase/supervisory_state
- * are not meaningful for ROLE_RAILWAY - see ipc_msg.h) and is responsible
- * for actually sending it. */
+/* Fills role=ROLE_RAILWAY, crossing_state, faults, and link_state (now a
+ * real observation, not a placeholder - see rlx_fsm_on_heartbeat_result()
+ * below) into *status. mode/signal_phase/supervisory_state are not
+ * meaningful for ROLE_RAILWAY (see ipc_msg.h) and stay 0; caller is
+ * responsible for actually sending the filled struct. */
 void rlx_fsm_fill_status(const rlx_fsm_t *fsm, status_report_payload_t *status);
+
+/*
+ * PA-07/SC-05: same contract as lx_fsm_on_heartbeat_result() (see its doc
+ * comment in lx_fsm.h for the full rationale, including the SC-05
+ * LINK_RESYNCHRONISING modelling note) - called from rlx_comm.c's
+ * heartbeat-dedicated reply callback (CLIENT thread), only ever locks
+ * fsm->lock, returns 0/1/2 for no-change/just-degraded/just-reconnected.
+ * No local-clock mode fallback exists for RLx (railway crossings have no
+ * operating_mode_t) - RC-10's "never waits for Central" local fault
+ * response already covers RLx's half of PA-07/SC-05 autonomy.
+ */
+int rlx_fsm_on_heartbeat_result(rlx_fsm_t *fsm, int acked);
 
 /* PA-10: called by rlx_watchdog.c when the main loop appears to have
  * stalled (no tick observed for too long). Transitions the crossing

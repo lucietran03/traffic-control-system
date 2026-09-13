@@ -22,13 +22,28 @@
 /* Outcome codes for read_long(). */
 enum { READ_OK = 1, READ_BAD = 0, READ_EOF = -1 };
 
-static int read_long(const char *prompt, long *out)
+static int read_long(pthread_mutex_t *console_io_lock, const char *prompt, long *out)
 {
     int rc;
 
     printf("%s", prompt);
     fflush(stdout);
+
+    /* Release console_io_lock across the blocking scanf(): the caller
+     * (c_operator_reader_thread()'s switch) holds it for this handler's
+     * whole execution so its output stays atomic against c_hmi_render()'s
+     * table, but an indefinite wait for operator input is not "output" -
+     * holding the lock here would freeze the 1 Hz status table for as
+     * long as the operator takes to type an answer, and could delay an
+     * in-flight broadcast (e.g. the peak-hour auto-switch in c_main.c's
+     * on_pulse()) that is blocked waiting for the same lock just to log
+     * a line. No handler takes mode_eng_lock before calling read_long(),
+     * so releasing console_io_lock here is never nested the wrong way
+     * round. Reacquired immediately below so the rest of this handler's
+     * output resumes being atomic. */
+    pthread_mutex_unlock(console_io_lock);
     rc = scanf("%ld", out);
+    pthread_mutex_lock(console_io_lock);
 
     if (rc == EOF) {
         return READ_EOF;
@@ -106,6 +121,8 @@ static void print_help(void)
     printf("  r = RENEW_OVERRIDE for an Lx                   (UC-08 / SD-07)\n");
     printf("  c = CANCEL_OVERRIDE for an Lx                  (UC-08 / SD-07)\n");
     printf("  f = REQUEST_FAULT_CLEAR for an Lx or RLx       (UC-06 alt 7.1 / SD-06, SC-03A)\n");
+    printf("  d = force a simulated hour (demo DP-01/DP-02 peak-hour switching on demand)\n");
+    printf("  a = resume automatic (real clock) peak-hour switching\n");
     printf("  h or ? = show this help                        q = stop operator console (this thread only)\n");
 }
 
@@ -120,14 +137,14 @@ static void handle_set_mode(c_operator_args_t *args)
     operating_mode_t mode;
     int idx;
 
-    if (read_long("  Lx number (1-6): ", &n) != READ_OK) {
+    if (read_long(args->console_io_lock, "  Lx number (1-6): ", &n) != READ_OK) {
         return;
     }
     if (!parse_lx(n, &target)) {
         printf("c_operator: %ld is not a valid Lx (1-6) - command aborted\n", n);
         return;
     }
-    if (read_long("  mode (0=PEAK_FIXED, 1=OFF_PEAK_SENSOR): ", &n) != READ_OK) {
+    if (read_long(args->console_io_lock, "  mode (0=PEAK_FIXED, 1=OFF_PEAK_SENSOR): ", &n) != READ_OK) {
         return;
     }
     if (n != MODE_PEAK_FIXED && n != MODE_OFF_PEAK_SENSOR) {
@@ -163,7 +180,7 @@ static void handle_timing_profile(c_operator_args_t *args)
     uint32_t profile_id;
     int i;
 
-    if (read_long("  chain (1=R1 L1/L3/L5, 2=R2 L2/L4/L6): ", &n) != READ_OK) {
+    if (read_long(args->console_io_lock, "  chain (1=R1 L1/L3/L5, 2=R2 L2/L4/L6): ", &n) != READ_OK) {
         return;
     }
     if (n != C_ARTERIAL_CHAIN_R1 && n != C_ARTERIAL_CHAIN_R2) {
@@ -207,14 +224,14 @@ static void handle_request_override(c_operator_args_t *args)
     int idx;
     int accepted;
 
-    if (read_long("  Lx number (1-6): ", &n) != READ_OK) {
+    if (read_long(args->console_io_lock, "  Lx number (1-6): ", &n) != READ_OK) {
         return;
     }
     if (!parse_lx(n, &target)) {
         printf("c_operator: %ld is not a valid Lx (1-6) - command aborted\n", n);
         return;
     }
-    if (read_long("  target movement (0=arterial, 1=connector): ", &n) != READ_OK) {
+    if (read_long(args->console_io_lock, "  target movement (0=arterial, 1=connector): ", &n) != READ_OK) {
         return;
     }
     if (n != (long)OVERRIDE_MOVEMENT_ARTERIAL && n != (long)OVERRIDE_MOVEMENT_CONNECTOR) {
@@ -228,7 +245,7 @@ static void handle_request_override(c_operator_args_t *args)
         return;
     }
     payload.target_movement = (uint32_t)n;
-    if (read_long("  duration_ms (1-300000): ", &n) != READ_OK) {
+    if (read_long(args->console_io_lock, "  duration_ms (1-300000): ", &n) != READ_OK) {
         return;
     }
     payload.override_type = (uint32_t)OVERRIDE_CLEAR_ROUTE;
@@ -284,14 +301,14 @@ static void handle_renew_override(c_operator_args_t *args)
     int idx;
     int in_flight = 0;
 
-    if (read_long("  Lx number (1-6): ", &n) != READ_OK) {
+    if (read_long(args->console_io_lock, "  Lx number (1-6): ", &n) != READ_OK) {
         return;
     }
     if (!parse_lx(n, &target)) {
         printf("c_operator: %ld is not a valid Lx (1-6) - command aborted\n", n);
         return;
     }
-    if (read_long("  extend_duration_ms (0 = keep original duration): ", &n) != READ_OK) {
+    if (read_long(args->console_io_lock, "  extend_duration_ms (0 = keep original duration): ", &n) != READ_OK) {
         return;
     }
     extend_duration_ms = (uint32_t)n;
@@ -320,7 +337,7 @@ static void handle_cancel_override(c_operator_args_t *args)
     controller_id_t target;
     int idx;
 
-    if (read_long("  Lx number (1-6): ", &n) != READ_OK) {
+    if (read_long(args->console_io_lock, "  Lx number (1-6): ", &n) != READ_OK) {
         return;
     }
     if (!parse_lx(n, &target)) {
@@ -352,11 +369,11 @@ static void handle_request_fault_clear(c_operator_args_t *args)
     long node_type;
     controller_id_t target;
 
-    if (read_long("  Node type (0=intersection Lx, 1=railway RLx): ", &node_type) != READ_OK) {
+    if (read_long(args->console_io_lock, "  Node type (0=intersection Lx, 1=railway RLx): ", &node_type) != READ_OK) {
         return;
     }
     if (node_type == 0) {
-        if (read_long("  Lx number (1-6): ", &n) != READ_OK) {
+        if (read_long(args->console_io_lock, "  Lx number (1-6): ", &n) != READ_OK) {
             return;
         }
         if (!parse_lx(n, &target)) {
@@ -364,7 +381,7 @@ static void handle_request_fault_clear(c_operator_args_t *args)
             return;
         }
     } else if (node_type == 1) {
-        if (read_long("  RLx number (1-3): ", &n) != READ_OK) {
+        if (read_long(args->console_io_lock, "  RLx number (1-3): ", &n) != READ_OK) {
             return;
         }
         if (!parse_rlx(n, &target)) {
@@ -378,6 +395,55 @@ static void handle_request_fault_clear(c_operator_args_t *args)
 
     c_logger_log("Operator: REQUEST_FAULT_CLEAR(target=%d) submitted", (int)target);
     c_comm_send_request_fault_clear(args->client_queue, target);
+}
+
+/* Demo aid for DP-01/DP-02: forces c_main.c's on_pulse() to treat a chosen
+ * hour as "now" instead of reading the real wall clock, so the peak-hour
+ * <-> off-peak-sensor auto-switch (c_mode_eng_auto_check()) can be shown on
+ * demand instead of waiting for a real clock boundary. Re-seeds
+ * last_auto_mode/last_auto_mode_valid to the mode this forced hour implies
+ * (same c_mode_eng_select_mode() call c_main.c's on_pulse() itself uses)
+ * so the very next 1 Hz tick does not immediately re-fire a duplicate
+ * broadcast on top of the one sent here. */
+static void handle_demo_hour(c_operator_args_t *args)
+{
+    long n;
+    operating_mode_t mode;
+
+    if (read_long(args->console_io_lock, "  simulated hour to force (0-23): ", &n) != READ_OK) {
+        return;
+    }
+    if (n < 0 || n > 23) {
+        printf("c_operator: %ld is not a valid hour (0-23) - command aborted\n", n);
+        return;
+    }
+
+    pthread_mutex_lock(args->mode_eng_lock);
+    args->mode_eng->demo_hour = (uint8_t)n;
+    args->mode_eng->demo_hour_override_active = 1;
+    mode = c_mode_eng_select_mode(args->mode_eng, (uint8_t)n);
+    args->mode_eng->last_auto_mode       = mode;
+    args->mode_eng->last_auto_mode_valid = 1;
+    c_mode_eng_mark_all_lx_commanded(args->mode_eng, mode);
+    pthread_mutex_unlock(args->mode_eng_lock);
+
+    c_logger_log("Operator: demo hour forced to %ld -> schedule implies mode=%s, broadcasting to all Lx",
+                 n, mode_name(mode));
+    c_comm_broadcast_set_mode(args->client_queue, mode);
+}
+
+/* Cancels a prior 'd': deliberately does NOT broadcast itself. The very
+ * next real 1 Hz tick (c_main.c's on_pulse()) re-reads the real wall clock
+ * and, per c_mode_eng_auto_check(), broadcasts a resync automatically if
+ * the real hour's implied mode differs from what was last broadcast. */
+static void handle_resume_automatic(c_operator_args_t *args)
+{
+    pthread_mutex_lock(args->mode_eng_lock);
+    args->mode_eng->demo_hour_override_active = 0;
+    pthread_mutex_unlock(args->mode_eng_lock);
+
+    c_logger_log("Operator: resuming automatic (real clock) peak-hour switching");
+    printf("c_operator: resuming automatic peak-hour switching (takes effect within 1s)\n");
 }
 
 /* --- reader thread ---------------------------------------------------- */
@@ -397,28 +463,63 @@ void *c_operator_reader_thread(void *arg)
             break;
         }
 
+        /* console_io_lock is always the OUTER lock relative to
+         * mode_eng_lock (each handle_*() above takes mode_eng_lock
+         * internally) - never the reverse, matching c_main.c's on_pulse()
+         * ordering, to avoid an AB-BA deadlock between this thread and
+         * the 1 Hz heartbeat-tick thread. Held for the handler's whole
+         * execution (all of its printed prompts/results), not just a
+         * single printf, so c_hmi_render()'s status table can never
+         * interleave mid-command. The blocking scanf() above, and the
+         * 'q'/default cases below, deliberately stay OUTSIDE the lock -
+         * holding it during an indefinite idle wait would freeze the
+         * status table between commands. */
         switch (input) {
         case 'm':
+            pthread_mutex_lock(args->console_io_lock);
             handle_set_mode(args);
+            pthread_mutex_unlock(args->console_io_lock);
             break;
         case 't':
+            pthread_mutex_lock(args->console_io_lock);
             handle_timing_profile(args);
+            pthread_mutex_unlock(args->console_io_lock);
             break;
         case 'o':
+            pthread_mutex_lock(args->console_io_lock);
             handle_request_override(args);
+            pthread_mutex_unlock(args->console_io_lock);
             break;
         case 'r':
+            pthread_mutex_lock(args->console_io_lock);
             handle_renew_override(args);
+            pthread_mutex_unlock(args->console_io_lock);
             break;
         case 'c':
+            pthread_mutex_lock(args->console_io_lock);
             handle_cancel_override(args);
+            pthread_mutex_unlock(args->console_io_lock);
             break;
         case 'f':
+            pthread_mutex_lock(args->console_io_lock);
             handle_request_fault_clear(args);
+            pthread_mutex_unlock(args->console_io_lock);
+            break;
+        case 'd':
+            pthread_mutex_lock(args->console_io_lock);
+            handle_demo_hour(args);
+            pthread_mutex_unlock(args->console_io_lock);
+            break;
+        case 'a':
+            pthread_mutex_lock(args->console_io_lock);
+            handle_resume_automatic(args);
+            pthread_mutex_unlock(args->console_io_lock);
             break;
         case 'h':
         case '?':
+            pthread_mutex_lock(args->console_io_lock);
             print_help();
+            pthread_mutex_unlock(args->console_io_lock);
             break;
         case 'q':
             printf("c_operator: stopping operator console (this thread only)\n");
