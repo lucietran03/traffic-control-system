@@ -1,5 +1,6 @@
 #include "c_server.h"
 
+// Implements the synchronous request handlers for incoming status, heartbeat, fault, and crossing reports.
 int c_server_record_status(c_mode_eng_t *eng, controller_id_t sender_id,
                             const status_report_payload_t *status, uint64_t received_timestamp_ms)
 {
@@ -27,22 +28,16 @@ int c_server_record_status(c_mode_eng_t *eng, controller_id_t sender_id,
     return was_unavailable;
 }
 
+// Placeholder for fault history recording; logging is handled directly in the request dispatcher.
 void c_server_record_fault_report(c_mode_eng_t *eng, controller_id_t sender_id,
                                    const fault_report_payload_t *fault_report)
 {
-    /* Audit fix: this used to printf() the report itself, duplicating
-     * c_main.c's c_logger_log() call for the same event (one unpersisted
-     * stdout line, one persisted+timestamped line, both firing back to
-     * back). No storage exists yet (see doc comment in c_server.h) and
-     * the actual logging now happens once, at the call site in
-     * c_main.c's MSG_FAULT_REPORT case - this function intentionally
-     * does nothing until c_controller_view_t gets a place to keep fault
-     * history. */
     (void)eng;
     (void)sender_id;
     (void)fault_report;
 }
 
+// Implements the synchronous request handler for incoming crossing status reports.
 int c_server_record_crossing_status(c_mode_eng_t *eng, controller_id_t sender_id,
                                      const crossing_status_payload_t *crossing_status)
 {

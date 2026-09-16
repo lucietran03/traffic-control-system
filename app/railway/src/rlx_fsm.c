@@ -6,58 +6,24 @@
 #include "rlx_gate.h"
 #include "rlx_signal.h"
 
-/*
- * Railway-crossing FSM implementation (STATE_CHARTS.md SC-04A/SC-04B;
- * RC-01, RC-03, RC-04, RC-05, RC-06, RC-09, RC-10, RC-11).
- *
- * Timing durations/thresholds and the occupancy-countdown arithmetic live
- * in rlx_timer.h/.c, not here: this file owns WHICH crossing state is
- * active and WHAT happens on a transition; rlx_timer owns HOW LONG each
- * step lasts and the underflow-safe countdown primitive.
- *
- * Timing design: rlx_main.c arms exactly ONE recurring 1 s pulse
- * (IPC_PULSE_RAILWAY_WARNING, reused as a generic tick rather than its
- * originally-named single purpose) and calls rlx_fsm_on_tick() once per
- * pulse. That single tick drives every threshold in this file - the 5 s
- * warning-to-closing step, the 15 s closing/opening deadlines, and the
- * 20 s occupancy-window countdowns - via state_elapsed_ms and each
- * window's remaining_ms. IPC_PULSE_RAILWAY_OCCUPANCY is intentionally NOT
- * armed as a second pulse: a single 1 s tick is simpler and produces
- * identical behaviour to arming/re-arming a second timer per active
- * window, since all this code needs is "one more second has passed".
- *
- * No real gate hardware exists for this PoC, so gate motion/confirmation
- * is simulated by rlx_gate.c: rlx_gate_command_close()/rlx_gate_command_open()
- * start a timed motion, and rlx_gate_poll_closed()/rlx_gate_poll_open()
- * only read back "confirmed" once that motion completes (and can be armed,
- * via rlx_gate_arm_demo_fault(), to never confirm at all - the RC-06 demo
- * fault path). This file never sets a gate-confirmed flag directly; it
- * only commands motion and polls rlx_gate.c's result.
- */
-
-/* --- internal helpers (caller already holds fsm->lock) ----------------- */
+// Railway FSM implementation owning state transitions while relying on rlx_timer for durations and rlx_gate for hardware abstraction.
 
 static crossing_state_t map_to_crossing_state(rlx_internal_state_t state)
 {
     switch (state) {
     case RLX_OPEN:
-        return CROSSING_OPEN;
+        return CROSSING_OPEN; // The crossing is fully open with no active train approaches or gate closures.
     case RLX_WARNING:
     case RLX_CLOSING:
     case RLX_RECLOSING:
-        /* Compliance-audit fix: RECLOSING is the same "gates commanded
-         * down, not yet sensor-confirmed" condition as CLOSING (just
-         * entered from OPENING instead of from WARNING) - report it the
-         * same way instead of jumping straight to CROSSING_CLOSED before
-         * closure is actually confirmed. */
-        return CROSSING_WARNING;
+        return CROSSING_WARNING; // Shared warning state for both closing and reclosing phases, as the crossing is not yet fully secured.
     case RLX_CLOSED:
     case RLX_TRAIN_PRESENT:
     case RLX_OPENING:
-        return CROSSING_CLOSED;
+        return CROSSING_CLOSED; // The crossing is closed, either due to active train presence or during the opening phase after a train has passed.
     case RLX_FAULT:
     default:
-        return CROSSING_FAULT;
+        return CROSSING_FAULT; // The crossing is in a fault state, indicating a problem with the system.
     }
 }
 
@@ -71,15 +37,7 @@ static uint8_t gates_confirmed_open(void)
     return rlx_gate_poll_open();
 }
 
-/*
- * Registers (or refreshes) an occupancy window for `direction`.
- * RC-01 only ever defines two rail directions, so at most
- * RLX_MAX_OCCUPANCY_WINDOWS (2) distinct windows can legitimately exist;
- * a repeated TRAIN_APPROACHING for a direction that already has an active
- * window is treated as a re-confirmation (refresh remaining_ms) rather
- * than a new window - this isn't spelled out explicitly in the spec and
- * is a judgment call to keep the slot bookkeeping simple.
- */
+// Registers or refreshes occupancy windows for up to two track directions without duplicating active tracking slots.
 static void register_window(rlx_fsm_t *fsm, uint32_t direction, uint32_t initial_remaining_ms)
 {
     int i;
@@ -99,19 +57,12 @@ static void register_window(rlx_fsm_t *fsm, uint32_t direction, uint32_t initial
             return;
         }
     }
-    /* Both slots already hold the two distinct directions RC-01 models -
-     * nothing more to register. Ignored defensively. */
+    // Defensively ignores out-of-bounds directions if both tracking slots are occupied.
 }
 
 static void enter_fault(rlx_fsm_t *fsm, fault_flags_t fault_bit)
 {
-    /* PA-10/RC-10: a fault must force gates DOWN, not leave them wherever
-     * they happened to be (audit fix - this used to only latch the fault
-     * flag and print a "gates held as-is" message, so a fault raised while
-     * OPEN or mid-OPENING left the crossing physically unprotected).
-     * rlx_gate_command_close() is safe to call unconditionally: it just
-     * (re)starts a close motion, which is a no-op in outcome if gates are
-     * already closed/closing. */
+    // Forces gates down on faults and triggers safe fault outputs regardless of current gate position.
     rlx_gate_command_close();
     rlx_signal_show_fault(fault_bit);
     fsm->state = RLX_FAULT;
@@ -120,15 +71,12 @@ static void enter_fault(rlx_fsm_t *fsm, fault_flags_t fault_bit)
     fsm->fault_report_pending = 1;
 }
 
-/* Shared by CLOSING and RECLOSING: both resolve the same way (RC-03/RC-06). */
+// Shared evaluator for CLOSING and RECLOSING states resolving to CLOSED upon gate confirmation.
 static void check_closing_or_reclosing_complete(rlx_fsm_t *fsm)
 {
     if (gates_confirmed_closed()) {
         int i;
-
-        /* RC-06 invariant checked directly here, not inferred from
-         * elapsed time: PROCEED is granted only because both gate
-         * sensors currently read closed. */
+        // Enforces the invariant requiring gate-confirmed closure before granting proceed signals[cite: 43].
         fsm->state = RLX_CLOSED;
         fsm->state_elapsed_ms = 0;
         for (i = 0; i < RLX_MAX_OCCUPANCY_WINDOWS; i++) {
@@ -148,6 +96,7 @@ static void check_gate_contradiction_closed(rlx_fsm_t *fsm)
     }
 }
 
+// Shared evaluator for OPENING state resolving to OPEN upon gate confirmation.
 static void check_opening_complete(rlx_fsm_t *fsm)
 {
     if (gates_confirmed_open()) {
@@ -159,6 +108,7 @@ static void check_opening_complete(rlx_fsm_t *fsm)
     }
 }
 
+// Transitions to CLOSING state, commanding gates down and resetting the elapsed timer.
 static void enter_closing(rlx_fsm_t *fsm)
 {
     rlx_gate_command_close();
@@ -166,6 +116,7 @@ static void enter_closing(rlx_fsm_t *fsm)
     fsm->state_elapsed_ms = 0;
 }
 
+// Transitions to RECLOSING state, commanding gates down and resetting the elapsed timer.
 static void enter_reclosing(rlx_fsm_t *fsm, uint32_t direction)
 {
     rlx_signal_show_reclosing();
@@ -178,14 +129,7 @@ static void enter_reclosing(rlx_fsm_t *fsm, uint32_t direction)
 static void enter_train_present(rlx_fsm_t *fsm)
 {
     int i;
-
-    /* Every window still waiting on the placeholder "expected arrival"
-     * threshold (remaining_ms == 0, registered while in WARNING/CLOSING/
-     * CLOSED) starts its real 20s RC-04 countdown now. Windows registered
-     * directly via a TRAIN_APPROACHING self-loop while already in
-     * TRAIN_PRESENT are given remaining_ms = RLX_OCCUPANCY_WINDOW_MS at
-     * registration time instead (see rlx_fsm_simulate_train_approaching),
-     * so this loop leaves those untouched. */
+    // Initializes 20s occupancy countdowns for unassigned windows and sets train present state.
     for (i = 0; i < RLX_MAX_OCCUPANCY_WINDOWS; i++) {
         if (fsm->windows[i].active && fsm->windows[i].remaining_ms == 0) {
             fsm->windows[i].remaining_ms = RLX_OCCUPANCY_WINDOW_MS;
@@ -195,6 +139,7 @@ static void enter_train_present(rlx_fsm_t *fsm)
     fsm->state_elapsed_ms = 0;
 }
 
+// Transitions to OPENING state, commanding gates up and resetting the elapsed timer.
 static void enter_opening(rlx_fsm_t *fsm)
 {
     rlx_signal_show_train_stop();
@@ -203,16 +148,11 @@ static void enter_opening(rlx_fsm_t *fsm)
     fsm->state_elapsed_ms = 0;
 }
 
-/* --- public API ---------------------------------------------------------- */
-
 void rlx_fsm_init(rlx_fsm_t *fsm, controller_id_t self_id)
 {
     int i;
 
-    /* Verifier-audit fix: initialize the mutex first, matching
-     * lx_fsm_init()'s ordering - harmless either way since this always
-     * runs single-threaded before pthread_create(), but consistent
-     * ordering avoids the question ever needing to be re-asked. */
+    // Initializes FSM lock and sets the initial state to OPEN with no active occupancy windows.
     pthread_mutex_init(&fsm->lock, NULL);
 
     fsm->self_id = self_id;
@@ -224,18 +164,10 @@ void rlx_fsm_init(rlx_fsm_t *fsm, controller_id_t self_id)
         fsm->windows[i].remaining_ms = 0;
     }
     fsm->active_window_count = 0;
-    /* Crossing starts OPEN: gate confirmation state itself lives in
-     * rlx_gate.c (see rlx_gate_init(), called separately from rlx_main.c's
-     * main()), not in this struct. */
+    // Gate confirmation relies on rlx_gate.c, separate from FSM startup.
     fsm->faults = FAULT_NONE;
     fsm->fault_report_pending = 0;
-    /* Not yet connected to C1 at process start-up, same as lx_fsm_init() -
-     * rlx_comm.c's heartbeat reply callback (rlx_fsm_on_heartbeat_result())
-     * will flip this to LINK_CENTRAL_CONNECTED once the first HEARTBEAT is
-     * actually ACKed. Previously started optimistically CONNECTED before
-     * any heartbeat had even been sent - corrected for consistency with
-     * the Lx side now that link_state is a real observation, not a
-     * placeholder. */
+    // Starts disconnected and waits for the first heartbeat ACK to flip to connected status.
     fsm->link_state = LINK_DEGRADED_LOCAL;
     fsm->missed_heartbeat_acks = 0;
 }
@@ -255,8 +187,7 @@ void rlx_fsm_simulate_train_approaching(rlx_fsm_t *fsm, uint32_t direction)
     case RLX_WARNING:
     case RLX_CLOSING:
     case RLX_RECLOSING:
-        /* Self-loop: additional direction approaching during the same
-         * warning/closing/reclosing step. Elapsed timer keeps running. */
+        // Self-loop handles additional approaches during warning/closing/reclosing steps while continuing the elapsed timer.
         register_window(fsm, direction, 0);
         break;
 
@@ -269,8 +200,7 @@ void rlx_fsm_simulate_train_approaching(rlx_fsm_t *fsm, uint32_t direction)
         break;
 
     case RLX_TRAIN_PRESENT:
-        /* Registered directly with a live countdown - the crossing is
-         * already occupied, so there's no "expected arrival" wait. */
+        // Direct occupancy assignment since the crossing is already occupied with no warning wait.
         register_window(fsm, direction, RLX_OCCUPANCY_WINDOW_MS);
         check_gate_contradiction_closed(fsm);
         if (fsm->state == RLX_TRAIN_PRESENT && gates_confirmed_closed()) {
@@ -283,8 +213,7 @@ void rlx_fsm_simulate_train_approaching(rlx_fsm_t *fsm, uint32_t direction)
         break;
 
     case RLX_FAULT:
-        /* Latched until rlx_fsm_on_fault_clear() succeeds (RC-09/RC-10);
-         * approach events are ignored while faulted. */
+        // Ignores approach events while faulted.
         break;
 
     default:
@@ -294,6 +223,7 @@ void rlx_fsm_simulate_train_approaching(rlx_fsm_t *fsm, uint32_t direction)
     pthread_mutex_unlock(&fsm->lock);
 }
 
+// Processes a fault-clear request, verifying gate confirmation before resetting the FSM to OPEN and clearing occupancy tracking.
 void rlx_fsm_on_fault_clear(rlx_fsm_t *fsm, ipc_reply_t *reply)
 {
     pthread_mutex_lock(&fsm->lock);
@@ -302,15 +232,11 @@ void rlx_fsm_on_fault_clear(rlx_fsm_t *fsm, ipc_reply_t *reply)
         reply->result = RESULT_NACK;
         reply->reason = NACK_REASON_UNKNOWN_TARGET;
     } else {
-        /* Re-checks rlx_gate.c's live confirmation state at the moment of
-         * the clear request, not a value cached earlier in this function
-         * (RC-10: Central's request never bypasses live verification). */
+        // Live-verifies gate mechanism is open to safely clear faults, resetting occupancy tracking.
         if (gates_confirmed_open()) {
             fsm->state = RLX_OPEN;
             fsm->state_elapsed_ms = 0;
             fsm->faults = FAULT_NONE;
-            /* Crossing is verified safe and idle again: drop any stale
-             * occupancy bookkeeping left over from before the fault. */
             fsm->active_window_count = 0;
             fsm->windows[0].active = 0;
             fsm->windows[1].active = 0;
@@ -325,38 +251,23 @@ void rlx_fsm_on_fault_clear(rlx_fsm_t *fsm, ipc_reply_t *reply)
     pthread_mutex_unlock(&fsm->lock);
 }
 
+// Processes the recurring 1s tick for warning, closing, and occupancy countdowns, advancing state transitions as appropriate.
 void rlx_fsm_on_tick(rlx_fsm_t *fsm)
 {
     int i;
 
     pthread_mutex_lock(&fsm->lock);
 
-    /* Exactly one gate tick per FSM tick, unconditional of state. */
+    // Single recurring tick driving the warning, closing, and occupancy timing chains.
     rlx_gate_on_tick();
 
     switch (fsm->state) {
     case RLX_OPEN:
-        /* No timer running while fully open and idle. */
         break;
 
     case RLX_WARNING:
         fsm->state_elapsed_ms += 1000u;
-        /*
-         * Compliance-audit fix: a "stuck active beyond diagnostic
-         * timeout" check used to sit here comparing state_elapsed_ms
-         * against RLX_WARNING_DIAGNOSTIC_TIMEOUT_MS (60s) - but since
-         * RLX_WARNING_TO_CLOSING_MS (5s) always fires first and resets
-         * state_elapsed_ms via enter_closing(), state_elapsed_ms can
-         * never reach 60s while still in RLX_WARNING. It was dead code
-         * under every input, not just an edge case. RC-11's "stuck
-         * active" scenario means the physical TRAIN_APPROACHING sensor
-         * line stays continuously asserted, which rlx_sensor.c's discrete
-         * keypress-simulated event cannot represent - this diagnostic is
-         * an accepted Core limitation (same class as RC-11's documented
-         * silent-sensor gap), not work deferred to a not-yet-written
-         * file; a real implementation would need an actual continuous
-         * sensor line, which this Core design does not have.
-         */
+        // Advances warning states to closing exactly after the 5s allowance since the continuous diagnostic timeout is a known placeholder.
         if (fsm->state_elapsed_ms >= RLX_WARNING_TO_CLOSING_MS) {
             enter_closing(fsm);
         }
@@ -390,9 +301,7 @@ void rlx_fsm_on_tick(rlx_fsm_t *fsm)
                     fsm->active_window_count--;
                 }
             }
-            /* RC-04 invariant: reopening fires only when the COUNT of
-             * active windows reaches zero, never on a single window's
-             * expiry alone while another remains active. */
+            // Triggers reopening strictly when all active occupancy windows expire.
             if (fsm->active_window_count == 0) {
                 enter_opening(fsm);
             }
@@ -405,7 +314,7 @@ void rlx_fsm_on_tick(rlx_fsm_t *fsm)
         break;
 
     case RLX_FAULT:
-        /* Latched until rlx_fsm_on_fault_clear() succeeds. */
+        // Faults remain latched until explicitly cleared.
         break;
 
     default:
@@ -415,6 +324,7 @@ void rlx_fsm_on_tick(rlx_fsm_t *fsm)
     pthread_mutex_unlock(&fsm->lock);
 }
 
+// Returns the current crossing state derived from the FSM's internal state, ensuring thread-safe access.
 crossing_state_t rlx_fsm_get_crossing_state(const rlx_fsm_t *fsm)
 {
     crossing_state_t result;
@@ -430,6 +340,7 @@ uint8_t rlx_fsm_take_fault_report_pending(rlx_fsm_t *fsm)
 {
     uint8_t pending;
 
+    // Atomically reads and clears the fault report flag for safe independent IPC reporting.
     pthread_mutex_lock(&fsm->lock);
     pending = fsm->fault_report_pending;
     fsm->fault_report_pending = 0;
@@ -452,6 +363,7 @@ int rlx_fsm_on_heartbeat_result(rlx_fsm_t *fsm, int acked)
 {
     int transition = 0;
 
+    // Heartbeat processing callback determining local degradation or Central reconnections.
     pthread_mutex_lock(&fsm->lock);
     if (acked) {
         if (fsm->link_state != LINK_CENTRAL_CONNECTED) {
@@ -475,6 +387,7 @@ int rlx_fsm_on_heartbeat_result(rlx_fsm_t *fsm, int acked)
 
 void rlx_fsm_report_watchdog_trip(rlx_fsm_t *fsm)
 {
+    // Directly triggers a fault via watchdog if the FSM loop stalls.
     pthread_mutex_lock(&fsm->lock);
     if (fsm->state != RLX_FAULT) {
         enter_fault(fsm, FAULT_WATCHDOG_TRIP);

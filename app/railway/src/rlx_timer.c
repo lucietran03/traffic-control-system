@@ -1,5 +1,6 @@
 #include "rlx_timer.h"
 
+// Safely decrements active timers without underflowing and returns 1 upon window expiration.
 uint8_t rlx_timer_tick_window(uint32_t *remaining_ms, uint32_t tick_ms)
 {
     if (*remaining_ms > tick_ms) {

@@ -2,10 +2,7 @@
 
 #include "c_hmi.h"
 
-/* Maps CTRL_L1..CTRL_L6/CTRL_RL1..CTRL_RL3 to a short human-readable
- * name for the terminal display. Falls back to "?" for anything else
- * (should not happen - c_mode_eng_init() only ever populates these 9
- * slots with those ids). */
+// Maps controller IDs to short human-readable terminal display names.
 static const char *controller_name(controller_id_t id)
 {
     switch (id) {
@@ -48,8 +45,7 @@ void c_hmi_render(const c_mode_eng_t *eng)
 
         if (c->role == ROLE_INTERSECTION) {
             snprintf(phase_buf, sizeof(phase_buf), "%u", (unsigned)c->last_reported_signal_phase);
-            /* UC-09 "sensor status" - only meaningful for ROLE_INTERSECTION,
-             * see sys_types.h's SENSOR_* bits. */
+            // Extracts sensor status, which is exclusively meaningful for intersection controllers.
             snprintf(sensor_buf, sizeof(sensor_buf), "%#x", (unsigned)c->last_reported_sensor_status);
         } else {
             snprintf(phase_buf, sizeof(phase_buf), "-");
@@ -77,4 +73,3 @@ void c_hmi_render(const c_mode_eng_t *eng)
     printf("----------------------------\n");
     fflush(stdout);
 }
-

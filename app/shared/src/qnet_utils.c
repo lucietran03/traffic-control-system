@@ -9,7 +9,7 @@
 #include <sys/neutrino.h>
 #include <sys/netmgr.h>
 
-/* Index == controller_id_t value; keep in sync with sys_types.h. */
+// Valid suffix mappings aligned with controller_id_t indices.
 static const char *const ATTACH_SUFFIX[CTRL_UNKNOWN] = {
     [CTRL_C1]  = "c1",
     [CTRL_L1]  = "l1",
@@ -23,6 +23,7 @@ static const char *const ATTACH_SUFFIX[CTRL_UNKNOWN] = {
     [CTRL_RL3] = "rl3"
 };
 
+// Returns the lowercase attach-point suffix for a given controller ID, or NULL if invalid.
 const char *ipc_attach_name(controller_id_t id)
 {
     if (id < 0 || id >= CTRL_UNKNOWN) {
@@ -31,6 +32,7 @@ const char *ipc_attach_name(controller_id_t id)
     return ATTACH_SUFFIX[id];
 }
 
+// Formats the base local attach path (e.g., traffic/c1).
 static int build_path(controller_id_t id, char *path, size_t path_size)
 {
     const char *suffix = ipc_attach_name(id);
@@ -41,51 +43,21 @@ static int build_path(controller_id_t id, char *path, size_t path_size)
     return 0;
 }
 
-/* --- cross-node resolution: TRAFFIC_NODE_MAP env var -------------------
- *
- * Which physical/virtual Qnet node hosts which controller_id_t is a
- * deployment-time decision (see docs/QNX_DEPLOYMENT_RUN_GUIDE.md's
- * single/dual/tri-host topologies) - qnet_utils.c cannot know it at
- * compile time. TRAFFIC_NODE_MAP lets the deployer supply it at process
- * start without recompiling: a comma-separated list of
- * "<suffix>=<qnet-nodename>" pairs, e.g.
- *
- *   TRAFFIC_NODE_MAP="c1=VM_x86_Target01,l1=VM_x86_Target02,l2=VM_x86_Target02,\
- *l3=VM_x86_Target02,l4=VM_x86_Target02,l5=VM_x86_Target02,l6=VM_x86_Target02,\
- *rl1=VM_x86_Target03,rl2=VM_x86_Target03,rl3=VM_x86_Target03"
- *
- * matching the Case-1/Case-3 "one VM per role" topology in the deployment
- * guide (repeat the same node name for every Lx/RLx suffix that shares a
- * host). <suffix> must exactly match ipc_attach_name()'s output (lowercase
- * "c1".."rl3"). Any suffix NOT present in the map keeps today's behavior:
- * plain same-node name_open(), no /net/ prefix. This means an unset (or
- * absent) TRAFFIC_NODE_MAP reproduces the exact pre-existing single-node
- * behavior for every target - zero risk to the current same-machine test
- * setup.
- *
- * Parsed lazily, once, on first resolve_node() call (pthread_once) and
- * cached in node_map[] for the life of the process - only
- * ipc_client_thread_main()'s single dedicated thread ever calls
- * resolve_node(), so there is no real race, but pthread_once costs
- * nothing and documents the "read once" intent explicitly.
- */
+// --- cross-node resolution: TRAFFIC_NODE_MAP env var -------------------
 
 #define TRAFFIC_NODE_ENV      "TRAFFIC_NODE_MAP"
-#define TRAFFIC_NODE_NAME_MAX 64
-#define TRAFFIC_NODE_MAP_BUF  512
+#define TRAFFIC_NODE_NAME_MAX 64 // Maximum length of a node name 
+#define TRAFFIC_NODE_MAP_BUF  512 // Maximum length of the TRAFFIC_NODE_MAP env var
 
 typedef struct {
-    int  set;
+    int  set; 
     char node[TRAFFIC_NODE_NAME_MAX];
 } node_map_entry_t;
 
 static node_map_entry_t node_map[CTRL_UNKNOWN];
 static pthread_once_t   node_map_once = PTHREAD_ONCE_INIT;
 
-/* Reverse lookup against the same ATTACH_SUFFIX table build_path() reads,
- * so the env var's keys and the wire attach-point suffixes can never
- * drift apart - there is still exactly one place (ATTACH_SUFFIX) that
- * knows the suffix strings. */
+// Parses ID from a given string suffix length.
 static controller_id_t suffix_to_id(const char *suffix, size_t len)
 {
     int i;
@@ -99,6 +71,7 @@ static controller_id_t suffix_to_id(const char *suffix, size_t len)
     return CTRL_UNKNOWN;
 }
 
+// Reads TRAFFIC_NODE_MAP to map logical suffixes to physical Qnet node locations.
 static void node_map_load(void)
 {
     char        buf[TRAFFIC_NODE_MAP_BUF];
@@ -107,17 +80,9 @@ static void node_map_load(void)
 
     env = getenv(TRAFFIC_NODE_ENV);
     if (env == NULL || env[0] == '\0') {
-        return; /* Not configured: node_map[] stays all-zero, so
-                  * resolve_node() returns NULL for every id and
-                  * build_open_path() falls back to the exact same-node
-                  * path it always built. */
+        return; 
     }
 
-    /* Copy into a fixed local buffer and hand-roll the split instead of
-     * strdup()/strtok_r() - avoids depending on a POSIX feature-test
-     * macro being defined for this translation unit just to get a
-     * heap-duplicate/reentrant-tokenize helper. Silently truncates an
-     * absurdly long value (drops trailing entries, never crashes). */
     strncpy(buf, env, sizeof(buf) - 1);
     buf[sizeof(buf) - 1] = '\0';
 
@@ -138,16 +103,12 @@ static void node_map_load(void)
                 node_map[id].node[TRAFFIC_NODE_NAME_MAX - 1] = '\0';
                 node_map[id].set = 1;
             }
-            /* Unknown suffix or empty node name: skip this entry only,
-             * keep parsing the rest of the list rather than aborting. */
         }
-
         entry = (comma != NULL) ? comma + 1 : NULL;
     }
 }
 
-/* Returns the configured Qnet node name for id, or NULL if TRAFFIC_NODE_MAP
- * is unset/doesn't mention id - callers must treat NULL as "same node". */
+// Retrieves resolved node name for a specific controller ID, defaulting to NULL (local).
 static const char *resolve_node(controller_id_t id)
 {
     pthread_once(&node_map_once, node_map_load);
@@ -157,11 +118,7 @@ static const char *resolve_node(controller_id_t id)
     return node_map[id].node;
 }
 
-/* Client-side path builder: same TRAFFIC_NAME_PREFIX "/" <suffix> string
- * build_path() produces for the attach side, optionally wrapped with the
- * Qnet "/net/<node>/dev/name/global/" prefix when TRAFFIC_NODE_MAP names
- * a node for `id`. Never duplicates the naming convention - always calls
- * build_path() first and only adds a prefix in front of its result. */
+// Builds the final Qnet name path to connect globally or defaults locally if unspecified.
 static int build_open_path(controller_id_t id, char *path, size_t path_size)
 {
     char        local_path[32];
@@ -172,35 +129,15 @@ static int build_open_path(controller_id_t id, char *path, size_t path_size)
     }
 
     node = resolve_node(id);
-    if (node == NULL) {
-        /* Default / unconfigured: byte-for-byte what this codebase did
-         * before this change - plain same-node name_open(path, 0), no
-         * /net/ prefix. This is also why it stays correct even though
-         * ipc_attach() below now registers with NAME_FLAG_ATTACH_GLOBAL
-         * instead of the old flags-0 (local-only) call: per QNX Neutrino
-         * name-service semantics, a name registered in the GLOBAL
-         * namespace is still found by a plain, prefix-less name_open()
-         * from a process on the SAME node - global vs. local only
-         * changes whether *other* Qnet nodes can see the name, not
-         * whether the owning node can still see its own name the old
-         * way. So single-machine / same-node testing is unaffected.
-         */
+    if (node == NULL) { // Local node: "/dev/name/global/<path>" is reachable via Qnet as "/net/<this-node>/dev/name/global/<path>".
         snprintf(path, path_size, "%s", local_path);
-    } else {
-        /* Cross-node: "/net/<nodename>/dev/name/global/<path>" is QNX's
-         * standard Qnet path for reaching a name registered with
-         * NAME_FLAG_ATTACH_GLOBAL on another node - the same
-         * "/net/<nodename>/dev/name/<namespace>/<name>" shape
-         * Lecture/lap_6/Lab_06_Task1b_client_602.c hardcodes for the
-         * LOCAL namespace ("/net/VM_x86_Target01/dev/name/local/thang"),
-         * with "local" swapped for "global" to match the namespace
-         * ipc_attach() actually registers into. <nodename> always comes
-         * from TRAFFIC_NODE_MAP, never guessed or hardcoded here. */
+    } else { // Remote node: "/net/<node>/dev/name/global/<path>" is the correct Qnet path.
         snprintf(path, path_size, "/net/%s/dev/name/global/%s", node, local_path);
     }
     return 0;
 }
 
+// Attaches the node in the global namespace (or falls back to local on failure).
 int ipc_attach(controller_id_t self_id)
 {
     char path[32];
@@ -210,23 +147,7 @@ int ipc_attach(controller_id_t self_id)
         return -1;
     }
 
-    /* NAME_FLAG_ATTACH_GLOBAL (was: flags 0, i.e. local-only) registers
-     * this name under /dev/name/global instead of /dev/name/local, which
-     * is what makes it reachable from other Qnet nodes at all via
-     * "/net/<this-node>/dev/name/global/<path>" (see build_open_path()).
-     * Per QNX Neutrino's name_attach() semantics this does NOT remove
-     * the name from being found locally too - a same-node name_open()
-     * with no /net/ prefix still resolves it exactly as before, so this
-     * is additive, not a behavior change, for every node that never sets
-     * TRAFFIC_NODE_MAP. NAME_FLAG_ATTACH_GLOBAL's exact numeric value is
-     * not something this file hardcodes - it comes from the real QNX
-     * <sys/neutrino.h> on-target; only the host syntax-check stub
-     * (tools/host_syntax_stubs/sys/neutrino.h, used by `make check-syntax`)
-     * needs to fake a value for it, and that stub file says so inline. */
-    /* Try NAME_FLAG_ATTACH_GLOBAL first (if global name server 'gns' is running).
-     * If gns is not running (default on standard QNX VMs), gracefully fall back
-     * to local namespace (flags = 0), which registers under /dev/name/local
-     * and is also accessible via Qnet (/net/<node>/dev/name/local/...). */
+    // First try to attach globally, then fall back to local if that fails.
     attach = name_attach(NULL, path, NAME_FLAG_ATTACH_GLOBAL);
     if (attach == NULL) {
         attach = name_attach(NULL, path, 0);
@@ -237,6 +158,7 @@ int ipc_attach(controller_id_t self_id)
     return attach->chid;
 }
 
+// Configures and initializes a SIGEV_PULSE timer to trigger at a specific cadence.
 int ipc_timer_arm(int chid, int pulse_code, uint32_t initial_ms, uint32_t period_ms, timer_t *out_timer_id)
 {
     struct sigevent    event;
@@ -275,6 +197,7 @@ int ipc_timer_arm(int chid, int pulse_code, uint32_t initial_ms, uint32_t period
     return 0;
 }
 
+// Indefinite server loop for receiving, delegating, and replying to messages and pulses.
 int ipc_server_run(int chid, ipc_request_handler_t on_request, ipc_pulse_handler_t on_pulse, void *ctx)
 {
     ipc_request_t msg;
@@ -284,25 +207,21 @@ int ipc_server_run(int chid, ipc_request_handler_t on_request, ipc_pulse_handler
     for (;;) {
         rcvid = MsgReceive(chid, &msg, sizeof(msg), NULL);
 
-        if (rcvid == -1) {
+        if (rcvid == -1) { // Interrupted by a signal
             if (errno == EINTR) {
                 continue;
             }
             return -1;
         }
 
-        if (rcvid == 0) {
-            /* Pulse: kernel-generated (_PULSE_CODE_DISCONNECT) or one of
-             * our own IPC_PULSE_* timer codes. Never MsgReply() a pulse. */
+        if (rcvid == 0) { // Pulse received
             if (on_pulse != NULL) {
                 on_pulse(msg.hdr.code, ctx);
             }
             continue;
         }
 
-        /* Real message: handle the two reserved ranges before touching
-         * our own payload, exactly as Lab_06_Task1a_server.c does. */
-        if (msg.hdr.type == _IO_CONNECT) {
+        if (msg.hdr.type == _IO_CONNECT) { // Connection request
             MsgReply(rcvid, EOK, NULL, 0);
             continue;
         }
@@ -319,10 +238,11 @@ int ipc_server_run(int chid, ipc_request_handler_t on_request, ipc_pulse_handler
     }
 }
 
-/* --- client queue: fixed-capacity ring buffer, mutex + condvar -------- */
+// --- client queue: fixed-capacity ring buffer, mutex + condvar -------- //
 
 #define IPC_CLIENT_QUEUE_CAPACITY 16
 
+// Context container for tracking outgoing requests in the queue.
 typedef struct {
     controller_id_t      target_id;
     ipc_request_t        req;
@@ -339,6 +259,7 @@ struct ipc_client_queue {
     int              stopping;
 };
 
+// Initialises and provisions a new IPC client message queue.
 ipc_client_queue_t *ipc_client_queue_create(void)
 {
     ipc_client_queue_t *q = calloc(1, sizeof(*q));
@@ -350,20 +271,19 @@ ipc_client_queue_t *ipc_client_queue_create(void)
     return q;
 }
 
+// Cleans up the queue locks/vars once threads have fully joined.
 void ipc_client_queue_destroy(ipc_client_queue_t *q)
 {
     if (q == NULL) {
         return;
     }
-    /* Caller must have already pthread_join()'d the client thread - see
-     * qnet_utils.h. Safe to tear down the sync primitives unconditionally. */
     pthread_mutex_destroy(&q->lock);
     pthread_cond_destroy(&q->not_empty);
-    free(q);
+    free(q); // Free the allocated memory for the queue
 }
 
-int ipc_client_post(ipc_client_queue_t *q, controller_id_t target_id, const ipc_request_t *req,
-                     ipc_reply_handler_t on_reply, void *ctx)
+// Enqueues a message structure for processing by the client thread.
+int ipc_client_post(ipc_client_queue_t *q, controller_id_t target_id, const ipc_request_t *req, ipc_reply_handler_t on_reply, void *ctx)
 {
     int tail;
 
@@ -373,15 +293,17 @@ int ipc_client_post(ipc_client_queue_t *q, controller_id_t target_id, const ipc_
 
     pthread_mutex_lock(&q->lock);
 
+    // If the queue is stopping or full, reject the request.
     if (q->stopping || q->count == IPC_CLIENT_QUEUE_CAPACITY) {
         pthread_mutex_unlock(&q->lock);
         return -1;
     }
 
+    // Enqueue the job at the tail of the ring buffer.
     tail = (q->head + q->count) % IPC_CLIENT_QUEUE_CAPACITY;
     q->jobs[tail].target_id        = target_id;
     q->jobs[tail].req              = *req;
-    q->jobs[tail].req.hdr.type     = 0; /* keep out of the _IO_* reserved range */
+    q->jobs[tail].req.hdr.type     = 0; // keep out of the _IO_* reserved range 
     q->jobs[tail].req.hdr.subtype  = 0;
     q->jobs[tail].on_reply         = on_reply;
     q->jobs[tail].reply_ctx        = ctx;
@@ -392,12 +314,9 @@ int ipc_client_post(ipc_client_queue_t *q, controller_id_t target_id, const ipc_
     return 0;
 }
 
-/* Big enough for "/net/" + a 63-char TRAFFIC_NODE_MAP node name +
- * "/dev/name/global/" + the longest build_path() output ("traffic/rl1",
- * 11 bytes) + a NUL, with headroom - see build_open_path(). The plain
- * same-node case ("traffic/rl1") only ever needs a few bytes of this. */
 #define IPC_OPEN_PATH_MAX 160
 
+// Continuously digests the message queue via a blocking name_open/MsgSend cycle.
 void *ipc_client_thread_main(void *arg)
 {
     ipc_client_queue_t *q = (ipc_client_queue_t *)arg;
@@ -421,9 +340,7 @@ void *ipc_client_thread_main(void *arg)
         q->count--;
         pthread_mutex_unlock(&q->lock);
 
-        /* The blocking name_open()/MsgSend() happens ONLY on this
-         * dedicated thread - never on the server thread (ipc_server_run())
-         * and never on whichever thread called ipc_client_post(). */
+        // Attempt to open the target node and send the request.
         send_ok = 0;
         if (build_open_path(job.target_id, path, sizeof(path)) == 0) {
             coid = name_open(path, 0);
@@ -440,6 +357,7 @@ void *ipc_client_thread_main(void *arg)
             }
         }
 
+        // Notify the caller of the result.
         if (job.on_reply != NULL) {
             job.on_reply(job.target_id, &job.req, send_ok ? &reply : NULL, send_ok, job.reply_ctx);
         }

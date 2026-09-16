@@ -4,11 +4,7 @@
 
 #include "c_logger.h"
 
-/*
- * Static/module-private log file handle. NULL means either "not
- * initialised yet" or "fopen() failed" - c_logger_log() falls back to
- * stdout-only output in both cases (see doc comment in c_logger.h).
- */
+// Module-private file handle; falls back to stdout if initialization fails.
 static FILE *g_log_file = NULL;
 
 void c_logger_init(void)

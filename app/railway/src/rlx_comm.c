@@ -3,10 +3,7 @@
 
 #include "rlx_comm.h"
 
-/* Shared by rlx_comm_send_fault_report()/rlx_comm_broadcast_crossing_
- * status_if_changed() below - deliberately NOT reused for the heartbeat
- * send, which needs its own dedicated callback (on_heartbeat_reply(),
- * below) to drive PA-07 tracking; this one stays exactly as before. */
+// Shared callback that logs transmission failures for fault and crossing status reports.
 static void on_reply_log_failure(controller_id_t target_id, const ipc_request_t *original_req,
                                   const ipc_reply_t *reply, int send_ok, void *ctx)
 {
@@ -18,8 +15,7 @@ static void on_reply_log_failure(controller_id_t target_id, const ipc_request_t 
     }
 }
 
-/* PA-07: ctx is the sending rlx_fsm_t* - see lx_comm.c's on_heartbeat_
- * reply() for the full rationale (identical shape here). */
+// Client-thread callback to track heartbeat ACKs and report connection states to the FSM.
 static void on_heartbeat_reply(controller_id_t target_id, const ipc_request_t *original_req,
                                 const ipc_reply_t *reply, int send_ok, void *ctx)
 {
@@ -41,6 +37,7 @@ static void on_heartbeat_reply(controller_id_t target_id, const ipc_request_t *o
     }
 }
 
+// Sends a heartbeat message to C1 with the current railway status, logging any enqueue failures.
 void rlx_comm_send_heartbeat(controller_id_t self_id, rlx_fsm_t *fsm, ipc_client_queue_t *client_queue)
 {
     ipc_request_t req;
@@ -49,28 +46,20 @@ void rlx_comm_send_heartbeat(controller_id_t self_id, rlx_fsm_t *fsm, ipc_client
     req.verb = MSG_HEARTBEAT;
     req.sender_id = (uint32_t)self_id;
     req.target_id = (uint32_t)CTRL_C1;
-    /* Known gap: no monotonic-clock helper exists anywhere in this
-     * codebase yet - 0 is the established placeholder convention (see
-     * lx_comm.c) until a clock API is added. */
+    // Known gap: placeholder timestamp of 0 used until a monotonic-clock helper is implemented.
     req.timestamp_ms = 0;
 
-    /* rlx_fsm_fill_status() only fills role/crossing_state/faults/
-     * link_state for ROLE_RAILWAY - mode/signal_phase/supervisory_state
-     * are not meaningful here and stay 0. link_state is now the real
-     * observation rlx_fsm_on_heartbeat_result() maintains, not a
-     * hardcoded placeholder. */
+    // Fills role-specific status details without modifying non-railway fields.
     rlx_fsm_fill_status(fsm, &req.payload.heartbeat.summary);
 
-    /* Verifier-audit fix: ipc_client_post() returns -1 (queue full or
-     * stopping) WITHOUT ever invoking on_heartbeat_reply - log the drop
-     * here, the only point that can observe it, and count it as a miss
-     * for PA-07 the same as an unacknowledged send. */
+    // Logs unacknowledged sends as heartbeat drops if the queue is full or stopped.
     if (ipc_client_post(client_queue, CTRL_C1, &req, on_heartbeat_reply, fsm) != 0) {
         fprintf(stderr, "RLx: HEARTBEAT to C1 dropped - outgoing queue full or stopping\n");
         (void)rlx_fsm_on_heartbeat_result(fsm, 0);
     }
 }
 
+// Sends a fault report to C1 with the current railway status, logging any enqueue failures.
 void rlx_comm_send_fault_report(controller_id_t self_id, rlx_fsm_t *fsm, ipc_client_queue_t *client_queue)
 {
     ipc_request_t req;
@@ -82,25 +71,21 @@ void rlx_comm_send_fault_report(controller_id_t self_id, rlx_fsm_t *fsm, ipc_cli
     req.target_id = (uint32_t)CTRL_C1;
     req.timestamp_ms = 0;
 
-    rlx_fsm_fill_status(fsm, &tmp_status); /* to read the current fault_flags_t out */
+    rlx_fsm_fill_status(fsm, &tmp_status); 
     req.payload.fault_report.fault_code = (uint32_t)tmp_status.faults;
-    req.payload.fault_report.severity = 1; /* fixed placeholder - no severity-classification scheme is designed anywhere */
+    // Placeholder severity level; no classification scheme is currently designed.
+    req.payload.fault_report.severity = 1; 
     strncpy(req.payload.fault_report.detail, "RLx fault - see fault_code bitmask",
             sizeof(req.payload.fault_report.detail) - 1);
     req.payload.fault_report.detail[sizeof(req.payload.fault_report.detail) - 1] = '\0';
 
-    /* RC-10: this send is independent of/in-parallel with the FSM's own
-     * local safe-state response, which has already been applied by the
-     * time this is called - a dropped enqueue here must still be logged
-     * (safety-relevant), not silently lost. */
+    // Posts fault reports independent of local safe-state responses, logging enqueue drops.
     if (ipc_client_post(client_queue, CTRL_C1, &req, on_reply_log_failure, NULL) != 0) {
         fprintf(stderr, "RLx: FAULT_REPORT to C1 dropped - outgoing queue full or stopping\n");
     }
 }
 
-/* RC-07: RL1-RL3 each independently manage RC1-RC3; adjacency to Lx per
- * SYSTEM_DIAGRAMS.md Diagram 4 / lecture_clarification.md topology
- * (RC1 between I1/I2, RC2 between I3/I4, RC3 between I5/I6). */
+// Defines physical adjacency mapping between railway crossings and intersection controllers.
 typedef struct {
     controller_id_t rlx_id;
     controller_id_t adjacent_lx[2];
@@ -112,6 +97,7 @@ static const rlx_adjacency_t ADJACENCY[] = {
     { CTRL_RL3, { CTRL_L5, CTRL_L6 } },
 };
 
+// Finds the adjacency mapping for the given railway controller ID, returning NULL if not found.
 static const rlx_adjacency_t *find_adjacency(controller_id_t self_id)
 {
     size_t i;
@@ -120,11 +106,12 @@ static const rlx_adjacency_t *find_adjacency(controller_id_t self_id)
             return &ADJACENCY[i];
         }
     }
-    return NULL; /* defensive: should never happen given parse_self_id()'s 1-3 range in rlx_main.c */
+    // Defensively handles invalid self_ids.
+    return NULL; 
 }
 
-static void send_crossing_status(controller_id_t self_id, controller_id_t target_id,
-                                  crossing_state_t state, ipc_client_queue_t *client_queue)
+// Sends a crossing status message to a specific target controller, logging any enqueue failures.
+static void send_crossing_status(controller_id_t self_id, controller_id_t target_id, crossing_state_t state, ipc_client_queue_t *client_queue)
 {
     ipc_request_t req;
 
@@ -135,21 +122,16 @@ static void send_crossing_status(controller_id_t self_id, controller_id_t target
     req.timestamp_ms = 0;
     req.payload.crossing_status.state = (uint32_t)state;
 
-    /* RC-02: this is the one-way status feed adjacent Lx controllers rely
-     * on to suppress a toward-crossing movement (CC-02) - a silently
-     * dropped enqueue here is safety-relevant, must be logged. */
+    // Relays crossing status to adjacent intersections to suppress toward-crossing movements.
     if (ipc_client_post(client_queue, target_id, &req, on_reply_log_failure, NULL) != 0) {
         fprintf(stderr, "RLx: CROSSING_STATUS to %d dropped - outgoing queue full or stopping\n", (int)target_id);
     }
 }
 
+// Broadcasts crossing status to adjacent intersections and C1 only when the status changes, avoiding redundant messages.
 void rlx_comm_broadcast_crossing_status_if_changed(controller_id_t self_id, rlx_fsm_t *fsm, ipc_client_queue_t *client_queue)
 {
-    /* Sentinel outside crossing_state_t's valid range so the very first
-     * call always sends (there is no previous state to compare against
-     * yet). One process = one fixed self_id for its whole lifetime (see
-     * rlx_main.c's parse_self_id()), so a single static is sufficient -
-     * no need to index by self_id. */
+    // Static state tracker ensuring broadcasts only occur upon crossing status changes.
     static int last_broadcast_state = -1;
     const rlx_adjacency_t *adj;
     crossing_state_t current;
@@ -165,6 +147,7 @@ void rlx_comm_broadcast_crossing_status_if_changed(controller_id_t self_id, rlx_
         return;
     }
 
+    // Sends the updated crossing status to both adjacent intersections and C1.
     send_crossing_status(self_id, adj->adjacent_lx[0], current, client_queue);
     send_crossing_status(self_id, adj->adjacent_lx[1], current, client_queue);
     send_crossing_status(self_id, CTRL_C1, current, client_queue);

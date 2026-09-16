@@ -3,24 +3,7 @@
 #include "c_comm.h"
 #include "c_logger.h"
 
-/*
- * Implementation notes
- * ---------------------
- * Every c_comm_send_*()/c_comm_broadcast_timing_profile() function below
- * follows the exact same four-step shape as lx_comm.c's
- * lx_comm_send_heartbeat(): memset() an ipc_request_t to zero (hdr is
- * left zeroed - ipc_client_post() "clears req.hdr to a safe (non-_IO_*)
- * value" itself per its documented contract in qnet_utils.h, so this file
- * never touches hdr), fill verb/sender_id/target_id/payload, then call
- * ipc_client_post(). sender_id is always CTRL_C1 - only Central ever
- * calls into this file.
- *
- * timestamp_ms is left at 0 on every outgoing request here, matching the
- * placeholder convention already established by lx_comm.c/rlx_comm.c:
- * no monotonic-clock helper exists anywhere in this codebase yet (a
- * known, confirmed gap), and 0 is simply what every other sender already
- * writes rather than fabricating a value nobody else provides.
- */
+// Implements the fire-and-forget four-step IPC send pattern for outgoing central commands.
 
 static pthread_mutex_t *g_console_io_lock = NULL;
 
@@ -68,35 +51,11 @@ static const char *nack_reason_name(uint32_t reason)
     }
 }
 
-/*
- * Single reply handler shared by all six senders below.
- *
- * Deliberately stateless: ctx is always NULL and this function never
- * touches c_mode_eng_t. ipc_reply_handler_t's documented contract (see
- * qnet_utils.h) is that it "Runs on the CLIENT thread, never on the
- * server thread" - c_operator.c's command handlers and c_main.c's
- * on_request()/on_pulse() already form a two-writer relationship on
- * ctx->mode_eng (server thread + operator thread), serialised by
- * central_context_t.mode_eng_lock (see c_main.c). Making this reply
- * handler a THIRD writer, from yet another thread, on a fire-and-forget
- * callback whose timing relative to a later operator command is
- * unspecified, would reopen exactly that hazard. Logging only (via
- * c_logger_log(), which owns no state this file cares about) keeps this
- * file's concurrency story identical to lx_comm.c's on_heartbeat_reply().
- */
-static void on_command_reply(controller_id_t target_id, const ipc_request_t *original_req,
-                              const ipc_reply_t *reply, int send_ok, void *ctx)
+// Stateless, shared async reply handler that logs the outcome of outgoing IPC commands.
+static void on_command_reply(controller_id_t target_id, const ipc_request_t *original_req, const ipc_reply_t *reply, int send_ok, void *ctx)
 {
     (void)ctx;
 
-    /* Runs on the CLIENT thread (see this function's doc comment above) -
-     * console_io_lock (if set - see c_comm_set_console_io_lock()) keeps
-     * this asynchronous log line from splicing into c_hmi_render()'s
-     * table or an in-progress operator prompt, same hazard as every other
-     * c_logger_log() call site in this codebase. g_console_io_lock is
-     * only NULL before main() calls c_comm_set_console_io_lock(), which
-     * happens before the client thread starts, so every real reply here
-     * finds it set. */
     if (g_console_io_lock != NULL) {
         pthread_mutex_lock(g_console_io_lock);
     }
@@ -163,8 +122,6 @@ void c_comm_send_timing_profile(ipc_client_queue_t *q, controller_id_t target,
 void c_comm_broadcast_timing_profile(ipc_client_queue_t *q, const c_arterial_offset_t *chain,
                                       int chain_len, uint32_t profile_id)
 {
-    /* R1_CHAIN/R2_CHAIN (c_mode_eng.c) are both length 3 today; 8 is
-     * generous headroom against a future longer chain, not a spec value. */
     ipc_request_t requests[8];
     int i;
     int n;
@@ -174,9 +131,6 @@ void c_comm_broadcast_timing_profile(ipc_client_queue_t *q, const c_arterial_off
         return;
     }
 
-    /* c_mode_eng_build_timing_profile() fills verb/sender_id/target_id/
-     * payload for every chain member (it memset()s each entry itself) -
-     * this loop only has to post what it already built. */
     n = c_mode_eng_build_timing_profile(profile_id, chain, chain_len, requests);
     for (i = 0; i < n; i++) {
         controller_id_t target = (controller_id_t)requests[i].target_id;
@@ -232,7 +186,6 @@ void c_comm_send_cancel_override(ipc_client_queue_t *q, controller_id_t target)
     req.sender_id    = (uint32_t)CTRL_C1;
     req.target_id    = (uint32_t)target;
     req.timestamp_ms = 0;
-    /* No payload on the wire - see ipc_msg.h. */
 
     if (ipc_client_post(q, target, &req, on_command_reply, NULL) != 0) {
         c_logger_log("C1: CANCEL_OVERRIDE to %d dropped - outgoing queue full or stopping", (int)target);
@@ -248,7 +201,6 @@ void c_comm_send_request_fault_clear(ipc_client_queue_t *q, controller_id_t targ
     req.sender_id    = (uint32_t)CTRL_C1;
     req.target_id    = (uint32_t)target;
     req.timestamp_ms = 0;
-    /* No payload on the wire - see ipc_msg.h. */
 
     if (ipc_client_post(q, target, &req, on_command_reply, NULL) != 0) {
         c_logger_log("C1: REQUEST_FAULT_CLEAR to %d dropped - outgoing queue full or stopping", (int)target);

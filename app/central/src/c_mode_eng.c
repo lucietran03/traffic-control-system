@@ -2,12 +2,7 @@
 
 #include "c_mode_eng.h"
 
-/*
- * TC-01..05 arterial chains. Exposed via c_mode_eng_get_chain() below;
- * c_operator.c picks one of these based on which arterial an operator's
- * UC-03 timing-profile command targets, and hands it to
- * c_mode_eng_build_timing_profile().
- */
+// Defines pre-configured arterial chains for coordinated green-wave offsets.
 static const c_arterial_offset_t R1_CHAIN[] = {
     { CTRL_L1, R1_L1_OFFSET_MS },
     { CTRL_L3, R1_L3_OFFSET_MS },
@@ -35,14 +30,11 @@ void c_mode_eng_init(c_mode_eng_t *eng)
         eng->controllers[6 + i].role = ROLE_RAILWAY;
     }
 
-    /* PLACEHOLDER schedule (see c_mode_eng.h) - not a spec value. */
     eng->schedule.peak_start_hour = C_MODE_ENG_DEFAULT_PEAK_START_HOUR;
     eng->schedule.peak_end_hour   = C_MODE_ENG_DEFAULT_PEAK_END_HOUR;
 
     eng->next_profile_id = 1;
 
-    /* memset() above only covers eng->controllers[] - these top-level
-     * scalars need their own explicit zeroing. */
     eng->demo_hour_override_active = 0;
     eng->demo_hour                 = 0;
     eng->last_auto_mode            = MODE_PEAK_FIXED;
@@ -73,9 +65,6 @@ int c_mode_eng_auto_check(c_mode_eng_t *eng, uint8_t current_hour, operating_mod
     operating_mode_t computed = c_mode_eng_select_mode(eng, current_hour);
 
     if (!eng->last_auto_mode_valid) {
-        /* First-ever call just seeds the baseline - report no change so
-         * process start-up never fires a surprise broadcast on top of
-         * whatever mode each Lx already booted into on its own. */
         eng->last_auto_mode       = computed;
         eng->last_auto_mode_valid = 1;
         return 0;
@@ -101,8 +90,7 @@ void c_mode_eng_mark_all_lx_commanded(c_mode_eng_t *eng, operating_mode_t mode)
     }
 }
 
-int c_mode_eng_build_timing_profile(uint32_t profile_id, const c_arterial_offset_t *chain,
-                                     int chain_len, ipc_request_t *out_requests)
+int c_mode_eng_build_timing_profile(uint32_t profile_id, const c_arterial_offset_t *chain, int chain_len, ipc_request_t *out_requests)
 {
     int i;
 
@@ -138,12 +126,9 @@ const c_arterial_offset_t *c_mode_eng_get_chain(c_arterial_chain_id_t chain_id, 
     }
 }
 
-int c_mode_eng_validate_override_request(controller_id_t target_id, const request_override_payload_t *payload,
-                                          nack_reason_t *out_reason)
+// Validates manual override requests, ensuring target, duration, and type bounds are met.
+int c_mode_eng_validate_override_request(controller_id_t target_id, const request_override_payload_t *payload, nack_reason_t *out_reason)
 {
-    /* Verifier-audit fix: always set *out_reason, even on the accept path
-     * (return 1), so a future caller that reads it without first checking
-     * the return value never sees indeterminate memory. */
     *out_reason = NACK_REASON_NONE;
 
     if (target_id < CTRL_L1 || target_id > CTRL_L6) {

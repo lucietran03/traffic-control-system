@@ -3,17 +3,9 @@
 #include "lx_fsm.h"
 #include "lx_sensor.h"
 
-/*
- * Lx simulated sensor input - implementation.
- *
- * Stand-in for real vehicle/pedestrian/queue-warning hardware sensors:
- * reads single keypresses from stdin and forwards each one to the
- * matching lx_fsm_set_*()/lx_fsm_latch_*() setter (see lx_fsm.h's
- * "sensor-input setters" section). Runs on its own thread (started by
- * lx_main.c) because reading stdin blocks - see this file's header
- * comment for why it cannot share the server or client thread.
- */
+// Translates simulated keypress events into the corresponding FSM sensor or demand assertions.
 
+// Displays a help message listing the available sensor input keys and their effects.
 static void lx_sensor_print_help(void)
 {
     printf("Lx sensor keys:\n");
@@ -25,6 +17,7 @@ static void lx_sensor_print_help(void)
     printf("  h or ? = show this help                    q = stop keyboard input (this thread only)\n");
 }
 
+// Thread function that continuously reads keyboard input to simulate sensor events, updating the FSM state accordingly.
 void *lx_sensor_reader_thread(void *arg)
 {
     lx_fsm_t *fsm = (lx_fsm_t *)arg;
@@ -34,46 +27,45 @@ void *lx_sensor_reader_thread(void *arg)
 
     for (;;) {
         if (scanf(" %c", &input) != 1) {
-            /* EOF or stdin closed - stop this thread rather than spin. */
             break;
         }
 
         switch (input) {
-        case 'a':
+        case 'a': // Arterial vehicle demand present
             lx_fsm_set_arterial_vehicle_demand(fsm, 1);
             break;
-        case 'A':
+        case 'A': // Arterial vehicle demand cleared
             lx_fsm_set_arterial_vehicle_demand(fsm, 0);
             break;
-        case 'c':
+        case 'c': // Connector vehicle demand present
             lx_fsm_set_connector_vehicle_demand(fsm, 1);
             break;
-        case 'C':
+        case 'C': // Connector vehicle demand cleared
             lx_fsm_set_connector_vehicle_demand(fsm, 0);
             break;
-        case '1':
+        case '1': // Pedestrian button pressed on side 0
             lx_fsm_latch_pedestrian_request(fsm, 0);
             break;
-        case '2':
+        case '2': // Pedestrian button pressed on side 1
             lx_fsm_latch_pedestrian_request(fsm, 1);
             break;
-        case '3':
+        case '3': // Pedestrian button pressed on side 2
             lx_fsm_latch_pedestrian_request(fsm, 2);
             break;
-        case '4':
+        case '4': // Pedestrian button pressed on side 3
             lx_fsm_latch_pedestrian_request(fsm, 3);
             break;
-        case 'w':
+        case 'w': // Queue warning asserted
             lx_fsm_set_queue_warning(fsm, 1);
             break;
-        case 'W':
+        case 'W': // Queue warning cleared
             lx_fsm_set_queue_warning(fsm, 0);
             break;
-        case 'h':
+        case 'h': // Help
         case '?':
             lx_sensor_print_help();
             break;
-        case 'q':
+        case 'q': // Quit sensor input thread
             printf("Lx sensor: stopping keyboard input (this thread only)\n");
             return NULL;
         default:

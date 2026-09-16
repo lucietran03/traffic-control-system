@@ -5,12 +5,7 @@
 #include "rlx_gate.h"
 #include "ipc_msg.h"
 
-/*
- * Demo/keyboard-driven stand-in for real train-approach sensors (RC-01).
- * Runs as its own dedicated thread (see rlx_sensor.h) because reading
- * stdin blocks - it must never share the server thread (ipc_server_run())
- * or the client thread (ipc_client_thread_main()).
- */
+// Dedicated blocking thread mapping simulated keyboard input to real-time train approach events and demo testing operations.
 
 static void print_help(void)
 {
@@ -31,16 +26,16 @@ void *rlx_sensor_reader_thread(void *arg)
 
     while (scanf(" %c", &input) == 1) {
         switch (input) {
-        case '0':
+        case '0': // Simulates a train approaching from direction 0
             rlx_fsm_simulate_train_approaching(fsm, 0);
             break;
-        case '1':
+        case '1': // Simulates a train approaching from direction 1
             rlx_fsm_simulate_train_approaching(fsm, 1);
             break;
-        case 'x':
+        case 'x': // Arms the gate to fail its next motion confirmation
             rlx_gate_arm_demo_fault();
             break;
-        case 'r':
+        case 'r': // Simulates physical gate repair to forcibly set a confirmed open state
             rlx_gate_force_confirmed_open();
             break;
         case 'f': {
@@ -51,11 +46,11 @@ void *rlx_sensor_reader_thread(void *arg)
             printf("[rlx_sensor] fault-clear result=%u reason=%u\n", (unsigned)reply.result, (unsigned)reply.reason);
             break;
         }
-        case 'h':
+        case 'h': // Help
         case '?':
             print_help();
             break;
-        case 'q':
+        case 'q': // Quit the sensor reader thread
             return NULL;
         default:
             printf("[rlx_sensor] ignored key '%c'\n", input);

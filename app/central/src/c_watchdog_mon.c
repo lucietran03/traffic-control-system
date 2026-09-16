@@ -1,5 +1,6 @@
 #include "c_watchdog_mon.h"
 
+// Increments missed heartbeats and marks controllers unavailable after three consecutive misses.
 int c_watchdog_mon_tick(c_mode_eng_t *eng, controller_id_t *out_newly_unavailable)
 {
     int i;

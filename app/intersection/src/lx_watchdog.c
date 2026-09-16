@@ -3,22 +3,10 @@
 
 #include "lx_watchdog.h"
 
-/*
- * Lx local fail-safe watchdog - implementation.
- *
- * PA-10 dead-man's switch: does not implement any safe-output logic of
- * its own - it only detects that the server thread's phase-timer pulse
- * (IPC_PULSE_PHASE_TIMER, armed in lx_main.c at a 100 ms period) has
- * stopped advancing lx_watchdog_args_t::phase_tick_counter, and reports
- * that via lx_fsm_report_watchdog_trip(). The existing, already-audited
- * lx_fsm_check_fault_locked() machinery takes it from there (SC-03A).
- */
-
-/* Conservative default: the phase timer ticks every 100 ms, so 2 s of
- * total silence (20 missed ticks) is unambiguous, not a false positive
- * from ordinary scheduling jitter. */
+// Defines a 2-second check interval for detecting stalled main loops and triggering fault states.
 #define LX_WATCHDOG_CHECK_INTERVAL_S 2u
 
+// Thread function that monitors the phase-timer tick counter and reports a watchdog trip to the FSM if no activity is detected within the defined interval.
 void *lx_watchdog_thread(void *arg)
 {
     lx_watchdog_args_t *args = (lx_watchdog_args_t *)arg;
@@ -37,6 +25,5 @@ void *lx_watchdog_thread(void *arg)
         last_seen = current;
     }
 
-    return NULL; /* unreachable - matches the existing server/client thread
-                  * pattern of an infinite loop. */
+    return NULL; 
 }
