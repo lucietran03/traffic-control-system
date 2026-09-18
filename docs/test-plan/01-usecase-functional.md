@@ -548,6 +548,19 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
   ra sau khi fault được xử lý ở phía RLx (xem UC-06) và crossing báo
   `OPEN` trở lại.
 
+### TC-UC05-5 (Regression, CC-01/CC-02): tàu tới đúng lúc connector đang xanh giữa chừng — phải cắt về xanh tối thiểu ngay, không chạy hết chu kỳ
+- **Loại**: Regression (đã sửa) + Edge case (đúng biên `LX_MIN_GREEN_MS`)
+- **Tại sao từng là bug**: Trước đợt audit/fix gần nhất, `lx_fsm_on_phase_timer()`'s `PHASE_CONNECTOR_GREEN` case và `lx_fsm_advance_phase_locked()`'s boundary check chỉ ngăn một chu kỳ connector-green **MỚI** bắt đầu trong lúc `RAILWAY_PREEMPTION`, nhưng không hề cắt ngắn một chu kỳ **đang chạy sẵn** — nếu tàu tới đúng lúc L1 vừa mới vào `CONNECTOR_GREEN`, đèn xanh đó có thể chạy hết trọn 30s (`PEAK_FIXED`) hoặc tới 40s (`OFF_PEAK_SENSOR`/đang drain), ăn hết vào khoảng dự phòng ~25s dành cho giao lộ kề bên clear xe (RC-03/Appendix B4). Đây là lỗ hổng an toàn thật, không phải cosmetic.
+- **Liên quan**: `lx_fsm_on_phase_timer()`'s `PHASE_CONNECTOR_GREEN` case (`lx_fsm.c`) — check mới, chạy mỗi tick 100ms (không đợi mốc 4s như check thông thường): `supervisory == SUPERVISORY_RAILWAY_PREEMPTION && green_elapsed_ms >= LX_MIN_GREEN_MS` thì gọi `lx_fsm_advance_phase_locked()` ngay, cắt về `YELLOW`.
+- **Môi trường**: (B) `rlx_main 1` + `lx_main 1` + `lx_main 2`
+- **Chuẩn bị**: Bắt L1 vào đúng `PHASE_CONNECTOR_GREEN` — cách dễ nhất: đợi chu kỳ tự nhiên tới `CONNECTOR GREEN` (log `SIGNAL -> CONNECTOR GREEN`), thao tác ngay khi vừa thấy dòng log đó (trong vòng 1-2 giây).
+- **Các bước**:
+  1. Ngay khi L1 vừa vào `CONNECTOR GREEN` (còn cách xa mốc kết thúc bình thường 30s/40s), trên RL1 bấm `0` để mô phỏng tàu tới.
+  2. Đợi đủ 5s cảnh báo (`RLX_WARNING_TO_CLOSING_MS`) để RL1 chuyển sang `CLOSING` rồi gửi `CROSSING_STATUS(WARNING)` cho L1 — L1 sẽ vào `RAILWAY_PREEMPTION` ngay khi nhận được (không cần đợi gate đóng xong).
+  3. Từ thời điểm L1 vào `RAILWAY_PREEMPTION` (bước 2), tính đúng 8 giây (`LX_MIN_GREEN_MS`) kể từ lúc `CONNECTOR GREEN` bắt đầu ở bước 1 — theo dõi sát log L1 quanh mốc này.
+- **Kết quả mong đợi**: Log L1 phải in `SIGNAL -> CONNECTOR YELLOW` **đúng tại/ngay sau mốc 8 giây kể từ lúc bắt đầu CONNECTOR GREEN** (không phải mốc 30s/40s bình thường) — tức đèn bị cắt về xanh tối thiểu ngay khi an toàn cho phép, không chạy hết chu kỳ. Nếu log vẫn cho thấy `CONNECTOR GREEN` kéo dài quá 8-9 giây sau khi đã xác nhận `RAILWAY_PREEMPTION`, đây là regression của chính bug đã sửa.
+- **Lưu ý**: Nếu tàu tới khi `green_elapsed_ms < LX_MIN_GREEN_MS` (mới vào xanh chưa tới 8s), TL-01's sàn xanh tối thiểu vẫn phải được tôn trọng — đèn chỉ cắt tại đúng mốc 8s, không cắt sớm hơn (xem code check: `green_elapsed_ms >= LX_MIN_GREEN_MS`, không phải `> 0`).
+
 ---
 
 ## UC-06 — Respond to a Railway Equipment Fault
@@ -896,6 +909,14 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
   trò hiển thị, không có bất kỳ hành động actuate nào được gửi ngược lại
   RL1 (đúng BR-1 "Central chỉ giám sát 9 controller, không điều khiển trực
   tiếp thiết bị").
+
+### TC-UC09-5 (Regression, cosmetic): 2 cột SENSOR/OVERRIDE trong bảng HMI thẳng hàng giữa header và dữ liệu
+- **Loại**: Regression (đã sửa) — thuần cosmetic, không ảnh hưởng logic
+- **Tại sao từng là bug**: `c_hmi_render()`'s dòng header (`printf` khai báo độ rộng cột) và dòng dữ liệu (`printf` in giá trị) từng dùng độ rộng khác nhau cho 2 cột `SENSOR`/`OVERRIDE` (`%-9s`/`%-8u` ở data row nhưng header khai `%-8s`/`%-9s`) — khiến 2 cột này bị lệch, khó đọc khi demo dù dữ liệu vẫn đúng.
+- **Liên quan**: `c_hmi.c`'s `c_hmi_render()` — 2 chuỗi `printf` format (header và data row), độ rộng cột đã khớp lại.
+- **Môi trường**: (B) bất kỳ, chỉ cần `c_main` + ít nhất 1 Lx/RLx đang chạy.
+- **Các bước**: Khởi động `c_main` + `lx_main 1`, đợi bảng HMI in ra ít nhất 1 lần.
+- **Kết quả mong đợi**: Nhìn bằng mắt (hoặc đo vị trí ký tự): tiêu đề `SENSOR` và `OVERRIDE` ở dòng header phải thẳng cột với giá trị tương ứng ở dòng dữ liệu L1 — không bị lệch trái/phải như trước khi sửa.
 
 ---
 

@@ -880,3 +880,21 @@ Mỗi test case ghi rõ môi trường cần dùng:
   để tăng số lần tranh chấp lock quan sát được, và lặp lại toàn bộ kịch bản
   N ≥ 3 phiên chạy riêng biệt (khởi động lại toàn bộ hệ thống giữa mỗi
   phiên) trước khi kết luận pass.
+
+---
+
+## Nhóm F — Terminal/console output race (`c_main.c`, `c_operator.c`)
+
+### TC-RACE-21 (Regression, đã sửa): DP-01/DP-02 auto peak-hour broadcast log bị splice với operator console output
+- **Loại**: Regression (đã sửa)
+- **Tại sao từng là race**: `on_pulse()`'s `IPC_PULSE_HEARTBEAT_TICK` case (server thread) gọi `c_mode_eng_auto_check()` để phát hiện đổi mode tự động theo giờ (DP-01/DP-02), sau đó `c_logger_log()` một dòng thông báo rồi gọi `c_comm_broadcast_set_mode()` (gửi `MSG_SET_MODE` unicast tới cả 6 Lx). Bản vá trước đây chỉ khoá `console_io_lock` quanh MỘT TRONG HAI thao tác (hoặc chỉ dòng log, hoặc không khoá lúc gửi) — trong khi `c_operator_reader_thread` cũng giữ `console_io_lock` xuyên suốt mỗi `handle_*()`. Nếu ranh giới giờ DP-01/DP-02 xảy ra đúng lúc operator đang gõ lệnh, dòng log "Auto peak-hour switch..." có thể bị in xen giữa output của lệnh operator (terminal splicing), hoặc tệ hơn, `c_comm_send_set_mode()`'s "outgoing queue full" log path (gọi lồng bên trong `c_comm_broadcast_set_mode()`) có thể chạy mà không có `console_io_lock`, gây torn output.
+- **Liên quan**: `app/central/src/c_main.c : on_pulse()` dòng 201-219 — khoá `console_io_lock` bây giờ bọc xuyên suốt CẢ dòng `c_logger_log()` LẪN toàn bộ `c_comm_broadcast_set_mode()` (không chỉ dòng log), vì hàm gửi bên trong (`c_comm_send_set_mode()`) có thể tự gọi `c_logger_log()` trên nhánh lỗi và mọi call site khác của nó đã chạy dưới `console_io_lock` qua `c_operator.c`'s reader-thread switch.
+- **Môi trường**: (B) hoặc (C) đầy đủ: `c_main` + ít nhất 1 `lx_main` đang chạy; cần điều khiển được `demo_hour`/`demo_hour_override_active` (phím `d`/`a`) để ép ranh giới DP-01/DP-02 xảy ra đúng lúc mong muốn thay vì chờ giờ thật.
+- **Chuẩn bị**: `c_main` + `lx_main 1..6` đang chạy bình thường, đang ở `mode` khác với mode sẽ được ép chuyển sang.
+- **Các bước**:
+  1. Tại C1, dùng phím `d` để đặt `demo_hour` gần ranh giới peak/off-peak (vd. còn 1-2 tick nữa sẽ đổi mode).
+  2. Ngay khi ranh giới sắp tới (trong vòng dưới 1 giây), gõ liên tục vài lệnh operator khác (`m`, `t`, `?`) không dừng, để tối đa hoá khả năng trùng thời điểm với `on_pulse()`'s auto-switch broadcast.
+  3. Lặp lại bước 1-2 khoảng 10-20 lần (mỗi lần đặt `demo_hour` sát ranh giới khác nhau) để tăng khả năng bắt trúng race.
+  4. Quan sát terminal output và `central_log.txt` trong suốt quá trình.
+- **Kết quả mong đợi**: Dòng `Auto peak-hour switch: hour=... -> mode=..., broadcasting to all Lx` trong `central_log.txt` luôn nguyên vẹn, không bị chen ngang bởi output của bất kỳ `handle_*()` nào (không có dòng bị cắt giữa chừng hoặc hai dòng bị nối lẫn vào nhau) — kể cả khi 6 lệnh `MSG_SET_MODE` unicast bên trong `c_comm_broadcast_set_mode()` gặp nhánh "outgoing queue full" và tự log thêm.
+- **Lưu ý**: Đây là race hiếm gặp tự nhiên (DP-01/DP-02 chỉ xảy ra tại đúng ranh giới giờ đã cấu hình) — dùng `demo_hour`/`demo_hour_override_active` (`c_operator.c` phím `d`/`a`) để ép trigger lặp lại nhiều lần thay vì chờ giờ thật trôi qua.

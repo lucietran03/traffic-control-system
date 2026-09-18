@@ -590,15 +590,28 @@ gian mô phỏng cổng di chuyển) và tick railway = 1000 ms/lần
 - **Các bước**: Chạy `lx_main 1` một mình (không `c_main`), bấm các phím sensor bình thường (`a`, `1`, `w`, v.v.) và quan sát toàn bộ chu kỳ ARTERIAL/CONNECTOR, WALK/FDW, vẫn hoạt động đúng thời lượng như các test ở mục 1-4 của tài liệu này.
 - **Kết quả mong đợi**: Không có bất kỳ khác biệt hành vi nào so với khi có `c_main` chạy — xác nhận trực tiếp qua source: không có lệnh `if (fsm->link_state == ...)` nào xuất hiện trong toàn bộ `lx_fsm.c` chi phối phase/pedestrian/override/railway-preemption logic. Đây là behavior **đạt yêu cầu SC-05 note "by construction"**, không phải vì có cơ chế fallback chủ động nào được lập trình riêng.
 
-### TC-SC05-3: Resync tức thời khi heartbeat khôi phục — và lỗ hổng hiển thị RESYNCHRONISING
-- **Loại**: Positive + Known gap
+### TC-SC05-3: Resync tức thời khi heartbeat khôi phục — mô hình hoá RESYNCHRONISING qua chính heartbeat đầy đủ
+- **Loại**: Positive
 - **Liên quan**: SC-05, `DEGRADED_LOCAL --> RESYNCHRONISING --> CENTRAL_CONNECTED`
 - **Môi trường**: (B)
 - **Chuẩn bị**: Lặp lại TC-SC05-1 cho tới khi L1 = `UNAVAILABLE`.
 - **Các bước**:
   1. `kill -CONT <pid lx_main 1>` để L1 tiếp tục chạy và tự động gửi lại `MSG_HEARTBEAT` (1Hz, không cần thao tác gì thêm từ phía L1).
   2. Quan sát bảng C1 ở lần refresh 1Hz ngay sau khi heartbeat đầu tiên tới.
-- **Kết quả mong đợi**: `c_server_record_status()` (được gọi từ `MSG_HEARTBEAT` case trong `c_main.c`) reset `missed_heartbeat_ticks=0` và `marked_unavailable=0` **ngay trên heartbeat đầu tiên nhận được** — AVAILABILITY chuyển thẳng `UNAVAILABLE → AVAILABLE` trong đúng 1 tick, không có bước trung gian nào hiển thị "đang resync". *Known gap*: SC-05 vẽ một trạng thái `RESYNCHRONISING` tường minh ("send complete current state to C1" / "C1 accepts complete state exchange"), nhưng code hiện tại không có STATUS "trạng thái đầy đủ" riêng biệt nào được gửi khi vừa kết nối lại — mọi `MSG_HEARTBEAT`/`MSG_STATUS` đều có cùng nội dung `status_report_payload_t`, và trường `link_state` trong đó **luôn bị hard-code** `LINK_CENTRAL_CONNECTED` bởi cả `lx_comm.c` (`req.payload.heartbeat.summary.link_state = (uint32_t)LINK_CENTRAL_CONNECTED;`) lẫn `rlx_comm.c`, bất kể tình trạng kết nối thật — nghĩa là cột hiển thị (nếu HMI từng in `link_state`) sẽ không bao giờ phản ánh đúng DEGRADED_LOCAL/RESYNCHRONISING dù Central có đang coi controller là UNAVAILABLE. Ghi rõ đây là giới hạn PoC đã biết, không phải bug mới phát hiện, cần nêu trong báo cáo nghiệm thu.
+- **Kết quả mong đợi**: `c_server_record_status()` (được gọi từ `MSG_HEARTBEAT` case trong `c_main.c`) reset `missed_heartbeat_ticks=0` và `marked_unavailable=0` **ngay trên heartbeat đầu tiên nhận được** — AVAILABILITY chuyển thẳng `UNAVAILABLE → AVAILABLE` trong đúng 1 tick, không có bước trung gian nào hiển thị "đang resync". Đây là cách thiết kế mô hình hoá `RESYNCHRONISING` của SC-05: vì `heartbeat_payload_t` đã tái sử dụng đúng shape đầy đủ của `status_report_payload_t` (PA-08's "complete current state"), bản thân heartbeat được ACK đầu tiên sau khi mất kết nối ĐÃ LÀ bước "gửi state đầy đủ" — không cần một bước trung gian tách riêng. **(Đã sửa trong đợt audit gần nhất — trước đây `link_state` trong payload bị hard-code `LINK_CENTRAL_CONNECTED` ở cả `lx_comm.c` lẫn `rlx_comm.c` bất kể tình trạng kết nối thật; xem TC-SC05-4 cho test case xác nhận trực tiếp việc này đã được sửa.)**
+
+### TC-SC05-4 (Regression, PA-07/PA-08): `link_state` giờ phản ánh đúng thật, không còn hard-code — xác nhận trực tiếp qua payload gửi đi
+- **Loại**: Regression (đã sửa)
+- **Tại sao từng là bug**: Trước đợt audit/fix gần nhất, `lx_comm_send_heartbeat()`/`rlx_comm_send_heartbeat()` luôn ghi đè `req.payload.heartbeat.summary.link_state = (uint32_t)LINK_CENTRAL_CONNECTED;` bất kể `fsm->link_state` thật là gì — nghĩa là trường `link_state` trên wire **luôn nói dối** là đã kết nối, kể cả khi Lx/RLx đang thật sự ở `DEGRADED_LOCAL`. `fsm->link_state` cũng chỉ được set một lần lúc khởi tạo, không bao giờ cập nhật lại sau đó.
+- **Liên quan**: `lx_fsm_on_heartbeat_result()` (`lx_fsm.c`), `rlx_fsm_on_heartbeat_result()` (`rlx_fsm.c`) — hàm mới, được gọi từ callback trả lời heartbeat (`on_heartbeat_reply()` trong `lx_comm.c`/`rlx_comm.c`, chạy trên client thread); `lx_fsm_fill_status()`/`rlx_fsm_fill_status()` giờ copy `fsm->link_state` thật vào payload thay vì hard-code.
+- **Môi trường**: (B)
+- **Chuẩn bị**: `c_main` và `lx_main 1` đang chạy bình thường, đã kết nối (`AVAILABLE`).
+- **Các bước**:
+  1. `kill -STOP <pid c_main>` (dừng hẳn Central — L1 sẽ không nhận được `RESULT_ACK` cho các heartbeat gửi đi tiếp theo, vì `MsgSend()` sẽ thất bại/không có ai trả lời).
+  2. Quan sát log của `lx_main 1` (không phải log C1, vì C1 đang bị STOP): sau đúng 3 heartbeat liên tiếp không được ACK, phải thấy dòng `Lx: 3 consecutive HEARTBEATs unacknowledged - entering DEGRADED_LOCAL (PA-07)`.
+  3. `kill -CONT <pid c_main>` để Central chạy lại.
+  4. Quan sát tiếp log `lx_main 1`: ngay lần heartbeat kế tiếp được ACK, phải thấy dòng `Lx: HEARTBEAT acknowledged by C1 - reconnected, resuming CENTRAL_CONNECTED (PA-08)`.
+- **Kết quả mong đợi**: Cả 2 dòng log trên phải xuất hiện đúng như mô tả — đây là bằng chứng trực tiếp rằng `fsm->link_state` (và do đó trường `link_state` trong mọi `MSG_HEARTBEAT` gửi đi sau đó) giờ phản ánh đúng tình trạng kết nối thật, không còn là giá trị hard-code. Nếu không thấy 2 dòng log này xuất hiện đúng lúc, đây là regression của chính bug đã sửa.
 
 ---
 
@@ -611,6 +624,6 @@ gian mô phỏng cổng di chuyển) và tick railway = 1000 ms/lần
 | `WARNING --> FAULT` (diagnostic timeout 60s) không thể kích hoạt | SC-04A | `RLX_WARNING_TO_CLOSING_MS` (5s) luôn bắn trước, reset `state_elapsed_ms`; sự kiện mô phỏng rời rạc không thể hiện sensor "kẹt active liên tục" | Dead code theo chính comment trong `rlx_fsm.c` |
 | `CLOSED/TRAIN_PRESENT --> FAULT` do gate mâu thuẫn không thể kích hoạt qua demo hiện có | SC-04B | `rlx_gate.c` chỉ đổi trạng thái confirm qua lệnh do chính `rlx_fsm.c` phát ra | Cần thêm API demo nếu muốn test thật |
 | `REQUEST_LATCHED` "stuck-active beyond diagnostic timeout" (PA-03) không được phát hiện | SC-02 | `lx_fsm_latch_pedestrian_request()` có comment "KNOWN LIMITATION" xác nhận `FAULT_PED_BUTTON_STUCK` không bao giờ được set | Không viết test dương cho nhánh này trong tài liệu này |
-| `link_state` luôn hard-code `LINK_CENTRAL_CONNECTED` trong mọi heartbeat gửi đi | SC-05 | `lx_comm.c`, `rlx_comm.c` | RESYNCHRONISING không thể quan sát trực tiếp qua trường này; chỉ suy luận gián tiếp qua AVAILABILITY trên C1 |
+| ~~`link_state` luôn hard-code `LINK_CENTRAL_CONNECTED` trong mọi heartbeat gửi đi~~ (ĐÃ SỬA) | SC-05 | `lx_fsm_on_heartbeat_result()`/`rlx_fsm_on_heartbeat_result()` giờ theo dõi ACK/miss thật; `lx_comm.c`/`rlx_comm.c`'s `on_heartbeat_reply()` gọi vào đó thay vì ghi đè giá trị cứng | Không còn là gap — xem TC-SC05-4 |
 
-Tổng số test case trong tài liệu này: **42** (đếm cả các biến thể/edge case lồng trong một số TC).
+Tổng số test case trong tài liệu này: **43** (đếm cả các biến thể/edge case lồng trong một số TC — tăng 1 sau khi thêm TC-SC05-4 quy hồi cho fix `link_state`).

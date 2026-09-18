@@ -316,6 +316,16 @@ bỏ qua Central.
 - **Các bước**: C1: `o` -> `1` -> `0` -> `duration_ms: 300000`.
 - **Kết quả mong đợi**: `central_log.txt`: `C1: REQUEST_OVERRIDE to 1 -> ACK` (300000 chấp nhận được, 300001 đã bị NACK ở TC-MSG-13/tương đương tầng Lx). `override_duration_ms=300000` tại L1.
 
+### TC-MSG-18b (Regression, đã sửa): REQUEST_OVERRIDE với target_movement ngoài phạm vi enum hợp lệ - NACK OUT_OF_RANGE
+- **Loại**: Regression (đã sửa) — defense-in-depth, không unreachable từ `c_operator.c` (chỉ cho chọn 0/1) nhưng bắt buộc phải chặn ở tầng FSM vì đây mới là "authoritative validator" theo tài liệu, wire contract không đảm bảo sender luôn well-behaved.
+- **Verb**: MSG_REQUEST_OVERRIDE
+- **Tại sao từng là bug**: `lx_fsm_on_request_override()` trước đây không kiểm tra `payload->target_movement` có phải là `OVERRIDE_MOVEMENT_ARTERIAL`(0) hoặc `OVERRIDE_MOVEMENT_CONNECTOR`(1) hay không — một giá trị ngoài phạm vi (vd. 2, 255) sẽ bị mọi call site âm thầm hiểu nhầm thành ARTERIAL (vì mọi nơi chỉ kiểm tra `== OVERRIDE_MOVEMENT_CONNECTOR`) thay vì bị từ chối. Đã sửa bằng cách mirror đúng check đã có sẵn ở `lx_fsm_on_set_mode()`.
+- **Liên quan**: `app/intersection/src/lx_fsm.c : lx_fsm_on_request_override()` (nhánh `target_movement != OVERRIDE_MOVEMENT_ARTERIAL && != OVERRIDE_MOVEMENT_CONNECTOR` -> `NACK_REASON_OUT_OF_RANGE`).
+- **Môi trường**: (D) cần test_client để gửi giá trị `target_movement` mà `c_operator.c` không bao giờ tự tạo ra (console chỉ hỏi 0/1).
+- **Chuẩn bị**: L1 bình thường, không override/fault/preemption.
+- **Các bước**: test_client gửi trực tiếp tới L1 (hoặc qua C1 nếu C1 không tự chặn trước): `ipc_request_t{verb=MSG_REQUEST_OVERRIDE, sender_id=CTRL_C1, target_id=CTRL_L1, payload.override_request={override_type=OVERRIDE_CLEAR_ROUTE, target_movement=2, duration_ms=5000}}`.
+- **Kết quả mong đợi**: `RESULT_NACK`, `reason=NACK_REASON_OUT_OF_RANGE`. `fsm->supervisory` giữ nguyên `NORMAL_OPERATION`, `override_target_movement` không bị ghi đè.
+
 ---
 
 ## 4. MSG_RENEW_OVERRIDE (C1 -> Lx)
