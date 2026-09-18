@@ -85,9 +85,9 @@
          "description": "operator command accepted by Central's own pre-check (c_mode_eng_validate_override_request())."},
         {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 2 -> ACK", "within_ms": 2500,
          "description": "plain ACK (not ACK_PENDING) since L2 has no ped clearance running at cold start."},
-        {"node_id": "L2", "pattern": "Lx 2: SIGNAL -> ALL RED \\((A to B|B to A)\\)", "within_ms": 58000,
+        {"node_id": "L2", "pattern": "Lx 2: signal phase now ALL RED \\((A to B|B to A)\\)", "within_ms": 58000,
          "description": "lx_fsm_init() always starts in PHASE_ARTERIAL_GREEN, so this fresh process deterministically hits its first ALL_RED boundary at 48000+4000=52000ms (LX_PEAK_ARTERIAL_GREEN_MS+LX_YELLOW_MS, lx_timer.h) after launch - padded to 58s."},
-        {"node_id": "L2", "pattern": "Lx 2: SIGNAL -> ARTERIAL GREEN", "within_ms": 62000,
+        {"node_id": "L2", "pattern": "Lx 2: signal phase now ARTERIAL GREEN", "within_ms": 62000,
          "description": "forced by override_target_movement==ARTERIAL at the PHASE_ALL_RED_A_TO_B boundary (lx_fsm.c's lx_fsm_advance_phase_locked()) - proves the cross-process command actually changed a simulated light, not just an ACK at the IPC layer."}
       ],
       "cleanup_wait_ms": 300
@@ -116,9 +116,9 @@
          "description": "target_movement=1 (connector) correctly reaches Central's own log before it is even sent on the wire."},
         {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 4 -> ACK", "within_ms": 2500,
          "description": "L4 ACKs immediately (no ped clearance in progress at cold start)."},
-        {"node_id": "L4", "pattern": "Lx 4: SIGNAL -> ALL RED \\((A to B|B to A)\\)", "within_ms": 58000,
+        {"node_id": "L4", "pattern": "Lx 4: signal phase now ALL RED \\((A to B|B to A)\\)", "within_ms": 58000,
          "description": "same deterministic first-boundary timing as TC-XNODE-04 (~52s after L4 launch)."},
-        {"node_id": "L4", "pattern": "Lx 4: SIGNAL -> CONNECTOR GREEN", "within_ms": 62000,
+        {"node_id": "L4", "pattern": "Lx 4: signal phase now CONNECTOR GREEN", "within_ms": 62000,
          "description": "confirms target_movement=CONNECTOR was decoded correctly end-to-end (different phase than TC-XNODE-04's ARTERIAL result) - see this case's 'notes' for the first-vs-second-boundary caveat."}
       ],
       "cleanup_wait_ms": 300
@@ -182,7 +182,7 @@
          "description": "the override request (sent ~800ms in, well inside the ~10s ped clearance window) arrives while ped_clearance_active is still 1, so lx_fsm_on_request_override() replies ACK_PENDING, not plain ACK - distinct from TC-XNODE-04/05."},
         {"node_id": "L3", "pattern": "Lx 3: PED SIGNAL side 0 -> DONT_WALK", "within_ms": 12000,
          "description": "LX_WALK_MS(6000)+LX_FLASHING_DONT_WALK_MS(4000)=10000ms total clearance (lx_timer.h), padded to 12s; clearance completes normally, unaffected by the pending override."},
-        {"node_id": "L3", "pattern": "Lx 3: SIGNAL -> CONNECTOR GREEN", "within_ms": 62000,
+        {"node_id": "L3", "pattern": "Lx 3: signal phase now CONNECTOR GREEN", "within_ms": 62000,
          "description": "override_substate flips OVR_PENDING_CLEARANCE->OVR_ACTIVE once ped_clearance_active drops, but the visible light change still waits for the next ALL_RED boundary (~52-54s after L3 launch) - appears well after the DONT_WALK line above, not immediately after ACK_PENDING."}
       ],
       "cleanup_wait_ms": 300
@@ -275,7 +275,7 @@
         {"after_ms": 25600, "node_id": "C1",  "send": "2\n"}
       ],
       "checks": [
-        {"node_id": "RL2", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 24000,
+        {"node_id": "RL2", "pattern": "RLx: FAULT latched \\(GATE_CONFIRM_MISSING, bit 0x1\\)", "within_ms": 24000,
          "description": "sequence: 'x' arms the next gate motion to fail confirmation; '0' (train approaching) takes RLX_OPEN->RLX_WARNING immediately, then RLX_WARNING->RLX_CLOSING at RLX_WARNING_TO_CLOSING_MS=5000ms, commanding gates down (armed to fail); RLX_CLOSING_DEADLINE_MS=15000ms later with no confirmation raises FAULT_GATE_CONFIRM_MISSING (bit 0x1) - roughly 300+5000+15000=~20300ms after test start, padded to 24s for 1s-tick slack."},
         {"node_id": "C1", "pattern": "FAULT_REPORT from 8: fault_code=0x00000001", "within_ms": 25000,
          "description": "RL2's controller id is 8 (CTRL_RL2); rlx_comm_send_fault_report() fires on the same tick the fault latches."},

@@ -20,7 +20,7 @@
          "description": "RLX_WARNING_TO_CLOSING_MS (5s) elapses, enter_closing() commands gates down (rlx_fsm.c/rlx_gate.c)"},
         {"node_id": "RL1", "pattern": "RLx: gate FAILED TO CONFIRM \\(simulated fault\\)", "within_ms": 11000,
          "description": "the armed demo fault (key 'x') makes this close motion never confirm (rlx_gate.c's g_fail_this_motion)"},
-        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 23000,
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(GATE_CONFIRM_MISSING, bit 0x1\\)", "within_ms": 23000,
          "description": "RLX_CLOSING_DEADLINE_MS (15s) exceeded without gates_confirmed_closed() -> enter_fault(FAULT_GATE_CONFIRM_MISSING) (rlx_fsm.c)"}
       ],
       "cleanup_wait_ms": 500
@@ -68,7 +68,7 @@
          "description": "full natural cycle: WARNING(5s)->CLOSING(3s)->CLOSED(20s RLX_EXPECTED_ARRIVAL_MS)->TRAIN_PRESENT(20s RLX_OCCUPANCY_WINDOW_MS) ends with enter_opening() commanding gates up (~48s after '0')"},
         {"node_id": "RL1", "pattern": "RLx: reclosing - aborting gate-open motion, flashers remain active", "within_ms": 53500,
          "description": "pressing '1' while still RLX_OPENING calls enter_reclosing() (rlx_fsm.c), aborting the open motion and starting a new closing motion armed to fail by the preceding 'x'"},
-        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 70000,
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(GATE_CONFIRM_MISSING, bit 0x1\\)", "within_ms": 70000,
          "description": "check_closing_or_reclosing_complete() is shared by CLOSING and RECLOSING - RLX_CLOSING_DEADLINE_MS (15s) from RECLOSING entry also raises FAULT_GATE_CONFIRM_MISSING"}
       ],
       "cleanup_wait_ms": 800
@@ -93,7 +93,7 @@
          "description": "initial normal CLOSING command (not armed yet) - baseline for the sequence"},
         {"node_id": "RL1", "pattern": "RLx: commanding gates UP \\(simulated motion, 3000 ms\\)", "within_ms": 56000,
          "description": "occupancy window (20s RLX_OCCUPANCY_WINDOW_MS, counted from TRAIN_PRESENT entry ~28-30s after '0') expires -> enter_opening() commands gates up (~48-52s after '0'); this motion is armed to fail by the 'x' pressed earlier during TRAIN_PRESENT"},
-        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 75000,
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(GATE_CONFIRM_MISSING, bit 0x1\\)", "within_ms": 75000,
          "description": "RLX_OPENING_DEADLINE_MS (15s) exceeded -> enter_fault() unconditionally calls rlx_gate_command_close() BEFORE setting state=RLX_FAULT (the audited bugfix) - a fresh 'commanding gates DOWN' log fires exactly here, immediately forcing the gate down instead of leaving it stalled mid-open"}
       ],
       "cleanup_wait_ms": 800
@@ -118,7 +118,7 @@
         {"after_ms": 23600, "node_id": "C1",  "send": "1\n"}
       ],
       "checks": [
-        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 23000,
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(GATE_CONFIRM_MISSING, bit 0x1\\)", "within_ms": 23000,
          "description": "RL1 reaches RLX_FAULT before Central's REQUEST_FAULT_CLEAR is sent - gate was commanded closed by enter_fault(), not open"},
         {"node_id": "C1", "pattern": "REQUEST_FAULT_CLEAR to 7 -> NACK reason=FAULT_ACTIVE", "within_ms": 25000,
          "description": "controller_id_t CTRL_RL1=7 (sys_types.h); rlx_fsm_on_fault_clear() re-checks gates_confirmed_open() live and finds it false -> NACK/FAULT_ACTIVE (c_comm.c's on_command_reply() log line)"}
@@ -169,7 +169,7 @@
         {"after_ms": 24100, "node_id": "C1",  "send": "1\n"}
       ],
       "checks": [
-        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 23000,
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(GATE_CONFIRM_MISSING, bit 0x1\\)", "within_ms": 23000,
          "description": "RL1 reaches RLX_FAULT first, same as TC-FAULT-05"},
         {"node_id": "RL1", "pattern": "\\[DEMO\\] Gate mechanism simulated as physically repaired - now confirmed OPEN", "within_ms": 24000,
          "description": "rlx_gate_force_confirmed_open() (bound to key 'r' in rlx_sensor.c) unconditionally sets g_confirmed_open=1, independent of fsm->state - this is the demo counterpart to 'x' that makes the ACK branch reachable from the keyboard. NOTE: the original manual test plan (05-fault-safety.md Group 3 preamble) claims no keyboard/logic path can bring the gate to confirmed-open while RLX_FAULT is active; that claim is now stale - this 'r' key (rlx_gate.h's rlx_gate_force_confirmed_open() doc comment) was added specifically to close that gap, so this case no longer needs a debugger."},
@@ -204,7 +204,7 @@
         {"after_ms": 25400, "node_id": "C1",  "send": "1\n"}
       ],
       "checks": [
-        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 23000,
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(GATE_CONFIRM_MISSING, bit 0x1\\)", "within_ms": 23000,
          "description": "RL1 reaches RLX_FAULT, gate stays closed for all 3 clear attempts"},
         {"node_id": "C1", "pattern": "REQUEST_FAULT_CLEAR to 7 -> NACK reason=FAULT_ACTIVE", "within_ms": 27000,
          "description": "confirms at least one of the 3 rapid-fire requests gets NACK/FAULT_ACTIVE; this tool's pattern-presence check cannot count exactly 3 occurrences - inspect results/TC-FAULT-08/C1.log manually to confirm all 3 replies logged and fsm->faults/active_window_count were never partially mutated"}
@@ -228,7 +228,7 @@
         {"after_ms": 23000, "node_id": "RL1", "send": "f"}
       ],
       "checks": [
-        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 23000,
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(GATE_CONFIRM_MISSING, bit 0x1\\)", "within_ms": 23000,
          "description": "RL1 reaches RLX_FAULT; gate is closed (enter_fault() commanded it), not open"},
         {"node_id": "RL1", "pattern": "\\[rlx_sensor\\] DEMO-ONLY local fault-clear trigger \\(RC-09 requires Central in production\\)", "within_ms": 24000,
          "description": "local 'f' key calls rlx_fsm_on_fault_clear() directly - same function, same live-verification logic as the Central IPC path"},
@@ -255,7 +255,7 @@
         {"after_ms": 24000, "node_id": "RL1", "send": "f"}
       ],
       "checks": [
-        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 23000,
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(GATE_CONFIRM_MISSING, bit 0x1\\)", "within_ms": 23000,
          "description": "RL1 reaches RLX_FAULT first, same as TC-FAULT-09"},
         {"node_id": "RL1", "pattern": "\\[DEMO\\] Gate mechanism simulated as physically repaired - now confirmed OPEN", "within_ms": 24000,
          "description": "rlx_gate_force_confirmed_open() (key 'r') simulates a technician physically confirming the gate open, same mechanism as TC-FAULT-07"},
@@ -437,7 +437,7 @@
         {"after_ms": 0, "node_id": "L1", "send": "a"}
       ],
       "checks": [
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL GREEN", "within_ms": 95000,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ARTERIAL GREEN", "within_ms": 95000,
          "description": "cold start is MODE_PEAK_FIXED (no Central in environment A to send SET_MODE to MODE_OFF_PEAK_SENSOR), so LX_CYCLE_LENGTH_MS (90s: 48+4+2+30+4+2) elapses on a fixed schedule regardless of arterial_vehicle_demand. The very first 'SIGNAL -> ARTERIAL GREEN' print happens at process cold-start, before this check's since_monotonic cutoff (t0, set after setup_wait_ms) - so this check only matches the SECOND arterial-green entry, one full 90s cycle later, proving the intersection keeps cycling normally (never freezes into FAULT_SAFE) even though fsm->arterial_vehicle_demand has been held at 1 with 'A' never pressed. As with TC-FAULT-19, there is no FAULT_VEHICLE_SENSOR_STUCK printf to check for - lx_fsm.c has no elapsed-time-since-asserted tracking for this demand flag at all, by design."}
       ],
       "cleanup_wait_ms": 500

@@ -47,8 +47,8 @@ Two options, same output (`c_main`, `lx_main`, `rlx_main`) — pick one:
 
 **Option A — QNX Momentics IDE** (full detail in
 `QNX_MOMENTICS_INTEGRATION.md` §1-4): launch IDE → create 3 `QNX
-Executable` projects (`Central_Controller`/`Intersection_Controller`/
-`Railway_Controller`, language `C`, CPU `x86_64`) → import each project's
+Executable` projects (`c_main`/`lx_main`/`rlx_main`, language `C`, CPU
+`x86_64`) → import each project's
 `.c`/`.h` files from `app/<node>/src|includes` + `app/shared/src/
 qnet_utils.c` + `app/shared/includes/*.h` → add `app/shared/includes` to
 each project's include path (`Properties → C/C++ General → Paths and
@@ -115,7 +115,7 @@ all. SSH into your VM:
 /tmp/lx_main 1
 ```
 
-You should immediately see `Lx 1: SIGNAL -> ARTERIAL GREEN` and, every
+You should immediately see `Lx 1: signal phase now ARTERIAL GREEN` and, every
 few seconds, phase transitions printing on their own (48s/4s/2s/30s/4s/2s
 cycle — see `app/README.md`). Press `h` for the sensor key map, `q` to
 stop. **If you see this, your build + deploy pipeline works end to end.**

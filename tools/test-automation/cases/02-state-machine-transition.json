@@ -20,11 +20,11 @@
       "checks": [
         {"node_id": "C1", "pattern": "REQUEST.*|C1: SET_MODE to 1 -> ACK_PENDING", "within_ms": 2500,
          "description": "Central logs ACK_PENDING (not ACK) since requested mode differs from L1's current PEAK_FIXED - lx_fsm_on_set_mode() defers to the next safe boundary"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 49500,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ARTERIAL YELLOW", "within_ms": 49500,
          "description": "48s fixed PEAK_FIXED green must still elapse fully - mode change must not cut the current green short"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ALL RED \\(A to B\\)", "within_ms": 53500,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ALL RED \\(A to B\\)", "within_ms": 53500,
          "description": "4s yellow after the 48s green, unaffected by the pending mode change"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN", "within_ms": 56500,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now CONNECTOR GREEN", "within_ms": 56500,
          "description": "boundary_after_arterial -> CONNECTOR_GREEN fires regardless of mode; the new mode applies internally during this ALL_RED_A_TO_B processing"},
         {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+1\\s", "within_ms": 57000,
          "description": "C1's HMI MODE column for L1 flips 0->1 exactly at the ALL_RED_A_TO_B boundary (~54s from step 1), not sooner - c_hmi_render() 1Hz refresh gives ~1s slack"}
@@ -56,7 +56,7 @@
          "description": "no-op SET_MODE(PEAK_FIXED) while already PEAK_FIXED must ACK immediately, not ACK_PENDING"},
         {"node_id": "C1", "pattern": "C1: SET_MODE to 1 -> ACK_PENDING", "within_ms": 3500,
          "description": "the following genuinely-different SET_MODE(OFF_PEAK_SENSOR) request must be treated as fresh, not conflated with the earlier no-op"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 49500,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ARTERIAL YELLOW", "within_ms": 49500,
          "description": "current PEAK_FIXED phase must not be disrupted by either SET_MODE call - 48s boundary still holds"}
       ],
       "cleanup_wait_ms": 500
@@ -87,17 +87,17 @@
       "setup_wait_ms": 400,
       "steps": [],
       "checks": [
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 48800,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ARTERIAL YELLOW", "within_ms": 48800,
          "description": "48.0s arterial green (LX_PEAK_ARTERIAL_GREEN_MS)"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ALL RED \\(A to B\\)", "within_ms": 52800,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ALL RED \\(A to B\\)", "within_ms": 52800,
          "description": "+4.0s yellow (LX_YELLOW_MS)"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN", "within_ms": 54800,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now CONNECTOR GREEN", "within_ms": 54800,
          "description": "+2.0s all-red (LX_ALL_RED_MS)"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW", "within_ms": 84800,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now CONNECTOR YELLOW", "within_ms": 84800,
          "description": "+30.0s connector green (LX_PEAK_CONNECTOR_GREEN_MS)"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ALL RED \\(B to A\\)", "within_ms": 88800,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ALL RED \\(B to A\\)", "within_ms": 88800,
          "description": "+4.0s yellow"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL GREEN", "within_ms": 90800,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ARTERIAL GREEN", "within_ms": 90800,
          "description": "+2.0s all-red, back to ARTERIAL GREEN at t~=90.0s = LX_CYCLE_LENGTH_MS. Note: the process's very first ARTERIAL GREEN print happens at lx_fsm_init(), before setup_wait_ms elapses, so its timestamp is < t0 and the runner's since_monotonic filter excludes it from this check - this check therefore genuinely targets the cycle's return, not the initial boot line."}
       ],
       "cleanup_wait_ms": 500
@@ -122,7 +122,7 @@
         {"after_ms": 1500, "node_id": "L1", "send": "C"}
       ],
       "checks": [
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 48800,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ARTERIAL YELLOW", "within_ms": 48800,
          "description": "lx_fsm_on_phase_timer()'s PEAK_FIXED branch never reads arterial_vehicle_demand/connector_vehicle_demand - transition still fires at exactly 48s despite the toggling"}
       ],
       "cleanup_wait_ms": 500
@@ -140,7 +140,7 @@
       "setup_wait_ms": 400,
       "steps": [],
       "checks": [
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 48700,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ARTERIAL YELLOW", "within_ms": 48700,
          "description": "Upper-bound edge check: tick 480 (t=48000ms) is the first tick satisfying green_elapsed_ms>=48000, so ARTERIAL YELLOW must appear by ~48.1s+overhead. NOTE: this tool's checks can only assert 'appears within N ms of t0', not 'does not appear before N ms' - the doc's 47.9s lower-bound half of this edge case cannot be proven by this harness (would need a negative/absence assertion the runner schema does not support); a human/stopwatch or an enhanced runner would be needed to fully close that gap."}
       ],
       "cleanup_wait_ms": 500
@@ -166,7 +166,7 @@
       "checks": [
         {"node_id": "C1", "pattern": "C1: SET_MODE to 1 -> ACK_PENDING", "within_ms": 2500,
          "description": "mode change deferred (applies at the ~54s ALL_RED_A_TO_B boundary of the still-running PEAK_FIXED cycle)"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 76500,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ARTERIAL YELLOW", "within_ms": 76500,
          "description": "ASSUMPTION (noted for reviewer): mode applies at the ~54s boundary; the intervening transitional CONNECTOR_GREEN (now OFF_PEAK, zero connector demand) is derived to exit at its own 8s min-green, landing the next (first true OFF_PEAK) ARTERIAL_GREEN at ~t=68000ms from t0. The 'c' keypress at t=68000ms creates connector demand with zero arterial demand; lx_timer_should_exit_green() must still refuse to exit before elapsed_ms>=LX_MIN_GREEN_MS=8000, so ARTERIAL YELLOW should land at ~68000+8000=76000ms, not at the first 4s recheck (72000ms)."}
       ],
       "cleanup_wait_ms": 500
@@ -192,7 +192,7 @@
       "checks": [
         {"node_id": "C1", "pattern": "C1: SET_MODE to 1 -> ACK_PENDING", "within_ms": 2500,
          "description": "mode change accepted, deferred to boundary"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 135000,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ARTERIAL YELLOW", "within_ms": 135000,
          "description": "L1 is left with zero sensor input from ~68000ms (start of the first true OFF_PEAK arterial green, see TC-SC01C-1's derivation) through 129000ms (>60s of rest, past LX_MAX_GREEN_MS=40000) with NO 'SIGNAL ->' line in between - this tool cannot assert that absence directly (no negative-match check type), so as a positive proxy this test presses 'c' at t=129000ms to create connector demand and confirms the FSM was still genuinely resting on ARTERIAL_GREEN (responsive within one ~4s recheck) rather than having already moved on to some other phase on its own."}
       ],
       "cleanup_wait_ms": 500
@@ -217,7 +217,7 @@
         {"after_ms": 68100, "node_id": "L1", "send": "c"}
       ],
       "checks": [
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 108900,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ARTERIAL YELLOW", "within_ms": 108900,
          "description": "own_demand(arterial)=1 held continuously from t~=68000ms alongside other_demand(connector)=1; guard must keep refusing to exit at the 8/12/.../36s rechecks (own demand still present, green<40s) and then MUST exit unconditionally at green=40s regardless of own_demand - expected at ~68000+40000=108000ms"}
       ],
       "cleanup_wait_ms": 500
@@ -243,9 +243,9 @@
       "checks": [
         {"node_id": "C1", "pattern": "C1: SET_MODE to 1 -> ACK_PENDING", "within_ms": 2500,
          "description": "mode change accepted"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN", "within_ms": 56500,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now CONNECTOR GREEN", "within_ms": 56500,
          "description": "mode still applies at the ~54s PEAK_FIXED boundary; boundary_after_arterial -> CONNECTOR_GREEN is unconditional"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW", "within_ms": 95500,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now CONNECTOR YELLOW", "within_ms": 95500,
          "description": "connector demand held continuously (pressed 'c' at CONNECTOR_GREEN's own t=0 and never released) so 'no connector demand' is always false; only 'green=40s' can force the exit - expected at ~54000+40000=94000ms, confirming lx_timer.h's comment that CONNECTOR_GREEN has no anti-starvation exemption unlike ARTERIAL_GREEN"}
       ],
       "cleanup_wait_ms": 500
@@ -417,11 +417,11 @@
       "checks": [
         {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\d+\\s+\\d+\\s+-\\s+1\\s", "within_ms": 2500,
          "description": "L1's SUPERVISORY column flips NORMAL_OPERATION(3) -> RAILWAY_PREEMPTION(1) within ~1s of RL1's first TRAIN_APPROACHING"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 49000,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ARTERIAL YELLOW", "within_ms": 49000,
          "description": "arterial continues its own 48s green even though RAILWAY_PREEMPTION is active - direct disproof of the historical bug where a bare 'break' froze fsm->phase at PHASE_ALL_RED_A_TO_B forever"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ALL RED \\(A to B\\)", "within_ms": 53000,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ALL RED \\(A to B\\)", "within_ms": 53000,
          "description": "yellow completes normally"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL GREEN", "within_ms": 55000,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ARTERIAL GREEN", "within_ms": 55000,
          "description": "CRITICAL: ALL_RED_A_TO_B must transition BACK to ARTERIAL_GREEN (not freeze, and not to CONNECTOR_GREEN) because supervisory==RAILWAY_PREEMPTION - this is the exact fix under regression test. The repeated RL1 direction-alternating presses (every 15s from t=20000 to t=95000) keep re-registering occupancy windows so the crossing stays closed well past this first cycle, proving the arterial loop keeps running rather than the crossing reopening and masking the bug."},
         {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\d+\\s+\\d+\\s+-\\s+1\\s", "within_ms": 100000,
          "description": "SUPERVISORY must still read RAILWAY_PREEMPTION(1) at t~=100s given the repeated train pulses - confirms it never silently reverted to NORMAL_OPERATION mid-sequence"}
@@ -542,7 +542,7 @@
          "description": "single train, no re-approach: WARNING(5s)+CLOSING(3s)+EXPECTED_ARRIVAL(20s)+OCCUPANCY_WINDOW(20s)+OPENING(3s)~=51s to confirmed OPEN"},
         {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+\\d+\\s+\\d+\\s+-\\s+3\\s", "within_ms": 57000,
          "description": "SUPERVISORY returns to NORMAL_OPERATION(3) as soon as L1 receives CROSSING_OPEN"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW", "within_ms": 85500,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now CONNECTOR YELLOW", "within_ms": 85500,
          "description": "queue_warning_active was never set (no 'w' pressed), so drain_pending must NOT be set: the next CONNECTOR_GREEN (reached via the L1's own ALL_RED_A_TO_B boundary once supervisory is back to NORMAL) must last exactly the normal 30s (LX_PEAK_CONNECTOR_GREEN_MS), not extended. This bounds when CONNECTOR_GREEN must have ended (~54s after L1's next ALL_RED_A_TO_B boundary, itself gated by when the crossing reopened) - see per-case log for exact offsets."}
       ],
       "cleanup_wait_ms": 1000
@@ -582,11 +582,11 @@
          "description": "RAILWAY_PREEMPTION active with queue_warning_active=1 already set"},
         {"node_id": "RL1", "pattern": "RLx: flashers OFF \\(gates confirmed open\\)", "within_ms": 55000,
          "description": "single train reopens at ~51s (WARNING5+CLOSING3+ARRIVAL20+OCCUPANCY20+OPENING3)"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN", "within_ms": 57000,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now CONNECTOR GREEN", "within_ms": 57000,
          "description": "drain_pending set on CROSSING_OPEN; L1's own ALL_RED_A_TO_B boundary (~54s from L1 boot) then enters CONNECTOR_GREEN with drain_active=1"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW", "within_ms": 146000,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now CONNECTOR YELLOW", "within_ms": 146000,
          "description": "base 30s (LX_PEAK_CONNECTOR_GREEN_MS) + full 60s drain cap (LX_DRAIN_MAX_EXTENSION_MS, 15 x 4s increments, queue_warning_active never cleared) = 90s total, so CONNECTOR_GREEN must end at ~54000+90000=144000ms - CRITICAL: must NOT keep extending past the 60s cap even though queue_warning_active is still 1"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL GREEN", "within_ms": 148500,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ARTERIAL GREEN", "within_ms": 148500,
          "description": "normal ALL_RED_B_TO_A(2s) follows the drain-extended CONNECTOR_YELLOW(4s) - confirms the FSM resumed ordinary cycling after the drain ended, at ~146000ms"}
       ],
       "cleanup_wait_ms": 1000,
@@ -773,19 +773,19 @@
         {"after_ms": 83300, "node_id": "C1", "send": "5000\n"}
       ],
       "checks": [
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW", "within_ms": 84800,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now CONNECTOR YELLOW", "within_ms": 84800,
          "description": "L1 is in CONNECTOR_GREEN (started ~54000ms, ends ~84000ms) when the override targeting ARTERIAL is requested at t=82000ms - the currently-displayed phase must finish normally, not be cut short"},
         {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> ACK$", "within_ms": 83500,
          "description": "first override (target=arterial, duration=15000) ACKs immediately - no ped clearance blocking it"},
         {"node_id": "C1", "pattern": "C1: REQUEST_OVERRIDE to 1 -> NACK reason=OUT_OF_RANGE", "within_ms": 84500,
          "description": "REGRESSION: a second REQUEST_OVERRIDE sent while the first is still CENTRAL_OVERRIDE/OVR_ACTIVE must NACK (NACK_REASON_OUT_OF_RANGE), not silently overwrite the first override's target/duration"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ALL RED \\(B to A\\)", "within_ms": 88800,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ALL RED \\(B to A\\)", "within_ms": 88800,
          "description": "ALL_RED_B_TO_A always follows CONNECTOR_YELLOW regardless of override - not the boundary under test"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL GREEN", "within_ms": 90800,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ARTERIAL GREEN", "within_ms": 90800,
          "description": "ALL_RED_B_TO_A -> ARTERIAL_GREEN as usual"},
         {"node_id": "L1", "pattern": "Lx 1: override cleared/expired - running safe clearance sequence", "within_ms": 97800,
          "description": "override_remaining_ms counts down from the ACK at t~=82300ms with duration 15000ms, expiring at ~97300ms - well INTO the ARTERIAL_GREEN that began at ~90000ms, proving the override held ARTERIAL_GREEN past where PEAK_FIXED's own 48s exit-check would not yet apply anyway, and this checks the override-driven hold is what is in effect"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 139000,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ARTERIAL YELLOW", "within_ms": 139000,
          "description": "CRITICAL: after the override expires (~97300ms) ARTERIAL_GREEN does NOT immediately yellow - it must resume the ordinary PEAK_FIXED exit-check measured from when THIS ARTERIAL_GREEN itself began (~90000ms), i.e. yellow at ~90000+48000=138000ms, not at ~97300ms and not double-counting - proving the FSM always exits green via a genuine yellow/all-red, never a bare jump"}
       ],
       "cleanup_wait_ms": 1000
@@ -897,7 +897,7 @@
          "description": "WARNING -> CLOSING at ~5.0s from the '0' press"},
         {"node_id": "RL1", "pattern": "RLx: gate FAILED TO CONFIRM \\(simulated fault\\)", "within_ms": 9300,
          "description": "armed fault prevents confirmation after the 3000ms motion completes (~8.0s)"},
-        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\) - holding STOP on all train signals, commanding gates DOWN", "within_ms": 21300,
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(GATE_CONFIRM_MISSING, bit 0x1\\) - holding STOP on all train signals, commanding gates DOWN", "within_ms": 21300,
          "description": "RLX_CLOSING_DEADLINE_MS=15000 from entering CLOSING (~5.0s) fires at ~20.0s; enter_fault() unconditionally re-issues rlx_gate_command_close() (the audit-fix regression under test - previously fault only latched the flag without forcing a real gate-close command). NOTE: this tool's regex matching returns the first line matching a pattern in the transcript, so it cannot independently distinguish this second 'commanding gates DOWN' call (identical text to the first, ~5.0s one) from the first - the FAULT latched line above is the uniquely-identifying signal used here instead."}
       ],
       "cleanup_wait_ms": 500
@@ -984,7 +984,7 @@
          "description": "demo fault armed before the opening motion starts (~48.5s from t0)"},
         {"node_id": "RL1", "pattern": "RLx: all train signals -> STOP \\(crossing reopening\\)", "within_ms": 50000,
          "description": "OPENING begins at ~8.0+20.0+20.0=48.0s from the '0' press (~48.5s from t0), commanding gates UP but armed to never confirm"},
-        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 65000,
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(GATE_CONFIRM_MISSING, bit 0x1\\)", "within_ms": 65000,
          "description": "RLX_OPENING_DEADLINE_MS=15000 from entering OPENING (~48.5s) fires at ~63.5s from t0 - gates never confirmed open, enter_fault() latches FAULT_GATE_CONFIRM_MISSING and re-commands gates DOWN"},
         {"node_id": "RL1", "pattern": "\\[rlx_sensor\\] fault-clear result=3 reason=4", "within_ms": 64800,
          "description": "first 'f' (demo fault-clear) attempted at t=64000ms BEFORE forcing the gate open - rlx_fsm_on_fault_clear() correctly NACKs (RESULT_NACK=3, NACK_REASON_FAULT_ACTIVE=4) because gates_confirmed_open() is still false (the post-fault re-close motion from the previous check is in progress or just confirmed closed) - RC-10 requires live re-verification, not just latched-flag clearing"},
@@ -1016,7 +1016,7 @@
          "description": "CLOSED entered normally at ~8.0s, gates genuinely confirmed closed"},
         {"node_id": "RL1", "pattern": "\\[DEMO\\] Gate mechanism simulated as physically repaired - now confirmed OPEN", "within_ms": 15700,
          "description": "'r' at t=15000ms forces g_confirmed_open=1/g_confirmed_closed=0 while rlx_fsm's state is still RLX_CLOSED - manufactures exactly the 'gate state contradicts CLOSED' condition the test-plan document says has no available trigger"},
-        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(fault bit 0x1\\)", "within_ms": 16200,
+        {"node_id": "RL1", "pattern": "RLx: FAULT latched \\(GATE_CONFIRM_MISSING, bit 0x1\\)", "within_ms": 16200,
          "description": "REGRESSION FINDING (this test-plan doc's stated known gap is now resolved by the newer 'r' demo key): pressing '0' again at t=15200ms while still RLX_CLOSED re-enters the RLX_CLOSED case of rlx_fsm_simulate_train_approaching(), which calls check_gate_contradiction_closed() - since gates_confirmed_closed() is now false (forced open by 'r'), this immediately raises FAULT_GATE_CONFIRM_MISSING. The doc's original finding (\"no key/IPC sequence in the current build can trigger this branch\") predates the rlx_gate_force_confirmed_open()/'r' key existing in rlx_sensor.c/rlx_gate.c and should be treated as stale, not as a permanent limitation."}
       ],
       "cleanup_wait_ms": 500
@@ -1051,9 +1051,9 @@
       "checks": [
         {"node_id": "L1", "pattern": "Lx 1: PED SIGNAL side 0 -> WALK", "within_ms": 1200,
          "description": "pedestrian sequencing works with no c_main running at all"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW", "within_ms": 48800,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now ARTERIAL YELLOW", "within_ms": 48800,
          "description": "PEAK_FIXED phase cycling proceeds on schedule with zero Central connectivity - lx_fsm.c never reads fsm->link_state in any SC-01..SC-04 transition, so behaviour is bit-for-bit identical to environment (B)/(C) by construction, not via any active fallback logic"},
-        {"node_id": "L1", "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN", "within_ms": 54800,
+        {"node_id": "L1", "pattern": "Lx 1: signal phase now CONNECTOR GREEN", "within_ms": 54800,
          "description": "full cycle continues normally"}
       ],
       "cleanup_wait_ms": 500

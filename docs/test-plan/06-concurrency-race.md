@@ -22,7 +22,12 @@ Mỗi test case ghi rõ môi trường cần dùng:
   + vài `rlx_main`) chạy trên **cùng một** máy/VM QNX, giao tiếp qua
   `name_attach`/`name_open` nội bộ (không cần `TRAFFIC_NODE_MAP`). Dùng cho
   race liên quan tới IPC giữa Central và Lx/RLx nhưng độ trễ mạng thực không
-  quan trọng.
+  quan trọng. Lưu ý: bản triển khai demo thực tế dùng 10 VM QNX riêng biệt,
+  mỗi VM chỉ chạy đúng một controller (không có hai controller nào thực sự
+  cùng nằm chung một máy) — do đó mọi test case gắn nhãn (B) trong file này
+  thực chất là bản rút gọn phần cứng thay cho môi trường (C) thật (với
+  `TRAFFIC_NODE_MAP` được set), dùng khi không đủ VM để dựng đúng topology
+  thật.
 - **(C) Nhiều máy/VM QNX qua mạng thật**: theo topology trong
   `docs/QNX_DEPLOYMENT_RUN_GUIDE.md` (`VM_x86_Target01/02/03` +
   `TRAFFIC_NODE_MAP`). Dùng khi cần độ trễ Qnet thật để mở rộng cửa sổ race
@@ -82,7 +87,7 @@ Mỗi test case ghi rõ môi trường cần dùng:
   dòng ~108-119, `lx_fsm.c` dòng 425-438, 172-194).
 - **Môi trường**: (A) 1 node `lx_main` đơn.
 - **Chuẩn bị**: Khởi động `lx_main` với `mode=PEAK_FIXED` (mặc định). Đợi
-  phase vào `PHASE_ARTERIAL_GREEN` (log `SIGNAL -> ARTERIAL GREEN`).
+  phase vào `PHASE_ARTERIAL_GREEN` (log `signal phase now ARTERIAL GREEN`).
 - **Các bước**:
   1. Bấm `1` (pedestrian side 0) — log phải in `PED SIGNAL side 0 -> WALK`
      gần như ngay lập tức.
@@ -178,7 +183,7 @@ Mỗi test case ghi rõ môi trường cần dùng:
   `compatible_mask`), khóa `fsm->lock`.
 - **Môi trường**: (A) 1 node `lx_main` đơn.
 - **Chuẩn bị**: Đợi vào `PHASE_ARTERIAL_GREEN` ngay từ đầu chu kỳ (log vừa in
-  `SIGNAL -> ARTERIAL GREEN`), để có tối đa thời gian trước lần tick tiếp
+  `signal phase now ARTERIAL GREEN`), để có tối đa thời gian trước lần tick tiếp
   theo.
 - **Các bước**:
   1. Gõ nhanh liên tiếp `1` rồi `2` (cả hai đều là side arterial-compatible)
@@ -498,11 +503,11 @@ Mỗi test case ghi rõ môi trường cần dùng:
   1. Ngay khi vào `PHASE_ARTERIAL_GREEN`, gửi `m` mode=1
      (OFF_PEAK_SENSOR) — mode này sẽ áp dụng tại `ALL_RED_A_TO_B` sắp tới.
   2. Xác nhận qua status report: `mode` đã đổi thành OFF_PEAK_SENSOR ngay
-     sau `ALL_RED_A_TO_B` (log `SIGNAL -> CONNECTOR GREEN` xuất hiện sau đó
+     sau `ALL_RED_A_TO_B` (log `signal phase now CONNECTOR GREEN` xuất hiện sau đó
      xác nhận đã qua ranh giới).
   3. Ngay khi vào `PHASE_CONNECTOR_GREEN`, gửi `m` mode=0 (PEAK_FIXED) —
      mode này sẽ áp dụng tại `ALL_RED_B_TO_A` sắp tới.
-  4. Xác nhận qua status report sau khi `SIGNAL -> ARTERIAL GREEN` xuất hiện
+  4. Xác nhận qua status report sau khi `signal phase now ARTERIAL GREEN` xuất hiện
      lần kế tiếp.
 - **Kết quả mong đợi**: Cả hai lần đổi mode đều được áp dụng đúng — lần 1 áp
   dụng tại `ALL_RED_A_TO_B`, lần 2 áp dụng tại `ALL_RED_B_TO_A`. Không có
@@ -539,7 +544,7 @@ Mỗi test case ghi rõ môi trường cần dùng:
      áp dụng khi `mode == MODE_PEAK_FIXED`, vẫn gửi để kiểm tra tương tác dù
      mode đổi sang OFF_PEAK_SENSOR ngay sau đó khiến offset bị bỏ qua theo
      đúng thiết kế "chỉ áp dụng khi PEAK_FIXED").
-  3. Theo dõi `SIGNAL -> ALL RED (B to A)` rồi `SIGNAL -> ARTERIAL GREEN`.
+  3. Theo dõi `signal phase now ALL RED (B to A)` rồi `signal phase now ARTERIAL GREEN`.
 - **Kết quả mong đợi**:
   - Nếu mode vẫn là PEAK_FIXED tại thời điểm vào `ARTERIAL_GREEN` mới: offset
     phải được áp dụng đúng một lần (không bị bỏ qua, không áp dụng hai lần).

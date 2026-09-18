@@ -463,14 +463,20 @@ trả về `RESULT_ERROR` (xem TC-MSG-33 cũ). Việc này đã được nối d
 hiệu, nên phím `f` tại C1 nay nhắm được cả hai loại node. TC-MSG-33 dưới đây
 phản ánh hành vi hiện tại thay vì `RESULT_ERROR` cũ.
 
-**Phát hiện quan trọng**: đọc kỹ `enter_fault()` (`rlx_fsm.c`) cho thấy
-mọi đường vào `RLX_FAULT` đều gọi `rlx_gate_command_close()` (không
-bao giờ gọi `rlx_gate_command_open()`), và không có bất kỳ code nào
-khác gọi lệnh mở cổng trong khi `state == RLX_FAULT`. Do đó
-`rlx_gate_poll_open()` **không thể** trở thành 1 khi đang `RLX_FAULT`
-với code hiện tại -> nhánh `RESULT_ACK` của verb này dường như
-**không thể tái hiện được** bằng bất kỳ chuỗi thao tác nào trên bản
-build hiện tại (xem TC-MSG-32).
+**Phát hiện quan trọng (đã có lối thoát bằng phím có sẵn)**: đọc kỹ
+`enter_fault()` (`rlx_fsm.c`) cho thấy mọi đường vào `RLX_FAULT` **do
+chính FSM tự lái** đều gọi `rlx_gate_command_close()` (không bao giờ
+`rlx_gate_command_open()`), và `rlx_fsm_on_tick()`'s case `RLX_FAULT`
+là no-op - nên **nếu chỉ tính các đường do FSM tự điều khiển**,
+`rlx_gate_poll_open()` không thể tự trở thành 1 khi đang `RLX_FAULT`.
+Tuy nhiên `rlx_sensor.c` (bàn phím tại RLx) đã có sẵn phím `r`
+(`case 'r'`, dòng 43-45) gọi thẳng `rlx_gate_force_confirmed_open()`
+(`rlx_gate.c`) - hàm này set trực tiếp `g_confirmed_open=1`/
+`g_confirmed_closed=0` ngay lập tức, hoàn toàn độc lập với
+`fsm->state` (không đi qua `rlx_gate_command_open()`/motion timer).
+Đây là 1 escape hatch demo đã tồn tại sẵn trong repo, nên nhánh
+`RESULT_ACK` của verb này **tái hiện được** bằng thao tác bàn phím
+thông thường, không cần công cụ hay bản vá bổ sung (xem TC-MSG-32).
 
 ### TC-MSG-30: REQUEST_FAULT_CLEAR khi RLx không ở trạng thái FAULT - NACK UNKNOWN_TARGET
 - **Loại**: Negative
@@ -490,15 +496,14 @@ build hiện tại (xem TC-MSG-32).
 - **Các bước**: C1: `f` -> `1`.
 - **Kết quả mong đợi**: `central_log.txt`: `C1: REQUEST_FAULT_CLEAR to 7 -> NACK reason=FAULT_ACTIVE` (vì `enter_fault()` đã tự phát lệnh đóng cổng LẦN NỮA - lần này không bị armed fail nữa nên 3s sau sẽ xác nhận ĐÓNG, không phải MỞ - `gates_confirmed_open()` vẫn = 0).
 
-### TC-MSG-32: REQUEST_FAULT_CLEAR -> ACK (trường hợp tích cực) - HIỆN KHÔNG THỂ TÁI HIỆN, cần sửa code hoặc công cụ bổ sung
-- **Loại**: Positive (BLOCKED - phát hiện khoảng trống trong thiết kế/hiện thực)
+### TC-MSG-32: REQUEST_FAULT_CLEAR -> ACK (trường hợp tích cực) - tái hiện được qua phím `r` có sẵn tại RLx console
+- **Loại**: Positive
 - **Verb**: MSG_REQUEST_FAULT_CLEAR
-- **Liên quan**: đường "ACK" của `rlx_fsm_on_fault_clear()` (điều kiện: `state==RLX_FAULT` và `rlx_gate_poll_open()==1`)
-- **Môi trường**: (D) - cần công cụ HOẶC một bản vá tạm thời, không chỉ là test_client thông thường (xem giải thích).
-- **Chuẩn bị/Giải thích**: Theo code hiện tại, **không có bất kỳ đường thực thi nào** đặt `g_confirmed_open=1` trong khi `fsm->state == RLX_FAULT`: `enter_fault()` (được gọi từ mọi nơi dẫn tới FAULT - deadline miss khi CLOSING/RECLOSING/OPENING, hay watchdog trip) luôn gọi `rlx_gate_command_close()`, không bao giờ `rlx_gate_command_open()`; và `rlx_fsm_on_tick()`'s case `RLX_FAULT` là no-op (không lệnh gì thêm). Vì test_client vẫn gọi cùng 1 `rlx_fsm_on_fault_clear()` với cùng state nội bộ đó, việc gửi request qua đường dây không giúp ích - đây là giới hạn ở tầng FSM/gate simulator, không phải ở tầng giao thức IPC.
-- **Đề xuất khắc phục để test case này khả thi**: bổ sung 1 phím DEMO-ONLY vào `rlx_sensor.c` (cùng khuôn mẫu với `x`/`f` đã có) mô phỏng "kỹ thuật viên đã sửa xong và xác nhận cổng mở tay", gọi thẳng `rlx_gate_command_open()` (hoặc set thẳng cờ nội bộ) trong khi đang FAULT, rồi đợi `RLX_GATE_MOTION_MS=3000ms` để `rlx_gate_poll_open()` trả 1.
-- **Các bước (sau khi có bản vá)**: Vào FAULT như TC-MSG-31 -> bấm phím DEMO-ONLY mới để mở cổng -> đợi 3s -> C1: `f` -> `1`.
-- **Kết quả mong đợi (sau khi có bản vá)**: `central_log.txt`: `C1: REQUEST_FAULT_CLEAR to 7 -> ACK`; RL1 trở lại `RLX_OPEN`, `faults=FAULT_NONE`, các cửa sổ occupancy được xóa.
+- **Liên quan**: đường "ACK" của `rlx_fsm_on_fault_clear()` (điều kiện: `state==RLX_FAULT` và `rlx_gate_poll_open()==1`); phím `r` tại `rlx_sensor.c` (`case 'r'`, dòng 43-45, gọi `rlx_gate_force_confirmed_open()` trong `rlx_gate.c`).
+- **Môi trường**: (B)/(C) C1 + RL1 - không cần test_client hay bản vá bổ sung, phím `r` đã có sẵn trong repo.
+- **Chuẩn bị/Giải thích**: Theo code hiện tại, **không có đường nào do chính `rlx_fsm.c` tự lái** đặt `g_confirmed_open=1` trong khi `fsm->state == RLX_FAULT`: `enter_fault()` (được gọi từ mọi nơi dẫn tới FAULT - deadline miss khi CLOSING/RECLOSING/OPENING, hay watchdog trip) luôn gọi `rlx_gate_command_close()`, không bao giờ `rlx_gate_command_open()`; và `rlx_fsm_on_tick()`'s case `RLX_FAULT` là no-op. Tuy nhiên `rlx_sensor.c` có sẵn phím demo `r`, độc lập với FSM: nó gọi thẳng `rlx_gate_force_confirmed_open()` (`rlx_gate.c` dòng 123-134), hàm này khoá `g_gate_lock`, đặt `g_motion=GATE_IDLE`, `g_confirmed_closed=0`, `g_confirmed_open=1` **ngay lập tức** (không cần đợi `RLX_GATE_MOTION_MS`), rồi in log `"[DEMO] Gate mechanism simulated as physically repaired - now confirmed OPEN"`. Vì hàm này không kiểm tra `fsm->state`, nó set được `g_confirmed_open=1` bất kể RLx đang ở `RLX_FAULT` hay không - tạo đúng điều kiện để `rlx_gate_poll_open()==1` khi `rlx_fsm_on_fault_clear()` được gọi.
+- **Các bước**: Vào FAULT như TC-MSG-31 (RL1's sensor console: `x` -> `0`, đợi ~20s tới khi RL1 log chuyển sang FAULT) -> tại RL1's sensor console bấm phím `r` (gate được xác nhận OPEN ngay lập tức, không cần đợi thêm) -> tại C1: `f` -> `1`.
+- **Kết quả mong đợi**: `central_log.txt`: `C1: REQUEST_FAULT_CLEAR to 7 -> ACK`; RL1 trở lại `RLX_OPEN`, `faults=FAULT_NONE`, các cửa sổ occupancy được xóa. Đây là outcome `RESULT_ACK` thật, xác nhận được hoàn toàn bằng thao tác bàn phím trên `rlx_sensor.c`/`c_operator.c` - không cần debugger, không cần test_client.
 
 ### TC-MSG-33: REQUEST_FAULT_CLEAR gửi tới một Lx đang FAULT_SAFE - ACK (đã sửa, không còn RESULT_ERROR)
 - **Loại**: Positive (trước đây là Edge case/Negative "RESULT_ERROR" - hành vi đó đã lỗi thời, xem mục 6's "Cập nhật")
@@ -709,16 +714,21 @@ proof-of-life nào (STATUS/HEARTBEAT/CROSSING_STATUS) từ 1 controller ->
    creep còn sót (`MSG_STATUS` dự trù cho 1 luồng riêng UC-09 chưa được
    nối dây) hay handler tại C1 là dự phòng không cần thiết.
 
-4. **`RESULT_ACK` của `MSG_REQUEST_FAULT_CLEAR` dường như không thể đạt
-   được với code hiện tại** (xem giải thích chi tiết ở TC-MSG-32) - mọi
-   đường vào `RLX_FAULT` đều tự động lệnh đóng cổng lại
-   (`rlx_gate_command_close()`), không có đường nào mở cổng trong khi
-   đang FAULT. Đây là phát hiện quan trọng nhất của tài liệu này: nếu
-   đúng như phân tích, RC-09/RC-10's "operator request fault clearance
-   after repair" flow **chưa bao giờ có thể ACK** trên bản build hiện
-   tại, kể cả trên máy QNX thật với thao tác đúng quy trình - cần Core-
-   Engineer xác nhận và vá trước khi coi Phase liên quan tới RC-09 là
-   "PASS" ở bước 6 (QA-Test).
+4. **`RESULT_ACK` của `MSG_REQUEST_FAULT_CLEAR` đã được xác nhận đạt
+   được trên bản build hiện tại, qua phím `r` có sẵn tại `rlx_sensor.c`**
+   (xem TC-MSG-32). Đúng là mọi đường vào `RLX_FAULT` **do chính
+   `rlx_fsm.c` tự lái** đều tự động lệnh đóng cổng lại
+   (`rlx_gate_command_close()`), không có đường nào trong FSM tự mở
+   cổng khi đang FAULT - nhưng `rlx_sensor.c`'s `case 'r'` gọi thẳng
+   `rlx_gate_force_confirmed_open()` (`rlx_gate.c`), một escape hatch
+   demo độc lập với FSM, set trực tiếp `g_confirmed_open=1` bất kể
+   `fsm->state` hiện tại. Vì vậy RC-09/RC-10's "operator request fault
+   clearance after repair" flow **tái hiện được đầy đủ bằng bàn phím**
+   (RL1's sensor console: `x` -> `0` -> đợi vào FAULT -> `r`; C1: `f` ->
+   `1`), không cần debugger, không cần test_client, và không cần
+   Core-Engineer vá thêm gì cho mục đích test giao thức này. Case liên
+   quan RC-09 có thể coi là kiểm thử được (không còn BLOCKED) ở bước 6
+   (QA-Test).
 
 5. **`c_server_record_fault_report()` là no-op hoàn toàn** (chỉ
    `c_logger_log()` gọi trực tiếp từ `c_main.c` mới in thông tin fault

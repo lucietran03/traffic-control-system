@@ -45,6 +45,13 @@ Khuyến nghị: chạy toàn bộ test ở (A)/(B) trước; chỉ cần lặp 
 con đại diện (RC-06 dương tính, REQUEST_FAULT_CLEAR NACK/ACK, watchdog)
 ở (C) để xác nhận không có khác biệt do mạng thật.
 
+Lưu ý chung khi chạy các test ở file này (môi trường (B)/(C) có `c_main`
+sống): Tránh dùng phím `d`/`a` trên console C1 chung trong lúc chạy các
+test fault-injection ở file này - nếu một ranh giới peak/off-peak thật
+hoặc demo vô tình xảy ra giữa lúc test, một dòng NACK SET_MODE ngoài dự
+kiến có thể xuất hiện (do `lx_fsm_on_set_mode()`'s fault guard), không
+phải là bug.
+
 ## Hằng số thời gian liên quan (tra từ code, không suy đoán)
 
 | Hằng số | Giá trị | Nguồn |
@@ -206,22 +213,29 @@ true tại **thời điểm xử lý yêu cầu**, đọc trực tiếp từ `rl
 (không dùng giá trị cache nào khác) - đây chính là điều RC-10 yêu cầu
 ("never bypass live verification").
 
-**Phát hiện quan trọng khi đọc code**: một khi FSM đã vào `RLX_FAULT`,
-`enter_fault()` luôn luôn ra lệnh ĐÓNG gate (không bao giờ mở), và nhánh
-`RLX_FAULT` trong `rlx_fsm_on_tick()` không làm gì (không có lệnh mở gate
-nào được phát trong khi đang fault). `rlx_gate_command_open()` trong toàn
-bộ codebase hiện tại **chỉ** được gọi từ `enter_opening()`
-(`rlx_fsm.c`), và hàm đó **chỉ** được gọi từ nhánh `RLX_TRAIN_PRESENT`
-của `rlx_fsm_on_tick()` - không bao giờ chạy khi `fsm->state == RLX_FAULT`.
-Nói cách khác: **không có phím bấm hay luồng logic nào trong ứng dụng
-hiện tại có thể tự đưa gate về trạng thái "confirmed open" trong khi RLx
-đang ở RLX_FAULT.** Đây không phải lỗi RC-10 (ngược lại, đúng ra là hệ
-quả tất yếu của RC-10: "gate luôn phải được xác nhận lại bằng tay/thực
-tế trước khi coi là an toàn để mở lại") nhưng nó khiến nhánh ACK của
-`rlx_fsm_on_fault_clear()` **không thể tái hiện qua bàn phím** trong bản
-build hiện tại. TC-FAULT-07 dưới đây ghi nhận trung thực giới hạn này và
-đề xuất cách khả dĩ nhất (dùng debugger) để vẫn kiểm thử được nhánh đó
-trên máy QNX thật.
+**Cập nhật (known gap đã được giải quyết)**: mục này từng ghi nhận rằng
+một khi FSM đã vào `RLX_FAULT`, không có phím bấm hay luồng logic nào
+trong ứng dụng có thể tự đưa gate về trạng thái "confirmed open", vì
+`enter_fault()` luôn luôn ra lệnh ĐÓNG gate và `rlx_gate_command_open()`
+trong toàn bộ codebase chỉ được gọi từ `enter_opening()` (nhánh
+`RLX_TRAIN_PRESENT` của `rlx_fsm_on_tick()`, không bao giờ chạy khi
+`fsm->state == RLX_FAULT`) - kết luận khi đó là nhánh ACK của
+`rlx_fsm_on_fault_clear()` chỉ kiểm thử được bằng debugger
+(`call rlx_gate_command_open()`). **Điều đó không còn đúng**:
+`rlx_sensor.c` nay có phím `r`, gọi thẳng
+`rlx_gate_force_confirmed_open()` (`rlx_gate.c`) - hàm này ép trạng thái
+cảm biến gate mô phỏng về `g_confirmed_open = 1`/`g_confirmed_closed = 0`
+ngay lập tức (mô phỏng "gate mechanism physically repaired/confirmed
+OPEN", theo đúng comment RC-09/RC-10 fault-clear demo trong code), độc
+lập với state machine của `rlx_fsm.c` (không đi qua `enter_opening()`
+hay bất kỳ động cơ mô phỏng nào). Vì `rlx_fsm_on_fault_clear()` đọc trực
+tiếp `gates_confirmed_open()` tại thời điểm xử lý (không cache), việc bấm
+`r` rồi gửi `MSG_REQUEST_FAULT_CLEAR` từ Central tạo ra một nhánh ACK
+**thật, tái hiện được hoàn toàn qua bàn phím, không cần debugger** - xem
+TC-FAULT-22 (bổ sung) bên dưới. TC-FAULT-07/TC-FAULT-10 dưới đây vẫn được
+giữ lại nguyên văn vì chúng minh họa cách đạt cùng kết quả qua debugger
+(hữu ích khi muốn kiểm chứng độc lập với `rlx_sensor.c`'s phím `r`, hoặc
+trên bản build không có phím đó), nhưng **không còn là cách duy nhất**.
 
 ### TC-FAULT-05: REQUEST_FAULT_CLEAR khi gate CHƯA xác nhận mở -> NACK (RC-10 core)
 - **Loại**: Negative
@@ -253,7 +267,10 @@ trên máy QNX thật.
   `... -> NACK reason=UNKNOWN_TARGET`. Không có thay đổi trạng thái nào.
 
 ### TC-FAULT-07: REQUEST_FAULT_CLEAR khi gate ĐÃ thực sự xác nhận mở -> ACK, thoát FAULT
-- **Loại**: Positive - **cần công cụ debug, không có phím bấm tương ứng trong bản hiện tại (xem phần phân tích ở đầu Nhóm 3)**
+- **Loại**: Positive - dùng công cụ debug để ép `g_confirmed_open`. **Không
+  còn là cách duy nhất**: xem TC-FAULT-22 (phím `r` trong `rlx_sensor.c`)
+  cho một đường tương đương thuần bàn phím, không cần debugger (xem phần
+  phân tích cập nhật ở đầu Nhóm 3).
 - **Liên quan**: RC-09, RC-10
 - **Môi trường**: (B), cộng thêm debugger (gdb/QNX Momentics debugger,
   hoặc `pdebug` + `qnx-gdb` từ host) đính kèm vào tiến trình `rlx_main`
@@ -335,6 +352,45 @@ trên máy QNX thật.
   kết quả của TC-FAULT-07 nhưng đến từ đường cục bộ - xác nhận hai đường
   (Central IPC và phím cục bộ) chia sẻ đúng một điểm thực thi logic an
   toàn (`rlx_fsm_on_fault_clear()`), không có bản sao logic bị lệch nhau.
+
+### TC-FAULT-22: REQUEST_FAULT_CLEAR qua Central sau khi bấm `r` để ép gate confirmed-open -> ACK thật, thoát FAULT, KHÔNG cần debugger (bổ sung, thay thế known-gap cũ)
+- **Loại**: Positive - **thuần bàn phím, không cần debugger** (xem cập
+  nhật ở đầu Nhóm 3: known gap trước đây đã được giải quyết nhờ phím `r`
+  trong `rlx_sensor.c`)
+- **Liên quan**: RC-09, RC-10
+- **Môi trường**: (B) - cần Central thật để gửi `MSG_REQUEST_FAULT_CLEAR`
+  tới RL1 (giống TC-FAULT-05/07), nhưng không cần debugger đính kèm.
+- **Chuẩn bị**: Đưa RL1 vào `RLX_FAULT` bằng TC-FAULT-01 (hoặc bất kỳ
+  kịch bản nào ở Nhóm 1/2) - ví dụ bấm `x` rồi `0`, đợi đủ
+  `RLX_CLOSING_DEADLINE_MS` = 15 s để `enter_fault(FAULT_GATE_CONFIRM_MISSING)`
+  được gọi. Gate lúc này đã được `enter_fault()` lệnh đóng và (sau 3 s) tự
+  xác nhận ĐÓNG.
+- **Các bước**:
+  1. Tại console của chính `rlx_main 1` (RL1), bấm `r`. Theo
+     `rlx_sensor.c`, phím này gọi thẳng `rlx_gate_force_confirmed_open()`
+     (`rlx_gate.c`), mô phỏng "gate mechanism physically repaired/confirmed
+     OPEN": hàm này set `g_motion = GATE_IDLE`, `g_confirmed_closed = 0`,
+     `g_confirmed_open = 1` ngay lập tức, độc lập với `rlx_fsm.c` (FSM vẫn
+     đứng yên ở `RLX_FAULT`, không đi qua `enter_opening()`). Quan sát log
+     `[DEMO] Gate mechanism simulated as physically repaired - now
+     confirmed OPEN (RC-09/RC-10 fault-clear demo path)`.
+  2. Tại console Central (`c_main`), bấm `f` -> `RLx number (1-3): 1` ->
+     Enter.
+- **Kết quả mong đợi**:
+  - RL1 nhận `MSG_REQUEST_FAULT_CLEAR`, gọi `rlx_fsm_on_fault_clear()`.
+  - Vì `fsm->state == RLX_FAULT` VÀ `gates_confirmed_open()` đọc live trả
+    về 1 (nhờ bước 1) -> trả về `RESULT_ACK` thật (không phải NACK).
+  - `fsm->state -> RLX_OPEN`, `fsm->state_elapsed_ms = 0`,
+    `fsm->faults = FAULT_NONE`, `active_window_count = 0`, cả 2 slot
+    `windows[]` bị reset - giống hệt kết quả mong đợi của TC-FAULT-07
+    nhưng đạt được **hoàn toàn qua bàn phím**, không cần debugger/gdb/
+    QNX Momentics.
+  - Central log: `C1: REQUEST_FAULT_CLEAR to <RL1> -> ACK`.
+  - RL1 quay lại vận hành bình thường ở `RLX_OPEN` (đèn/flasher tắt, sẵn
+    sàng nhận `TRAIN_APPROACHING` tiếp theo qua phím `0`/`1` như bình
+    thường) - xác nhận nhánh ACK của `rlx_fsm_on_fault_clear()` không chỉ
+    verify được bằng code review mà còn tái hiện được bằng một chuỗi thao
+    tác bàn phím thật trên máy QNX (môi trường (B)).
 
 ---
 
@@ -540,6 +596,21 @@ cơ hội phát hiện ra gì cả.
   phải là cách hợp lệ để test PA-10** trong kiến trúc multi-thread một
   tiến trình này - cần một cách chỉ chặn riêng server thread (xem
   TC-FAULT-17/18).
+- **Lưu ý**: `docs/test-plan/02-state-machine-transition.md` (TC-SC01A-3
+  và các case tương tự, ví dụ quanh dòng nói về `kill -STOP <pid lx_main
+  1>` để đưa L1 vào FAULT_SAFE) lại khẳng định **kết luận ngược lại** cho
+  cùng cơ chế này (`lx_watchdog.c`/`rlx_watchdog.c`'s watchdog thread
+  riêng theo PA-10) - rằng `kill -STOP` rồi `kill -CONT` SẼ khiến
+  `lx_watchdog_thread` phát hiện `phase_tick_counter` không đổi và trip
+  fault. Đây là một mâu thuẫn thật, chưa giải quyết được, giữa hai file
+  test-plan, phụ thuộc vào hành vi lập lịch SIGSTOP/SIGCONT thực tế của
+  QNX (không thể xác định chỉ bằng đọc mã nguồn - cả hai lý luận đều dựa
+  trên suy luận về hành vi hệ điều hành, không phải trên một đoạn code
+  đo lường trực tiếp việc này). **Không kết luận bên nào đúng ở đây** -
+  khi có máy QNX thật, cần chạy thực nghiệm `kill -STOP`/`kill -CONT` như
+  mô tả ở cả hai file và ghi nhận kết quả thực tế quan sát được, rồi cập
+  nhật lại cả hai tài liệu cho khớp với bằng chứng thực nghiệm đó (thay vì
+  chỉ tin theo lý luận có sẵn của một trong hai file).
 
 ### TC-FAULT-17: Best-effort - ép watchdog Lx trip bằng debugger (chặn riêng server thread)
 - **Loại**: Positive - best effort, phụ thuộc công cụ, có thể không tái
@@ -669,14 +740,19 @@ thử toàn hệ thống.
 |---|---|---|---|
 | 1. RC-06 gate confirm | TC-01, TC-02, TC-03 | - | - |
 | 2. Fault ép đóng gate | TC-04 | - | - |
-| 3. REQUEST_FAULT_CLEAR | TC-05, TC-06, TC-08, TC-09 | TC-07, TC-10 | - |
+| 3. REQUEST_FAULT_CLEAR | TC-05, TC-06, TC-08, TC-09, TC-22 | TC-07, TC-10 (không còn là cách duy nhất, xem TC-22) | - |
 | 4. FAULT_SAFE tại Lx | TC-14b (phụ thuộc Nhóm 5 để trip trước) | TC-12, TC-13, TC-14c (phụ thuộc Nhóm 5) | TC-11, TC-14 |
 | 5. Watchdog trip | (phủ định) TC-16 | TC-17, TC-18 | TC-15 |
 | 6. Stuck-sensor | TC-19, TC-20, TC-21 | - | - |
 
-23 test case (bổ sung TC-FAULT-14b/14c sau khi `MSG_REQUEST_FAULT_CLEAR`
-được nối dây cho Lx), phần lớn (14/23) chạy được hoàn toàn qua bàn phím
-trên máy QNX thật không cần công cụ gì thêm; 6 test case cần debugger
-(ghi rõ caveat nếu không khả thi); 2 test case là review-code thuần túy
-do bản chất kiến trúc hiện tại (Lx không có phím trigger fault) không
-cho phép runtime; 1 test case (TC-16) là phản chứng có chủ đích.
+24 test case (bổ sung TC-FAULT-14b/14c sau khi `MSG_REQUEST_FAULT_CLEAR`
+được nối dây cho Lx; bổ sung TC-FAULT-22 sau khi xác nhận phím `r` trong
+`rlx_sensor.c` mở khóa nhánh ACK thật của RLx's REQUEST_FAULT_CLEAR qua
+bàn phím, không cần debugger), phần lớn (15/24) chạy được hoàn toàn qua
+bàn phím trên máy QNX thật không cần công cụ gì thêm; các test case còn
+lại cần debugger (ghi rõ caveat nếu không khả thi, và với TC-07/TC-10
+debugger không còn là cách duy nhất); 2 test case là review-code thuần
+túy do bản chất kiến trúc hiện tại (Lx không có phím trigger fault) không
+cho phép runtime; 1 test case (TC-16) là phản chứng có chủ đích - **lưu ý
+mâu thuẫn chưa giải quyết với TC-SC01A-3 của
+`02-state-machine-transition.md`**, xem Lưu ý trong TC-FAULT-16.

@@ -65,13 +65,13 @@
         },
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW",
+          "pattern": "Lx 1: signal phase now ARTERIAL YELLOW",
           "within_ms": 48600,
           "description": "TC-03/lx_fsm.c's compliance-audit fix (see lx_fsm_apply_offset_locked()'s long doc comment, lx_fsm.c:481-563): SET_TIMING_PROFILE only sets offset_apply_pending=1 (lx_fsm.c:683); the correction itself is deferred to the exact moment the NEXT fresh PHASE_ARTERIAL_GREEN begins (lx_fsm.c:339-344), so the green phase already showing when the message arrives must run its full, un-shortened LX_PEAK_ARTERIAL_GREEN_MS=48000ms (lx_timer.h:23). Caveat (tool limitation, not a weaker guarantee than the doc's): this check can only prove ARTERIAL YELLOW appears BY 48.6s, not that it failed to appear earlier - it cannot on its own rule out truncation. Combined with the ACK check above (profile accepted at ~2.2s while still ARTERIAL_GREEN) and the total absence of any 'FAULT'/error line in this run, a pass here is reasonably strong evidence of no truncation, but if genuine millisecond-level confirmation is required, a human should inspect results/TC-TIME-04/L1.log for the actual line ordering/count of intervening phase transitions (there should be none between the ACK and this line)."
         },
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> ARTERIAL GREEN",
+          "pattern": "Lx 1: signal phase now ARTERIAL GREEN",
           "within_ms": 135000,
           "description": "The SECOND ARTERIAL_GREEN entry (first one is excluded from matching - it prints synchronously at process boot, before t0) is where the deferred offset correction from lx_fsm_apply_offset_locked() actually applies (a one-shot nudge of up to +/- LX_CYCLE_LENGTH_MS/2 = 45000ms, floored so at least LX_MIN_GREEN_MS=8000ms of real green always shows - see the function's step 6 comment). Nominal cycle length without any correction would put this ~90s after the first ARTERIAL_GREEN (48+4+2+30+4+2, lx_timer.h:81-82); this window (135000 = 90000+45000) covers the full theoretical worst-case correction magnitude on either side. Because this test runs on a single machine at an essentially arbitrary real wall-clock instant (not synchronized to any particular offset target), the EXACT correction size is not predictable from the case file alone - a human wanting the precise nudge value should read results/TC-TIME-04/L1.log's phase-transition timing directly."
         }
@@ -115,13 +115,13 @@
         },
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN",
+          "pattern": "Lx 1: signal phase now CONNECTOR GREEN",
           "within_ms": 55000,
           "description": "Deviates from the .md's literal env (A)/ARTERIAL-GREEN framing for tooling reasons, testing the IDENTICAL underlying assumption (LX_MIN_GREEN_MS, TL-01) via CONNECTOR_GREEN instead - see the next check's description for why. Deviates from doc's stated environment (A): a genuine SET_MODE requires C1, so this needs env (B), not (A) - the doc's env label appears optimistic here. Mode switch is submitted at ~0.2-0.6s while L1 is still deep in its first (PEAK_FIXED) ARTERIAL_GREEN (48s long); the pending mode is only applied at the ALL_RED_A_TO_B boundary (~52-54s process time, lx_fsm.c:236-242), so this first-ever CONNECTOR_GREEN line (no earlier occurrence exists in a fresh run) marks the first phase actually governed by OFF_PEAK_SENSOR rules. This window (55s) just confirms we got there; the load-bearing check is the next one."
         },
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW",
+          "pattern": "Lx 1: signal phase now CONNECTOR YELLOW",
           "within_ms": 63000,
           "description": "TL-01/LX_MIN_GREEN_MS=8000 (lx_timer.h:31), lx_timer_should_exit_green() (lx_timer.c:19-30): with zero connector demand ('c'/'C' never pressed) CONNECTOR_GREEN exits as soon as elapsed_ms>=8000 (checked every LX_EXTENSION_MS=4000 tick, lx_fsm.c:1117, and 8000 is itself a multiple of 4000) - own CONNECTOR_GREEN was chosen over ARTERIAL_GREEN specifically because it is the run's FIRST-EVER occurrence of both 'CONNECTOR GREEN' and 'CONNECTOR YELLOW', so there is no earlier confounding match the way there would be for a second/third 'ARTERIAL YELLOW' occurrence later in a long-running case. Expected: CONNECTOR GREEN at ~54s process time (~53.5s from t0) + 8s = ~61.5s from t0; window gives ~1.5s slack. Tool limitation: this can only prove the exit happened BY 63s, not that it did not fire before the real 8s mark (see TL-TIME-02 for the tightened boundary variant of this exact check)."
         }
@@ -148,13 +148,13 @@
       "checks": [
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN",
+          "pattern": "Lx 1: signal phase now CONNECTOR GREEN",
           "within_ms": 55000,
           "description": "Same setup as TL-TIME-01 - see that case for the full timeline derivation."
         },
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW",
+          "pattern": "Lx 1: signal phase now CONNECTOR YELLOW",
           "within_ms": 62600,
           "description": "Same underlying event as TL-TIME-01's second check, but with the deadline tightened to ~62.6s (54s CONNECTOR_GREEN start + 8.0s min-green + 0.6s slack for tick granularity/process jitter only, vs TL-TIME-01's more generous 1.5s) to approximate the doc's 'N=8.0s is the first valid exit point' boundary as closely as the tool's one-sided within_ms allows. IMPORTANT tool-honesty note: this schema has no way to assert the doc's other half of the boundary ('must NOT exit at 7.9s') - wait_for_pattern only returns pass/fail against an upper deadline, it does not distinguish 'exited right on time at 8.0s' from 'exited early, e.g. at 3s, which would also satisfy this same within_ms'. A pass here is consistent with correct behavior but is not proof against an early-exit bug; a human wanting that guarantee must read the LX_MIN_GREEN_MS guard directly (lx_timer.c:22-24, `if (elapsed_ms < LX_MIN_GREEN_MS) return 0`) or add a temporary elapsed-time log line for a one-off manual run."
         }
@@ -182,13 +182,13 @@
       "checks": [
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN",
+          "pattern": "Lx 1: signal phase now CONNECTOR GREEN",
           "within_ms": 55000,
           "description": "Same timeline as TL-TIME-01. 'c' (connector approach: vehicle present) is pressed once at t=0.1s, well before this phase even starts, and is never cleared ('C') for the rest of the run - lx_sensor.c's 'c' just latches connector_vehicle_demand=1 until cleared, so continuous presence for the whole phase is guaranteed by construction, not by precise timing."
         },
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW",
+          "pattern": "Lx 1: signal phase now CONNECTOR YELLOW",
           "within_ms": 95000,
           "description": "TL-01/LX_MAX_GREEN_MS=40000 (lx_timer.h:32); lx_timer_should_exit_green() returns '!own_demand || maxed' (lx_timer.c:27-29) - with own_demand=1 held throughout, the ONLY way to exit is maxed=(elapsed_ms>=40000), checked at each 4000ms tick (40000 is itself a multiple of 4000). Expected: ~54s CONNECTOR_GREEN start + 40s = ~93.5s from t0; window gives 1.5s slack. This is the strongest of the min/max-green checks in this file because a FAILURE to cap at 40s would show up as this pattern simply never appearing within the deadline (a real, meaningful negative result), even though the tool still cannot prove it didn't happen too early."
         }
@@ -216,13 +216,13 @@
       "checks": [
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN",
+          "pattern": "Lx 1: signal phase now CONNECTOR GREEN",
           "within_ms": 55000,
           "description": "Same setup/timeline as TL-TIME-03."
         },
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW",
+          "pattern": "Lx 1: signal phase now CONNECTOR YELLOW",
           "within_ms": 94600,
           "description": "Same event as TL-TIME-03's second check, tightened to ~94.6s (54s + 40.0s + 0.6s tick/jitter slack) to approximate the 40.0s boundary as closely as a one-sided upper-bound check allows. As with TL-TIME-02, this tool structurally cannot verify the doc's 'still ARTERIAL/CONNECTOR GREEN at 39.9s despite demand' half of the boundary (no 'must not match before deadline' check type exists) - see lx_timer.c:27-29's `maxed = elapsed_ms >= LX_MAX_GREEN_MS` for the authoritative source if that half needs confirming by reading code instead."
         }
@@ -244,13 +244,13 @@
       "checks": [
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW",
+          "pattern": "Lx 1: signal phase now ARTERIAL YELLOW",
           "within_ms": 48400,
           "description": "L1 boots straight into MODE_PEAK_FIXED/PHASE_ARTERIAL_GREEN (lx_fsm_init, lx_fsm.c:360/366) with no commands needed. This is the first-ever ARTERIAL YELLOW (the boot-time ARTERIAL_GREEN print itself is excluded, having happened before t0). LX_PEAK_ARTERIAL_GREEN_MS=48000 (lx_timer.h:23); 400ms slack covers the LX_PHASE_TICK_MS=100ms granularity plus setup_wait_ms/process-launch jitter."
         },
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> ALL RED \\(A to B\\)",
+          "pattern": "Lx 1: signal phase now ALL RED \\(A to B\\)",
           "within_ms": 52700,
           "description": "TL-01/LX_YELLOW_MS=4000 (lx_timer.h:27, checked at lx_fsm.c:944 `green_elapsed_ms >= LX_YELLOW_MS`). Chained with the check above per this tool's documented 'Known gap' workaround (README.md): both checks share the same t0, so a pass on both is consistent with the YELLOW phase having lasted close to 4s (48.0s+4.0s=52.0s nominal; this window's extra ~700ms covers tick granularity plus the previous check's own slack). This gap cannot be read back out of results/TL-TIME-05/L1.log afterward with any more precision than that, since lx_signal.c's printf lines carry no timestamp at all - the within_ms pass/fail here is the most precise timing evidence this tool can produce for this pair of events."
         }
@@ -272,13 +272,13 @@
       "checks": [
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> ALL RED \\(A to B\\)",
+          "pattern": "Lx 1: signal phase now ALL RED \\(A to B\\)",
           "within_ms": 52700,
           "description": "Same first-cycle event as TL-TIME-05's second check (48s ARTERIAL_GREEN + 4s ARTERIAL_YELLOW)."
         },
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN",
+          "pattern": "Lx 1: signal phase now CONNECTOR GREEN",
           "within_ms": 55000,
           "description": "TL-01/LX_ALL_RED_MS=2000 (lx_timer.h:28, checked at lx_fsm.c:951 `green_elapsed_ms >= LX_ALL_RED_MS`). This is the first-ever CONNECTOR GREEN in a fresh run (no confounding earlier match), reached ~52s+2s=54s nominal. Chained with the check above the same way TL-TIME-05 chains its two checks - see that case's second check description for the same caveat about no timestamp being recoverable from the raw log afterward."
         }
@@ -336,7 +336,7 @@
       "checks": [
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> ARTERIAL GREEN",
+          "pattern": "Lx 1: signal phase now ARTERIAL GREEN",
           "within_ms": 91000,
           "description": "TL-02/LX_CYCLE_LENGTH_MS=90000 (lx_timer.h:81-82, derived as 48+4+2+30+4+2 seconds from the individual constants, never hand-duplicated). The boot-time ARTERIAL_GREEN print happens before t0 and is excluded, so this check's first (and, within this window, only) match is the SECOND cycle's ARTERIAL_GREEN entry - i.e. exactly one full cycle after the implicit t~0 start. Window is 90000+1000, matching the doc's own '89.0-91.0s' tolerance. If this consistently lands very close to the 90.0s edge across repeated runs rather than comfortably under it, that is itself worth a closer look for drift in lx_fsm_on_phase_timer() per the doc's own note - not a tool defect."
         }
@@ -369,7 +369,7 @@
       "checks": [
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> ARTERIAL YELLOW",
+          "pattern": "Lx 1: signal phase now ARTERIAL YELLOW",
           "within_ms": 48400,
           "description": "Deliberately reframed vs the .md's literal procedure: the doc's own approach (moving the test VM's system clock across 06:00/09:00 with `date`, requiring root) is not something this runner can safely automate - mutating the shared host's real wall clock mid-test-suite would corrupt timestamps for every other concurrently-running process and any other test relying on `date`/`time()`, and the runner has no privileged, sandboxed clock-injection capability (this is the same class of gap as the README's environment (D) exclusion: a capability the tool genuinely lacks, not a tuning problem). Instead, this test uses the ALREADY-CONFIRMED codebase fact (c_mode_eng.c:56-62's doc comment, cross-checked directly in app/central/src/c_main.c and app/central/src/c_operator.c: neither ever calls c_mode_eng_select_mode() with a real localtime()-derived hour) to construct an equivalent, honest runtime observation: L1 boots into MODE_PEAK_FIXED unconditionally (lx_fsm.c:360) and NO code path anywhere reads the wall clock to change that - so this fixed-48s ARTERIAL_GREEN duration will be observed REGARDLESS of what the real current hour happens to be at test-run time (e.g. even if the machine's actual clock reads 14:00, well outside the 6-9 placeholder peak window, mode stays PEAK_FIXED with its fixed timing, never spontaneously switching to OFF_PEAK_SENSOR's demand-driven timing). A human wanting the literal doc procedure (crossing a real 06:00/09:00 boundary on a dedicated disposable test VM with the clock deliberately moved) can still do so manually; this automated proxy captures the same underlying finding (DP-02's clock-driven auto-switch is not wired into the runtime) without touching the host clock."
         }
@@ -429,13 +429,13 @@
         },
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN",
+          "pattern": "Lx 1: signal phase now CONNECTOR GREEN",
           "within_ms": 120000,
           "description": "IMPORTANT correction vs the .md text: while RL1 is closed/occupied, L1's supervisory sits in SUPERVISORY_RAILWAY_PREEMPTION, which forces the ALL_RED_A_TO_B boundary back into ARTERIAL_GREEN instead of CONNECTOR_GREEN every cycle (lx_fsm.c:262-277, CC-02) - so L1 keeps repeating ~54s ARTERIAL-only mini-cycles (0-54-108-162s...) for as long as the crossing stays closed. RL1's own close+occupy+reopen sequence (RC-TIME-04's ~48-52s estimate: 5s WARNING + ~3-4s CLOSING + 20s CLOSED-wait + 20s TRAIN_PRESENT window, then ~3s to confirm OPEN) is expected to finish just BEFORE L1's first 54s boundary given both processes start together here, so the FAST case (drain-carrying CONNECTOR_GREEN starting ~54s) is the expected outcome, not a 50/50 race - but it IS a real race against L1's own 54s-multiple boundaries, and on a slow/loaded test machine the reopen could slip past 54s, pushing this to the NEXT boundary (~108s). This within_ms=120000 window covers both the expected-fast and the fallback-slow branch; the two checks below assume the FAST branch (~54s) and are the ones at real risk if the slow branch occurs - see their descriptions."
         },
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW",
+          "pattern": "Lx 1: signal phase now CONNECTOR YELLOW",
           "within_ms": 119000,
           "description": "CC-03/UC-05 drain (lx_fsm.c:1084-1099, LX_EXTENSION_MS=4000 reused as the recheck cadence, lx_timer.h:71 LX_DRAIN_MAX_EXTENSION_MS=60000 as the cap). CORRECTION vs the .md's prose: the drain extension only starts counting AFTER this CONNECTOR_GREEN phase's ordinary fixed PEAK_FIXED duration (LX_PEAK_CONNECTOR_GREEN_MS=30000, lx_timer.h:24) has already elapsed (lx_fsm.c:1102-1111 sets drain_extending=1 only once `green_elapsed_ms >= 30000`) - it is NOT, as the doc's own worked example implies, counted from the start of the CONNECTOR_GREEN phase itself. This case's 'W' (queue-warning clear) step is scheduled at t=114000ms, i.e. ~30s into the drain-extension window under the FAST-branch assumption (CONNECTOR_GREEN start ~54s + 30s ordinary = extension starts ~84s; clearing at 114s is ~30s into that up-to-60s extension window), so the phase is expected to end ~4300ms later at the next 4000ms recheck (114000+4300=118300; this window adds slack to 119000). KNOWN RISK: if the slow branch from the CONNECTOR_GREEN check above occurred instead (drain starting ~108s), clearing at 114000 would land only ~6s into the ordinary 30s baseline (before extension even begins), and this check would likely FAIL or match much later than expected - if that happens, treat it as the cross-node race landing on its slow branch, not as a drain-logic bug, and re-run or inspect results/CC-TIME-01/{L1,RL1}.log to confirm which branch occurred."
         }
@@ -467,13 +467,13 @@
         },
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN",
+          "pattern": "Lx 1: signal phase now CONNECTOR GREEN",
           "within_ms": 120000,
           "description": "Same fast/slow race as CC-TIME-01's identical check - see that case's description. QUEUE_WARNING is never cleared in this case ('W' is never sent), which sidesteps CC-TIME-01's precise-timing risk for the checks that follow: since the flag simply never clears, the exact moment CONNECTOR_GREEN starts does not need to be predicted to schedule a well-timed clear step - only the total elapsed budget matters, which is why this case is the most robust of the three CC-TIME cases to the race."
         },
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW",
+          "pattern": "Lx 1: signal phase now CONNECTOR YELLOW",
           "within_ms": 205000,
           "description": "CORRECTION vs the .md's stated '60.0-60.5s from drain start': reading lx_fsm.c:1084-1115 directly shows the 60s LX_DRAIN_MAX_EXTENSION_MS cap (lx_timer.h:71) only bounds the EXTENSION portion, which itself only begins after the ordinary LX_PEAK_CONNECTOR_GREEN_MS=30000 baseline elapses - so with QUEUE_WARNING held forever, TOTAL phase duration from the 'CONNECTOR GREEN' line to 'CONNECTOR YELLOW' is 30000+60000=90000ms, not 60000ms as the doc's worked example states. This is exactly the kind of 'doc says X, current code says Y' discrepancy the task brief asked to flag and resolve in favor of the source - recommend this be raised with the Compliance Agent the same way the TC-02/03 offset fix was. The window here (205000) covers the worst case: slow-branch CONNECTOR_GREEN start (~108s per the race note above) + 90000ms + ~7s margin for tick/process jitter, so it will report PASS well before ~3.4 minutes into the run regardless of which race branch occurred - a human wanting the precise observed total should read results/CC-TIME-02/L1.log's phase-transition line count/order directly."
         }
@@ -506,13 +506,13 @@
         },
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> CONNECTOR GREEN",
+          "pattern": "Lx 1: signal phase now CONNECTOR GREEN",
           "within_ms": 120000,
           "description": "Same fast/slow race as CC-TIME-01/02 - see CC-TIME-01's description for the full reasoning."
         },
         {
           "node_id": "L1",
-          "pattern": "Lx 1: SIGNAL -> CONNECTOR YELLOW",
+          "pattern": "Lx 1: signal phase now CONNECTOR YELLOW",
           "within_ms": 93000,
           "description": "Re-interpretation of the doc's 'clear at giay thu 12' vs the corrected drain-extension timing model (see CC-TIME-01/02's descriptions: extension only starts ~30s into CONNECTOR_GREEN, not from its very start). Under the expected FAST branch, CONNECTOR_GREEN starts ~54s and its extension window opens ~84s; this case clears QUEUE_WARNING at t=88000ms - i.e. only ~4s into the up-to-60s extension window (the doc's original intent of clearing 'early', now correctly anchored to when the extension actually begins rather than to phase start) - so the phase should end at the very next 4000ms recheck, ~4300ms later (88000+4300=92300; window rounds up to 93000), demonstrating it ends nowhere near the 60s/144000ms cap. Distinguishes this case from CC-TIME-01 (which clears mid-way through the extension window, ~30s in) purely by how early within the extension the flag is cleared. KNOWN RISK: same cross-node race as CC-TIME-01 - if the slow branch occurred (CONNECTOR_GREEN starting ~108s instead of ~54s), clearing at 88000 would land BEFORE CONNECTOR_GREEN even starts, and this check would very likely FAIL; treat a failure here as a signal to check results/CC-TIME-03/{L1,RL1}.log for which race branch actually occurred before assuming a drain-logic regression."
         }
@@ -573,7 +573,7 @@
         },
         {
           "node_id": "RL1",
-          "pattern": "RLx: FAULT latched \\(fault bit 0x[0-9a-fA-F]+\\)",
+          "pattern": "RLx: FAULT latched \\(GATE_CONFIRM_MISSING, bit 0x[0-9a-fA-F]+\\)",
           "within_ms": 21200,
           "description": "RC-03/RC-06: RLX_CLOSING_DEADLINE_MS=15000 (rlx_timer.h:16) is measured from entry to CLOSING (state_elapsed_ms reset in enter_closing(), rlx_fsm.c:162-166), NOT from TRAIN_APPROACHING - so the real total budget before FAULT_GATE_CONFIRM_MISSING (rlx_fsm.c:139-141 check_closing_or_reclosing_complete()) is RLX_WARNING_TO_CLOSING_MS+RLX_CLOSING_DEADLINE_MS=5000+15000=20000ms, matching Appendix B4's '20s' figure rather than the more misleading '15s' constant name. Doc window is 20.0-21.0s from flashers-ON; this adds ~200ms for the key-press offsets."
         }

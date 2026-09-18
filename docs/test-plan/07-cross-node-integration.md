@@ -174,7 +174,7 @@ phụ thuộc** thứ tự đó.
     `"RLx: FAULT_REPORT to C1 dropped - outgoing queue full or stopping"`,
     `"RLx: CROSSING_STATUS to <id> dropped - outgoing queue full or stopping"`.
   - Thay đổi đèn thật (mô phỏng bằng `printf`, `app/intersection/src/lx_signal.c`):
-    `"Lx <id>: SIGNAL -> <TÊN PHA>"` (`ARTERIAL GREEN`, `ARTERIAL YELLOW`,
+    `"Lx <id>: signal phase now <TÊN PHA>"` (`ARTERIAL GREEN`, `ARTERIAL YELLOW`,
     `ALL RED (A to B)`, `CONNECTOR GREEN`, `CONNECTOR YELLOW`,
     `ALL RED (B to A)`), và khi override kết thúc:
     `"Lx <id>: override cleared/expired - running safe clearance sequence"`.
@@ -226,7 +226,7 @@ phụ thuộc** thứ tự đó.
   3. Quan sát log Central.
   4. Quan sát console của L1 (VM2A), L3 (VM2B), L5 (VM2C).
   5. Ghi lại thời điểm wall-clock (giờ hệ thống của từng VM, dùng `date`)
-     tại thời điểm mỗi Lx in `"SIGNAL -> ARTERIAL GREEN"` ở lần bắt đầu pha
+     tại thời điểm mỗi Lx in `"signal phase now ARTERIAL GREEN"` ở lần bắt đầu pha
      xanh liên tuyến **kế tiếp** sau khi nhận profile (không phải pha đang
      chạy dở — theo thiết kế, offset chỉ áp dụng tại ranh giới pha mới).
 - **Kết quả mong đợi**:
@@ -312,9 +312,9 @@ phụ thuộc** thứ tự đó.
     vì không có ped clearance đang chạy).
   - Trên console L2 (VM2), **thứ tự log thật quan sát được** là: L2 vẫn
     chạy hết pha hiện tại bình thường, sau đó khi tới ranh giới `ALL_RED`,
-    xuất hiện `"Lx 2: SIGNAL -> ALL RED (A to B)"` (hoặc `(B to A)`, tuỳ
+    xuất hiện `"Lx 2: signal phase now ALL RED (A to B)"` (hoặc `(B to A)`, tuỳ
     ranh giới nào tới trước), **ngay sau đó** là
-    `"Lx 2: SIGNAL -> ARTERIAL GREEN"` — đây chính là bằng chứng đèn đã đổi
+    `"Lx 2: signal phase now ARTERIAL GREEN"` — đây chính là bằng chứng đèn đã đổi
     theo lệnh override xuyên node (không phải chỉ ACK ở tầng IPC).
   - Việc ACK ở bước Central xảy ra gần như tức thời (< 1s), nhưng đèn đổi
     màu thật ở L2 có thể trễ tới hết pha hiện tại — ghi rõ độ trễ quan sát
@@ -329,7 +329,7 @@ phụ thuộc** thứ tự đó.
   biệt với TC-XNODE-04 nếu chạy nối tiếp trong cùng buổi test.
 - **Các bước**: giống TC-XNODE-04 nhưng ở bước 3 nhập `1` (connector).
 - **Kết quả mong đợi**: Console L4 in
-  `"Lx 4: SIGNAL -> ALL RED (...)"` rồi `"Lx 4: SIGNAL -> CONNECTOR GREEN"`
+  `"Lx 4: signal phase now ALL RED (...)"` rồi `"Lx 4: signal phase now CONNECTOR GREEN"`
   (khác pha với TC-XNODE-04) — xác nhận `target_movement` truyền đúng xuyên
   node, không bị Lx diễn giải sai/mặc định về arterial.
 
@@ -352,11 +352,11 @@ phụ thuộc** thứ tự đó.
   1. Trên C1, nhấn `o`, chọn Lx `1`, movement bất kỳ (`0`), duration hợp lệ
      (`60000`).
   2. Quan sát log Central.
-  3. Quan sát console L1 — xác nhận không có dòng `SIGNAL ->` mới nào phát
+  3. Quan sát console L1 — xác nhận không có dòng `signal phase now` mới nào phát
      sinh do lệnh override này.
 - **Kết quả mong đợi**:
   - Central: `"C1: REQUEST_OVERRIDE to <L1 id> -> NACK reason=RAILWAY_CONFLICT"`.
-  - Console L1 không in thêm dòng `SIGNAL ->` nào ngoài các dòng đã do
+  - Console L1 không in thêm dòng `signal phase now` nào ngoài các dòng đã do
     preemption railway gây ra trước đó — đèn giữ nguyên trạng thái an toàn
     do railway preemption quyết định, override của Central bị từ chối hoàn
     toàn (không có hiệu lực một phần).
@@ -388,7 +388,7 @@ phụ thuộc** thứ tự đó.
     clearance như bình thường.
   - Sau khi ped clearance kết thúc, override tự chuyển `OVR_ACTIVE` và đèn
     L3 đổi sang `CONNECTOR GREEN` tại ranh giới ALL_RED kế tiếp — quan sát
-    dòng `"Lx 3: SIGNAL -> CONNECTOR GREEN"` xuất hiện **sau** khi ped
+    dòng `"Lx 3: signal phase now CONNECTOR GREEN"` xuất hiện **sau** khi ped
     clearance đã hoàn tất, không phải ngay sau ACK_PENDING.
 
 #### TC-XNODE-08: RENEW_OVERRIDE rồi CANCEL_OVERRIDE cross-node
