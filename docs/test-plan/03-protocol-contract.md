@@ -106,8 +106,8 @@ nào >= 90000, nên case biên phải dùng test_client.
 - **Loại**: Negative
 - **Verb**: MSG_SET_TIMING_PROFILE
 - **Liên quan**: NACK_REASON_FAULT_ACTIVE
-- **Môi trường**: (D) cần công cụ hỗ trợ ép fault. `lx_sensor.c` hiện KHÔNG có phím lỗi thủ công (khác `rlx_sensor.c`'s `x`/`f`), và PA-10 chỉ thật sự trip khi luồng server-thread của Lx ngừng tick >= 2s liên tục (`lx_watchdog.c`, `LX_WATCHDOG_CHECK_INTERVAL_S=2`) - không có cách kích hoạt xác định bằng thao tác bàn phím/CLI thông thường. Đề xuất: bổ sung tạm 1 phím DEMO-ONLY vào `lx_sensor.c` gọi thẳng `lx_fsm_report_watchdog_trip(&fsm)`, đúng khuôn mẫu đã có ở `rlx_sensor.c`'s phím `f`, để nhóm test có thể ép `SUPERVISORY_FAULT_SAFE` mà không cần chờ watchdog thật.
-- **Chuẩn bị**: Sau khi có phím demo (hoặc gắn debugger tạm dừng thread server của `lx_main 1` bằng breakpoint > 2s), xác nhận qua log "Lx: WATCHDOG - no phase-timer activity ... reporting fault" xuất hiện.
+- **Môi trường**: (B) — bước gửi `SET_TIMING_PROFILE` bản thân nó KHÔNG cần test_client (dùng đúng phím `t` thật của `c_operator.c`). Vấn đề thật là **precondition**: `lx_sensor.c` hiện KHÔNG có phím lỗi thủ công (khác `rlx_sensor.c`'s `x`/`f`), và PA-10 chỉ thật sự trip khi luồng server-thread của Lx ngừng tick >= 2s liên tục (`lx_watchdog.c`, `LX_WATCHDOG_CHECK_INTERVAL_S=2`) — con đường duy nhất là `lx_fsm_report_watchdog_trip()` gọi từ `lx_watchdog_thread()` (`05-fault-safety.md:402`), không có cách kích hoạt xác định bằng thao tác bàn phím/CLI thông thường. **Case này Skip không phải vì thiếu test_client, mà vì thiếu cách ép Lx vào `SUPERVISORY_FAULT_SAFE`** — 2 đường khả dĩ đều chưa dùng được: debugger giữ riêng server thread (chưa có, xem TC-FAULT-17/18) hoặc `kill -STOP`/`kill -CONT` (kết quả CHƯA XÁC ĐỊNH, xem mâu thuẫn TC-SC01A-3 vs TC-FAULT-16). Đề xuất lâu dài: bổ sung 1 phím DEMO-ONLY vào `lx_sensor.c` gọi thẳng `lx_fsm_report_watchdog_trip(&fsm)`, đúng khuôn mẫu đã có ở `rlx_sensor.c`'s phím `f`.
+- **Chuẩn bị**: L1 ở `SUPERVISORY_FAULT_SAFE` — **hiện chưa có cách thiết lập đáng tin cậy** (xem giải thích ở trên).
 - **Các bước**: Từ C1: `t` -> `1` (broadcast R1) trong khi L1 đang FAULT_SAFE.
 - **Kết quả mong đợi**: `central_log.txt`: `C1: SET_TIMING_PROFILE to 1 -> NACK reason=FAULT_ACTIVE`.
 
@@ -173,8 +173,8 @@ kế tiếp - SC-01A).
 - **Loại**: Negative
 - **Verb**: MSG_SET_MODE
 - **Liên quan**: NACK_REASON_FAULT_ACTIVE
-- **Môi trường**: (D) - cùng lý do/đề xuất như TC-MSG-2 (cần phím demo ép fault trên `lx_sensor.c`, hiện chưa có).
-- **Chuẩn bị**: L1 ở `SUPERVISORY_FAULT_SAFE`.
+- **Môi trường**: (B) — cùng lý do như TC-MSG-2: gửi `SET_MODE` không cần test_client, nhưng **thiếu cách ép Lx vào `SUPERVISORY_FAULT_SAFE`** (chưa có phím demo trên `lx_sensor.c`, debugger chưa dùng, `kill -STOP` chưa xác định — xem giải thích đầy đủ ở TC-MSG-2).
+- **Chuẩn bị**: L1 ở `SUPERVISORY_FAULT_SAFE` — hiện chưa có cách thiết lập đáng tin cậy.
 - **Các bước**: Tại C1: `m` -> `1` -> `1`.
 - **Kết quả mong đợi**: `central_log.txt`: `C1: SET_MODE to 1 -> NACK reason=FAULT_ACTIVE`.
 
@@ -293,8 +293,8 @@ bỏ qua Central.
 - **Loại**: Negative
 - **Verb**: MSG_REQUEST_OVERRIDE
 - **Liên quan**: NACK_REASON_FAULT_ACTIVE
-- **Môi trường**: (D) - cùng lý do TC-MSG-2 (cần phím demo ép fault, chưa có trong `lx_sensor.c`).
-- **Chuẩn bị**: L1 ở `SUPERVISORY_FAULT_SAFE`.
+- **Môi trường**: (B) — cùng lý do TC-MSG-2: gửi `REQUEST_OVERRIDE` không cần test_client, nhưng **thiếu cách ép Lx vào `SUPERVISORY_FAULT_SAFE`** (xem giải thích đầy đủ ở TC-MSG-2).
+- **Chuẩn bị**: L1 ở `SUPERVISORY_FAULT_SAFE` — hiện chưa có cách thiết lập đáng tin cậy.
 - **Các bước**: C1: `o` -> `1` -> `0` -> `duration_ms: 10000`.
 - **Kết quả mong đợi**: `central_log.txt`: `C1: REQUEST_OVERRIDE to 1 -> NACK reason=FAULT_ACTIVE`.
 
@@ -509,7 +509,7 @@ thông thường, không cần công cụ hay bản vá bổ sung (xem TC-MSG-32
 - **Loại**: Positive (trước đây là Edge case/Negative "RESULT_ERROR" - hành vi đó đã lỗi thời, xem mục 6's "Cập nhật")
 - **Verb**: MSG_REQUEST_FAULT_CLEAR
 - **Liên quan**: `lx_fsm_on_request_fault_clear()` (`lx_fsm.c`) - nay có case riêng trong `lx_main.c`'s `on_request()`, không còn rơi vào `default:`. `c_operator.c`'s phím `f` hỏi node type (0=Lx, 1=RLx) qua `handle_request_fault_clear()`, nên có thể nhắm L1 trực tiếp từ console mà không cần test_client.
-- **Môi trường**: (B) C1 + L1 là đủ (không còn bắt buộc (D)/test_client cho case cơ bản này).
+- **Môi trường**: (B) C1 + L1 là đủ về mặt gửi lệnh (không còn bắt buộc (D)/test_client cho case cơ bản này). **Nhưng precondition (đưa L1 vào `SUPERVISORY_FAULT_SAFE`) hiện chưa có cách thiết lập đáng tin cậy** — xem giải thích ở TC-MSG-2 (không có demo key, debugger chưa dùng, `kill -STOP` chưa xác định) — nên case này **Skip**, không phải Pass, cho tới khi có 1 trong các đường đó.
 - **Chuẩn bị**: Đưa L1 vào `SUPERVISORY_FAULT_SAFE` (ví dụ qua watchdog trip, xem TC-SC03A-6 Phần 1 của `02-state-machine-transition.md`), và đảm bảo `last_crossing_state==CROSSING_OPEN` (không có RLx kề nào đang pre-empt) để kỳ vọng resume đúng `NORMAL_OPERATION`.
 - **Các bước**: Tại C1: `f` -> node type `0` (Lx) -> Lx number `1`.
 - **Kết quả mong đợi**: `central_log.txt`: `C1: REQUEST_FAULT_CLEAR to 1 -> ACK`. `fsm->faults` về `FAULT_NONE`, SUPERVISORY L1 rời `FAULT_SAFE` về `NORMAL_OPERATION` (`3`). Hàm này không có nhánh NACK (unconditional/idempotent, khác `rlx_fsm_on_fault_clear()` - không có trạng thái vật lý nào phải re-verify ở Lx).
@@ -518,7 +518,7 @@ thông thường, không cần công cụ hay bản vá bổ sung (xem TC-MSG-32
 - **Loại**: Positive (safety-relevant regression case)
 - **Verb**: MSG_REQUEST_FAULT_CLEAR
 - **Liên quan**: `last_crossing_state` (`lx_fsm.h`) - re-audit fix: một fault-clear xảy ra trong lúc crossing kề bên vẫn chưa `OPEN` không được phép âm thầm quên mất việc suppress đang có, kẻo cho phép green hướng về một crossing vẫn còn đóng.
-- **Môi trường**: (B) C1 + L1 + RL1.
+- **Môi trường**: (B) C1 + L1 + RL1 về mặt gửi lệnh. **Cùng vấn đề precondition như TC-MSG-33** — cần trip watchdog để vào `SUPERVISORY_FAULT_SAFE`, hiện chưa có cách thiết lập đáng tin cậy — case này **Skip**, không phải Pass.
 - **Chuẩn bị**: Đưa L1 vào `RAILWAY_PREEMPTION` thật (RL1 ở WARNING/CLOSED, gửi `CROSSING_STATUS` khác `CROSSING_OPEN` tới L1), sau đó trip watchdog để L1 vào `FAULT_SAFE` trong khi vẫn đang pre-empt (SUPERVISORY chuyển thẳng `1 -> 0`, `fsm->last_crossing_state` vẫn giữ giá trị non-OPEN gần nhất vì `lx_fsm_on_crossing_status()` cập nhật trường này vô điều kiện, kể cả khi đang FAULT_SAFE).
 - **Các bước**: Tại C1: `f` -> `0` (Lx) -> `1`, **trước khi** RL1 kịp báo `OPEN` trở lại.
 - **Kết quả mong đợi**: `C1: REQUEST_FAULT_CLEAR to 1 -> ACK`, nhưng SUPERVISORY L1 sau đó phải là `RAILWAY_PREEMPTION` (`1`), **không phải** `NORMAL_OPERATION` (`3`) - CONNECTOR_GREEN (hướng crossing) vẫn bị suppress cho tới khi L1 thực sự nhận `CROSSING_STATUS(OPEN)` từ RL1. Đây là hành vi ĐÚNG theo thiết kế mới (trước bản vá, code cũ luôn resume `NORMAL_OPERATION` vô điều kiện, có thể cho phép green hướng về crossing đang đóng).

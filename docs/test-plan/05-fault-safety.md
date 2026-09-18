@@ -341,15 +341,18 @@ trên bản build không có phím đó), nhưng **không còn là cách duy nh�
   thao tác cục bộ - "local" ở đây chỉ khác về đường đi của yêu cầu, không
   phải một lối tắt an toàn khác.
 
-### TC-FAULT-10: Phím `f` cục bộ ACK khi gate thực sự đã mở (đối chứng dương cho TC-FAULT-09)
-- **Loại**: Positive - cần debugger như TC-FAULT-07
+### TC-FAULT-10: Phím `f` cục bộ ACK khi gate thực sự đã mở (đối chứng dương cho TC-FAULT-09, nay keyboard-only qua phím `r`, không cần debugger)
+- **Loại**: Positive — **cập nhật: không còn cần debugger**, dùng phím `r`
+  (`rlx_gate_force_confirmed_open()`) giống TC-FAULT-22, chỉ khác là bấm
+  `f` tại chính console `rlx_main` thay vì qua Central. (`tools/test-automation/cases/05-fault-safety.json`'s `TC-FAULT-10` đã dùng đúng chuỗi thao tác này.)
 - **Liên quan**: RC-09, RC-10
-- **Môi trường**: (A), cộng debugger như TC-FAULT-07
-- **Các bước**: Lặp lại bước 1-3 của TC-FAULT-07 (dùng debugger ép gate
-  xác nhận mở trong khi vẫn `RLX_FAULT`), sau đó bấm `f` ngay tại
-  console của `rlx_main` thay vì qua Central.
+- **Môi trường**: (A) — `rlx_main 1` đơn lẻ, không cần Central, không cần debugger.
+- **Các bước**:
+  1. Bấm `x` rồi `0` tại RL1 để vào `RLX_FAULT` (giống TC-FAULT-01/TC-FAULT-09).
+  2. Sau khi `"RLx: FAULT latched (GATE_CONFIRM_MISSING, bit 0x1)"` xuất hiện, bấm `r` để ép `g_confirmed_open=1` (log `"[DEMO] Gate mechanism simulated as physically repaired - now confirmed OPEN"`).
+  3. Bấm `f` ngay tại console `rlx_main` (không qua Central).
 - **Kết quả mong đợi**: `RESULT_ACK`, `fsm->state -> RLX_OPEN`, giống hệt
-  kết quả của TC-FAULT-07 nhưng đến từ đường cục bộ - xác nhận hai đường
+  kết quả của TC-FAULT-07/TC-FAULT-22 nhưng đến từ đường cục bộ - xác nhận hai đường
   (Central IPC và phím cục bộ) chia sẻ đúng một điểm thực thi logic an
   toàn (`rlx_fsm_on_fault_clear()`), không có bản sao logic bị lệch nhau.
 

@@ -43,16 +43,16 @@ makefile errors later.
 
 ## 2. Build
 
-Two options, same output (`c_main`, `lx_main`, `rlx_main`) — pick one:
+Two options, two different output names — pick one and use that name consistently for the rest of this guide:
 
-**Option A — QNX Momentics IDE** (full detail in
+**Option A — QNX Momentics IDE** (the team's confirmed real path, full detail in
 `QNX_MOMENTICS_INTEGRATION.md` §1-4): launch IDE → create 3 `QNX
-Executable` projects (`c_main`/`lx_main`/`rlx_main`, language `C`, CPU
-`x86_64`) → import each project's
+Executable` projects named `Central_Controller`/`Intersection_Controller`/`Railway_Controller`, language `C`, CPU
+`x86_64` → import each project's
 `.c`/`.h` files from `app/<node>/src|includes` + `app/shared/src/
 qnet_utils.c` + `app/shared/includes/*.h` → add `app/shared/includes` to
 each project's include path (`Properties → C/C++ General → Paths and
-Symbols`) → `Build Project`. Binaries land in `build/x86_64-debug/`.
+Symbols`) → `Build Project`. Binaries are named after the project (`Central_Controller`/`Intersection_Controller`/`Railway_Controller`) — confirm the exact output path in your own Momentics workspace.
 
 **Option B — command line, from a QNX SDP shell/terminal** (faster, no
 IDE project setup):
@@ -68,9 +68,10 @@ check (plain host gcc, no QNX headers) — useful on a machine with no SDP
 at all, but it does **not** prove the real build works; use `make`/the
 IDE for that.
 
-**Confirm it actually built**: you should have three real files now
-(`build/bin/c_main`/`lx_main`/`rlx_main`, or the IDE's `build/x86_64-
-debug/` equivalents). If a build fails, check the `Problems` tab (IDE) or
+**Confirm it actually built**: you should have three real files now —
+`Central_Controller`/`Intersection_Controller`/`Railway_Controller` (Momentics)
+or `build/bin/c_main`/`lx_main`/`rlx_main` (`make`), depending on which option
+you used. If a build fails, check the `Problems` tab (IDE) or
 the terminal output (`make`) — don't skip ahead with missing binaries.
 
 ## 3. Create your target VM(s)
@@ -112,8 +113,9 @@ Before attempting a full 10-node topology, confirm ONE binary runs at
 all. SSH into your VM:
 
 ```sh
-/tmp/lx_main 1
+/tmp/Intersection_Controller 1
 ```
+(or `/tmp/lx_main 1` if you built via `make` instead of Momentics)
 
 You should immediately see `Lx 1: signal phase now ARTERIAL GREEN` and, every
 few seconds, phase transitions printing on their own (48s/4s/2s/30s/4s/2s

@@ -1,6 +1,12 @@
 # QNX Deployment Run Guide
 
-This document outlines the execution sequence and networking configurations required to deploy the Traffic Control System binaries across QNX targets. It covers standalone, dual-host, and tri-host topologies using the confirmed Makefile binary naming.
+This document outlines the execution sequence and networking configurations required to deploy the Traffic Control System binaries across QNX targets. It covers standalone, dual-host, and tri-host topologies.
+
+**Binary naming — two valid build paths, confirm which one your deployment actually uses**:
+- **QNX Momentics IDE build**: the team's real Momentics projects are named `Central_Controller`, `Intersection_Controller`, `Railway_Controller` — confirmed directly on the team's QNX Momentics setup. A Momentics C/C++ executable project's output filename matches its project name by default, so building via the IDE produces executables of these same names (path depends on the configured build output directory, typically under the project's own `Debug`/`x86_64-debug` folder — confirm the exact path in your own Momentics workspace rather than assuming `build/x86_64-debug/`).
+- **Command-line `make` build**: the root `Makefile` (confirmed in-repo) produces `build/bin/{c_main,lx_main,rlx_main}` instead — a separate, independently valid path with different output names.
+
+Use whichever name matches how **your** binaries were actually built — this guide defaults to the Momentics names (`Central_Controller`/`Intersection_Controller`/`Railway_Controller`) since that is the path confirmed in use for the real 10-VM deployment; swap in `c_main`/`lx_main`/`rlx_main` throughout if you built via `make` instead.
 
 > *CRITICAL QNET REQUIREMENT*
 >> **QNET** is not automatically loaded on new QNX x86 VM Targets. You must configure the network adapters and startup scripts to enable transparent distributed processing before executing the binaries.
@@ -21,33 +27,33 @@ To verify that all nodes have discovered each other across the network, execute:
 ```sh
 ls /net
 ```
-**Success Criteria**: The output must list all 10 node hostnames: `VM_x86_Target01` through `VM_x86_Target10`.
+**Success Criteria**: the output must list all 10 node hostnames. `VM_x86_Target01` through `VM_x86_Target10` (used throughout this guide, including in every `TRAFFIC_NODE_MAP` example) is an **illustrative naming convention, not a guaranteed literal `ls /net` output** — confirm your VMs' actual Qnet hostnames with this command first and substitute your real names into every `TRAFFIC_NODE_MAP` string below if they differ.
 
 
 ## 2. Binary Transfer & Execution Sequence
 **Goal**: Move compiled binaries to the targets and execute them in the correct dependency order.
 
 ### 2.0 Build
-Build the three binaries either via the QNX Momentics IDE (producing outputs in `build/x86_64-debug/`), or from the command line using `make` at the repo root (producing outputs in `build/bin/`):
+Build via the QNX Momentics IDE — the team's confirmed real projects are `Central_Controller`, `Intersection_Controller`, `Railway_Controller` (see `docs/QNX_MOMENTICS_INTEGRATION.md`). Alternatively, `make` at the repo root produces `build/bin/{c_main,lx_main,rlx_main}` instead — a separate, independently valid path; if you used this path, substitute those names for every binary filename below (the numeric `argv[1]` argument and all `TRAFFIC_NODE_MAP` suffixes stay identical either way, since those are unrelated to the executable's filename).
 
-*   **IDE Outputs**: `c_main`, `lx_main`, `rlx_main`
-*   **Command Line Outputs**: `build/bin/c_main`, `build/bin/lx_main`, `build/bin/rlx_main`
+*   **Momentics IDE Outputs**: `Central_Controller`, `Intersection_Controller`, `Railway_Controller`
+*   **Command Line (`make`) Outputs**: `build/bin/c_main`, `build/bin/lx_main`, `build/bin/rlx_main`
 
 ### 2.1 File Transfer Mapping
 Using the QNX Target File System Navigator inside Momentics, transfer the compiled binaries from your host machine into the target `/tmp` directories according to this exact node deployment matrix:
 
 | Target Hostname | Role Identifier | File to Upload | Execution Subsystem |
 |:---|:---|:---|:---|
-| `VM_x86_Target01` | `C1` | `c_main` | Central Supervisor Node |
-| `VM_x86_Target02` | `L1` | `lx_main` | Intersection Node 1 |
-| `VM_x86_Target03` | `L2` | `lx_main` | Intersection Node 2 |
-| `VM_x86_Target04` | `L3` | `lx_main` | Intersection Node 3 |
-| `VM_x86_Target05` | `L4` | `lx_main` | Intersection Node 4 |
-| `VM_x86_Target06` | `L5` | `lx_main` | Intersection Node 5 |
-| `VM_x86_Target07` | `L6` | `lx_main` | Intersection Node 6 |
-| `VM_x86_Target08` | `RL1` | `rlx_main` | Railway Node 1 |
-| `VM_x86_Target09` | `RL2` | `rlx_main` | Railway Node 2 |
-| `VM_x86_Target10` | `RL3` | `rlx_main` | Railway Node 3 |
+| `VM_x86_Target01` | `C1` | `Central_Controller` | Central Supervisor Node |
+| `VM_x86_Target02` | `L1` | `Intersection_Controller` | Intersection Node 1 |
+| `VM_x86_Target03` | `L2` | `Intersection_Controller` | Intersection Node 2 |
+| `VM_x86_Target04` | `L3` | `Intersection_Controller` | Intersection Node 3 |
+| `VM_x86_Target05` | `L4` | `Intersection_Controller` | Intersection Node 4 |
+| `VM_x86_Target06` | `L5` | `Intersection_Controller` | Intersection Node 5 |
+| `VM_x86_Target07` | `L6` | `Intersection_Controller` | Intersection Node 6 |
+| `VM_x86_Target08` | `RL1` | `Railway_Controller` | Railway Node 1 |
+| `VM_x86_Target09` | `RL2` | `Railway_Controller` | Railway Node 2 |
+| `VM_x86_Target10` | `RL3` | `Railway_Controller` | Railway Node 3 |
 
 ### 2.2 Cross-Node Addressing (`TRAFFIC_NODE_MAP`)
 `qnet_utils.c` registers every controller's Qnet attach point globally (e.g., `traffic/c1` under `/dev/name/global/...`). Because every controller now resides on a separate VM target, **you must export the complete cluster map in EVERY active shell terminal before running its binary.**
@@ -66,8 +72,8 @@ Connect to `VM_x86_Target01`. Setup the network cluster environment map, grant e
 
 ```sh
 export TRAFFIC_NODE_MAP="c1=VM_x86_Target01,l1=VM_x86_Target02,l2=VM_x86_Target03,l3=VM_x86_Target04,l4=VM_x86_Target05,l5=VM_x86_Target06,l6=VM_x86_Target07,rl1=VM_x86_Target08,rl2=VM_x86_Target09,rl3=VM_x86_Target10"
-chmod +x /tmp/c_main
-/tmp/c_main
+chmod +x /tmp/Central_Controller
+/tmp/Central_Controller
 ```
 
 #### Step 2: Start Railway Crossing Safety Nodes (`RL1-RL3`)
@@ -76,20 +82,20 @@ Connect to targets 8, 9, and 10. Pass the exact unique string identifier via `ar
 - **On `VM_x86_Target08` (Railway Node 1)**:
   ```sh
   export TRAFFIC_NODE_MAP="..." # Paste full map string from 2.2
-  chmod +x /tmp/rlx_main
-  /tmp/rlx_main 1
+  chmod +x /tmp/Railway_Controller
+  /tmp/Railway_Controller 1
   ```
 - **On `VM_x86_Target09` (Railway Node 2)**:
   ```sh
   export TRAFFIC_NODE_MAP="..."
-  chmod +x /tmp/rlx_main
-  /tmp/rlx_main 2
+  chmod +x /tmp/Railway_Controller
+  /tmp/Railway_Controller 2
   ```
 - **On `VM_x86_Target10` (Railway Node 3)**:
   ```sh
   export TRAFFIC_NODE_MAP="..."
-  chmod +x /tmp/rlx_main
-  /tmp/rlx_main 3
+  chmod +x /tmp/Railway_Controller
+  /tmp/Railway_Controller 3
   ```
 
 #### Step 3: Start Intersection Local Controllers (`L1-L6`)
@@ -98,28 +104,28 @@ Connect to targets 2 through 7. Pass the unique intersection instance code as a 
 - **On `VM_x86_Target02` (Intersection 1)**:
   ```sh
   export TRAFFIC_NODE_MAP="..." # Paste full map string from 2.2
-  chmod +x /tmp/lx_main
-  /tmp/lx_main 1
+  chmod +x /tmp/Intersection_Controller
+  /tmp/Intersection_Controller 1
   ```
 - **On `VM_x86_Target03` (Intersection 2)**:
   ```sh
-  /tmp/lx_main 2
+  /tmp/Intersection_Controller 2
   ```
 - **On `VM_x86_Target04` (Intersection 3)**:
   ```sh
-  /tmp/lx_main 3
+  /tmp/Intersection_Controller 3
   ```
 - **On `VM_x86_Target05` (Intersection 4)**:
   ```sh
-  /tmp/lx_main 4
+  /tmp/Intersection_Controller 4
   ```
 - **On `VM_x86_Target06` (Intersection 5)**:
   ```sh
-  /tmp/lx_main 5
+  /tmp/Intersection_Controller 5
   ```
 - **On `VM_x86_Target07` (Intersection 6)**:
   ```sh
-  /tmp/lx_main 6
+  /tmp/Intersection_Controller 6
   ```
 
 ## 3. Deployment Topologies

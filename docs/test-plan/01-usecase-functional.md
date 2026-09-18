@@ -50,7 +50,7 @@ Thứ tự khởi động khuyến nghị theo `docs/QNX_DEPLOYMENT_RUN_GUIDE.md
 ## 2. Cách đọc một test case
 
 ```
-### TC-UCxx-y: <tên ngắn>
+### TC-EXAMPLE-N: <tên ngắn> (mẫu minh hoạ, KHÔNG phải case thật — không tính vào tổng số case)
 - **Loại**: Positive / Negative / Edge case
 - **Liên quan**: UC-xx <tên>, bước nào trong main/alt flow (theo usecase.md)
 - **Môi trường**: (A)/(B)/(C) — xem mục 1

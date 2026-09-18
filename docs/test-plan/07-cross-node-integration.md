@@ -166,14 +166,20 @@ Thứ tự khởi động "khuyến nghị" theo `README.md`/`QNX_DEPLOYMENT_RUN
 là C1 → RLx → Lx, nhưng mục 5.7 của file này kiểm chứng hệ thống **không
 phụ thuộc** thứ tự đó.
 
-**Tên binary**: `c_main`/`lx_main`/`rlx_main` là tên **đã xác nhận** từ root
-`Makefile` (link target thật, `build/bin/{c_main,lx_main,rlx_main}` tồn tại
-trong repo) — dùng tên này xuyên suốt file. Nếu build bằng QNX Momentics IDE
-thay vì `make`, tên file thực thi phụ thuộc tên project được đặt lúc tạo
-(xem `docs/QNX_MOMENTICS_INTEGRATION.md` mục đặt tên project) — chưa có
-project Momentics nào được xác nhận là một phần của bản build nộp bài
-(`traffic_light/` là project Momentics cũ, không đồng bộ với `app/`, xem
-`docs/SOURCE_CODE_ORGANISATION.md`).
+**Tên binary**: file này dùng `c_main`/`lx_main`/`rlx_main` (tên link target
+thật trong root `Makefile`, `build/bin/{c_main,lx_main,rlx_main}`) làm ký
+hiệu ngắn gọn trong mọi ví dụ lệnh. **Bản demo 10-VM thật của nhóm build
+bằng QNX Momentics IDE, với project đặt tên `Central_Controller`/
+`Intersection_Controller`/`Railway_Controller`** (đã xác nhận trực tiếp trên
+máy QNX của nhóm — xem `docs/QNX_MOMENTICS_INTEGRATION.md`/
+`docs/QNX_DEPLOYMENT_RUN_GUIDE.md`) — tên file thực thi thật sự là tên
+project đó, không phải `c_main`/`lx_main`/`rlx_main`. Khi chạy trên bản
+demo thật, thay `./c_main` → `./Central_Controller`, `./lx_main N` →
+`./Intersection_Controller N`, `./rlx_main N` → `./Railway_Controller N`
+trong mọi lệnh ở mục 5 bên dưới (đối số số hiệu N giữ nguyên, hành vi runtime
+giống hệt nhau — chỉ tên file thực thi khác). Nếu nhóm build bằng `make`
+dòng lệnh thay vì Momentics thì mới dùng đúng tên `c_main`/`lx_main`/
+`rlx_main` như viết trong file.
 
 ## 3. Cách chạy từng node (nhắc lại nhanh)
 

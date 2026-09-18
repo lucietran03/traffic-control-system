@@ -446,7 +446,10 @@ Mỗi test case ghi rõ môi trường cần dùng:
   công, coi test này là "chạy khi có cơ hội tự nhiên" và ghi nhận qua log
   dài hạn (chạy hệ thống nhiều giờ với override liên tục được renew, theo
   dõi xem có bao giờ watchdog trip trùng với override active không) thay vì
-  một kịch bản bấm phím xác định.
+  một kịch bản bấm phím xác định. **Ghi Skip** trong báo cáo tổng hợp trừ khi
+  nhóm thực sự đã chạy phiên quan sát dài hạn nói trên (nhiều giờ liên tục)
+  hoặc có debugger giữ riêng server thread — một lần chạy ngắn không đủ để
+  khẳng định Pass cho race hai-luồng hiếm gặp này.
 
 ---
 
