@@ -506,7 +506,12 @@ trong `lx_fsm.h`): việc clear này resume đúng `RAILWAY_PREEMPTION`
 ### TC-FAULT-14b: REQUEST_FAULT_CLEAR đưa Lx thoát FAULT_SAFE về NORMAL_OPERATION (đã sửa - không còn known gap)
 - **Loại**: Positive
 - **Liên quan**: SC-03A, `lx_fsm_on_request_fault_clear()` (`lx_fsm.c`)
-- **Môi trường**: (B), phụ thuộc TC-FAULT-16/17 để trip watchdog Lx trước.
+- **Môi trường**: (B), phụ thuộc TC-FAULT-17 (đường debugger — TC-FAULT-16
+  là case phản chứng kill -STOP KHÔNG dùng ở đây) để trip watchdog Lx trước.
+  **Không có code-review fallback cho case này** (khác TC-FAULT-14c) — nên
+  **ghi Skip**, không phải Pass, cho tới khi có cách trip watchdog Lx thật
+  (debugger phù hợp, hoặc kill -STOP một khi mâu thuẫn với TC-FAULT-16 được
+  giải quyết).
 - **Chuẩn bị**: L1 đang `SUPERVISORY_FAULT_SAFE` (watchdog trip qua Nhóm 5),
   và không có RLx kề nào đang pre-empt (`last_crossing_state ==
   CROSSING_OPEN`, ví dụ chưa từng nhận `CROSSING_STATUS` non-OPEN, hoặc
@@ -617,7 +622,13 @@ cơ hội phát hiện ra gì cả.
   khi có máy QNX thật, cần chạy thực nghiệm `kill -STOP`/`kill -CONT` như
   mô tả ở cả hai file và ghi nhận kết quả thực tế quan sát được, rồi cập
   nhật lại cả hai tài liệu cho khớp với bằng chứng thực nghiệm đó (thay vì
-  chỉ tin theo lý luận có sẵn của một trong hai file).
+  chỉ tin theo lý luận có sẵn của một trong hai file). **Chính case này
+  phải ghi Skip trong báo cáo tổng hợp, không phải Pass** — kết quả
+  "KHÔNG có fault" ở trên chỉ là suy luận từ lý thuyết SIGSTOP/SIGCONT của
+  nhóm viết case, chưa phải kết quả quan sát thật trên máy QNX; công cụ
+  cần dùng (`kill -STOP`, `pidin`) hoàn toàn có sẵn, vấn đề là thực nghiệm
+  quyết định này chưa thực sự được chạy và ghi nhận trong lần chạy vừa
+  rồi.
 
 ### TC-FAULT-17: Best-effort - ép watchdog Lx trip bằng debugger (chặn riêng server thread)
 - **Loại**: Positive - best effort, phụ thuộc công cụ, có thể không tái
