@@ -438,11 +438,14 @@ trong `lx_fsm.h`): việc clear này resume đúng `RAILWAY_PREEMPTION`
 ### TC-FAULT-12: FAULT_SAFE luôn thắng, NACK mọi lệnh mới với FAULT_ACTIVE (review + runtime có điều kiện)
 - **Loại**: Positive, phụ thuộc điều kiện
 - **Liên quan**: SC-03A, PA-09
-- **Môi trường**: (B), phụ thuộc việc trip watchdog thành công (Nhóm 5,
-  TC-FAULT-16/17)
-- **Chuẩn bị**: Nếu TC-FAULT-16 (ép watchdog Lx trip qua debugger) thành
-  công, dùng đúng con Lx đó. Nếu không, **bỏ qua phần runtime, chỉ verify
-  bằng review code**.
+- **Môi trường**: (B), phụ thuộc việc trip watchdog thành công qua debugger
+  (Nhóm 5, TC-FAULT-17 — **không phải TC-FAULT-16**, vốn là case phản chứng
+  `kill -STOP` KHÔNG dùng debugger và kết luận KHÔNG trip được; TC-FAULT-17
+  mới là đường debugger thật)
+- **Chuẩn bị**: Nếu TC-FAULT-17 (ép watchdog Lx trip qua debugger) thành
+  công, dùng đúng con Lx đó. Nếu không (không có debugger phù hợp), **bỏ
+  qua phần runtime, chỉ verify bằng review code — không ghi Pass cho phần
+  runtime nếu chưa thực sự trip được**.
 - **Các bước (nếu trip được)**: Sau khi Lx vào `SUPERVISORY_FAULT_SAFE`,
   từ Central gửi lần lượt `m` (SET_MODE), `t` (SET_TIMING_PROFILE),
   `o` (REQUEST_OVERRIDE) tới đúng Lx đó.
@@ -461,13 +464,14 @@ trong `lx_fsm.h`): việc clear này resume đúng `RAILWAY_PREEMPTION`
 - **Loại**: Positive, phụ thuộc điều kiện - **tương tác đúng như yêu cầu
   kịch bản 6 của đề bài**
 - **Liên quan**: SC-03A, PA-10
-- **Môi trường**: (B), phụ thuộc TC-FAULT-16
+- **Môi trường**: (B), phụ thuộc TC-FAULT-17 (đường debugger — TC-FAULT-16
+  là case phản chứng kill -STOP KHÔNG trip được, không dùng ở đây)
 - **Chuẩn bị**: Từ Central, cấp một `REQUEST_OVERRIDE` (phím `o`) cho Lx
   mục tiêu với `duration_ms` đủ dài (ví dụ 60000), xác nhận
   `override_active = 1` trong STATUS/HEARTBEAT hiển thị ở console
   Central (`c_hmi.c`'s bảng trạng thái, cột `OVERRIDE`).
 - **Các bước**: Trong lúc override đang `OVR_ACTIVE`, ép watchdog trip
-  con Lx đó (xem TC-FAULT-16).
+  con Lx đó (xem TC-FAULT-17).
 - **Kết quả mong đợi**: `lx_fsm_report_watchdog_trip()` thấy
   `fsm->supervisory == SUPERVISORY_CENTRAL_OVERRIDE` -> gọi
   `lx_fsm_terminate_override_locked(fsm)` (đưa `override_substate`

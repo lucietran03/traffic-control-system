@@ -99,12 +99,42 @@ suy đoán):
 
 ## 2. Topology tham chiếu chuẩn (baseline) dùng cho toàn bộ file
 
-Trừ khi test case nói khác, mọi test case trong file này mặc định dùng
-topology sau — tương ứng **Case 2 "Two Computers"** trong root `README.md`
-(2 máy vật lý) và mục 3 "Case 2" của `docs/QNX_DEPLOYMENT_RUN_GUIDE.md`, chi
-tiết hoá thành 3 VM (mỗi VM một vai trò, dễ theo dõi log/console hơn khi
-viết test case) — PC A chạy 2 VM (Central + Intersection), PC B chạy 1 VM
-(Railway):
+**Topology demo thật là 10 VM QNX, mỗi VM chạy đúng 1 controller** (không có
+2 controller nào share chung 1 VM) — theo đúng
+`docs/QNX_DEPLOYMENT_RUN_GUIDE.md` mục 2.1/2.2:
+
+| VM thật (`VM_x86_TargetNN`) | Controller |
+|---|---|
+| `VM_x86_Target01` | `c_main` (C1) |
+| `VM_x86_Target02`..`07` | `lx_main 1`..`lx_main 6` (L1-L6, mỗi VM 1 Lx) |
+| `VM_x86_Target08`..`10` | `rlx_main 1`..`rlx_main 3` (RL1-RL3, mỗi VM 1 RLx) |
+
+`TRAFFIC_NODE_MAP` đầy đủ cho topology 10-VM này (export trong **mọi** shell,
+copy nguyên văn từ `QNX_DEPLOYMENT_RUN_GUIDE.md` mục 2.2):
+
+```sh
+export TRAFFIC_NODE_MAP="c1=VM_x86_Target01,l1=VM_x86_Target02,l2=VM_x86_Target03,l3=VM_x86_Target04,l4=VM_x86_Target05,l5=VM_x86_Target06,l6=VM_x86_Target07,rl1=VM_x86_Target08,rl2=VM_x86_Target09,rl3=VM_x86_Target10"
+```
+
+**Quy ước ký hiệu dùng xuyên suốt mục 5 của file này**: để các case bên dưới
+ngắn gọn, mọi ví dụ đều viết tắt bằng `VM1`/`VM2`/`VM3` theo một topology
+**rút gọn 3 VM** (PC A chạy `c_main` + toàn bộ 6 `lx_main` trên 2 VM riêng,
+PC B chạy 3 `rlx_main` — chi tiết bảng cũ bên dưới) — đây là fallback hợp lệ
+nếu nhóm không có đủ 10 VM, vẫn kiểm chứng đúng cơ chế Qnet cross-node
+(`TRAFFIC_NODE_MAP` định tuyến qua `/net/<node>/...` thật), chỉ là độ chi
+tiết-theo-VM thấp hơn bản demo 10-VM thật. **Khi chạy trên topology 10-VM
+thật**: thay `VM1` → `VM_x86_Target01`, và thay `VM2` → đúng
+`VM_x86_TargetNN` của Lx/RLx đang được nhắc tới trong case đó (vd case nói
+"L1 trên VM2" thì thực tế là `VM_x86_Target02`) — bảng mapping đầy đủ ở
+trên. Giá trị `offset_ms`/thời gian mong đợi trong mỗi case không đổi giữa
+2 topology, vì `TRAFFIC_NODE_MAP` chỉ ảnh hưởng định tuyến, không ảnh hưởng
+logic FSM.
+
+Bảng topology rút gọn 3-VM (baseline cho mọi ví dụ bên dưới trừ khi case nói
+khác) — tương ứng **Case 2 "Two Computers"** trong root `README.md` và mục 3
+"Case 2" của `docs/QNX_DEPLOYMENT_RUN_GUIDE.md`, chi tiết hoá thành 3 VM (mỗi
+VM một vai trò, dễ theo dõi log/console hơn khi viết test case) — PC A chạy 2
+VM (Central + Intersection), PC B chạy 1 VM (Railway):
 
 | VM (tên gợi ý, thay bằng `ls /net` thật) | Máy vật lý | Chạy tiến trình | Ghi chú |
 |---|---|---|---|
@@ -112,10 +142,10 @@ viết test case) — PC A chạy 2 VM (Central + Intersection), PC B chạy 1 V
 | `VM2` | PC A | `lx_main 1`, `lx_main 2`, ..., `lx_main 6` (6 tiến trình, 6 SSH shell riêng hoặc background) | Intersection L1-L6 |
 | `VM3` | PC B | `rlx_main 1`, `rlx_main 2`, `rlx_main 3` (3 tiến trình) | Railway RL1-RL3 |
 
-`TRAFFIC_NODE_MAP` baseline — export trong **mỗi shell SSH** trước khi chạy
-binary tương ứng (mỗi tiến trình chỉ cần các suffix mà chính nó chủ động gửi
-tới qua `ipc_client_post()`; thừa không sao, thiếu thì message tới suffix đó
-âm thầm không tới):
+`TRAFFIC_NODE_MAP` cho topology rút gọn 3-VM — export trong **mỗi shell
+SSH** trước khi chạy binary tương ứng (mỗi tiến trình chỉ cần các suffix mà
+chính nó chủ động gửi tới qua `ipc_client_post()`; thừa không sao, thiếu thì
+message tới suffix đó âm thầm không tới):
 
 ```sh
 # Trên VM1 (c_main) — C1 gửi tới cả Lx (VM2) và RLx (VM3)
@@ -135,6 +165,15 @@ export TRAFFIC_NODE_MAP="c1=VM1,l1=VM2,l2=VM2,l3=VM2,l4=VM2,l5=VM2,l6=VM2"
 Thứ tự khởi động "khuyến nghị" theo `README.md`/`QNX_DEPLOYMENT_RUN_GUIDE.md`
 là C1 → RLx → Lx, nhưng mục 5.7 của file này kiểm chứng hệ thống **không
 phụ thuộc** thứ tự đó.
+
+**Tên binary**: `c_main`/`lx_main`/`rlx_main` là tên **đã xác nhận** từ root
+`Makefile` (link target thật, `build/bin/{c_main,lx_main,rlx_main}` tồn tại
+trong repo) — dùng tên này xuyên suốt file. Nếu build bằng QNX Momentics IDE
+thay vì `make`, tên file thực thi phụ thuộc tên project được đặt lúc tạo
+(xem `docs/QNX_MOMENTICS_INTEGRATION.md` mục đặt tên project) — chưa có
+project Momentics nào được xác nhận là một phần của bản build nộp bài
+(`traffic_light/` là project Momentics cũ, không đồng bộ với `app/`, xem
+`docs/SOURCE_CODE_ORGANISATION.md`).
 
 ## 3. Cách chạy từng node (nhắc lại nhanh)
 

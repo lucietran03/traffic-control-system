@@ -270,13 +270,13 @@ tạo ranh giới có thể quan sát được trong một phiên test ngắn.
 - **Các bước**: Sau khi pha connector-drain bắt đầu, giữ `QUEUE_WARNING` bật liên tục, đo khoảng cách giữa các lần "gia hạn" — vì không có log riêng cho mỗi lần gia hạn 4 s, đo tổng thời lượng pha connector-drain từ lúc bắt đầu đến khi bạn chủ động tắt `QUEUE_WARNING` (phím `W`) và quan sát nó kết thúc **ngay tại điểm kiểm tra 4 s tiếp theo**, không phải ngay lập tức.
 - **Kết quả mong đợi**: Sau khi tắt `QUEUE_WARNING`, pha vẫn tiếp tục tối đa thêm gần 4 s trước khi chuyển YELLOW (vì điều kiện chỉ được re-check tại bội số 4000 ms của `drain_extension_total_ms`) — quan sát độ trễ tắt nằm trong khoảng **0–4.3 s** kể từ lúc tắt cờ.
 
-### CC-TIME-02: Edge case — cap cứng tại đúng 60 s dù QUEUE_WARNING vẫn còn
+### CC-TIME-02: Edge case — cap cứng 60s CHỈ áp dụng cho PHẦN GIA HẠN, tổng pha thực tế lên tới 90s
 - **Loại**: Edge case
-- **Liên quan**: CC-03, `LX_DRAIN_MAX_EXTENSION_MS = 60000` (`lx_timer.h:84`), kiểm tra `drain_extension_total_ms >= LX_DRAIN_MAX_EXTENSION_MS` (`lx_fsm.c:1022`)
+- **Liên quan**: CC-03, `LX_DRAIN_MAX_EXTENSION_MS = 60000` (`lx_timer.h:84`, comment "60 s cap on TOTAL granted extension (not on phase duration)"), kiểm tra `drain_extension_total_ms >= LX_DRAIN_MAX_EXTENSION_MS` (`lx_fsm.c`'s `PHASE_CONNECTOR_GREEN` case). **Sửa hiểu lầm quan trọng**: `drain_extension_total_ms` là một bộ đếm RIÊNG, được reset về 0 đúng tại mốc `green_elapsed_ms >= lx_timer_peak_green_duration_ms()` (30000ms ở `PEAK_FIXED`) rồi mới bắt đầu đếm — nó KHÔNG phải tổng thời lượng pha. Cap 60000ms chỉ giới hạn phần **gia hạn thêm sau 30s bình thường**, không giới hạn tổng thời lượng pha connector-green. Tổng thời lượng thực tế khi cap chạm tới là **30000 + 60000 = 90000ms**, không phải 60000ms. (Case này trước đây ghi sai là tổng pha bị cap ở 60s — đã sửa; xem `01-usecase-functional.md`'s TC-UC05-3 vốn đã mô tả đúng mốc 90000ms này.)
 - **Môi trường**: (B) hoặc (C)
 - **Chuẩn bị**: Như CC-TIME-01, nhưng **giữ `QUEUE_WARNING` bật liên tục và không bao giờ tắt**.
 - **Các bước**: Bấm Start ngay khi pha drain bắt đầu (dòng `"signal phase now CONNECTOR GREEN"` ngay sau khi chắn báo mở, với `drain_pending` đã được arm trước đó). Stop khi `"signal phase now CONNECTOR YELLOW"` xuất hiện.
-- **Kết quả mong đợi**: Pha kết thúc trong khoảng **60.0–60.5 s** kể từ lúc bắt đầu drain (không vượt quá — cap là cứng, `>=` không phải `>`), bất kể `QUEUE_WARNING` vẫn còn active.
+- **Kết quả mong đợi**: Pha kết thúc trong khoảng **90.0–90.5 s** kể từ lúc bắt đầu drain (30s bình thường + 60s gia hạn tối đa, không vượt quá — cap là cứng, `>=` không phải `>`), bất kể `QUEUE_WARNING` vẫn còn active.
 
 ### CC-TIME-03: Positive — drain kết thúc sớm ngay khi QUEUE_WARNING tự nhiên hết (không chờ đủ 60 s)
 - **Loại**: Positive
@@ -351,13 +351,14 @@ Log liên quan (không có timestamp, dùng stopwatch — mục 0.2):
 
 ## 6. PA-07 — Heartbeat & watchdog
 
-### PA-TIME-01: Positive — heartbeat đều đặn 1 Hz
+### PA-TIME-01: Positive — heartbeat đều đặn 1 Hz (giới hạn quan sát thật của phương pháp)
 - **Loại**: Positive
 - **Liên quan**: PA-07, `ipc_timer_arm(chid, IPC_PULSE_HEARTBEAT_TICK, 1000, 1000, ...)` phía `Lx` (`lx_main.c:179`) và `RLx` (tương tự) gửi `MSG_HEARTBEAT` mỗi 1 Hz.
 - **Môi trường**: (B) hoặc (C) — `C1` + 1 `Lx`.
 - **Chuẩn bị**: Hệ thống chạy ổn định, không lỗi.
-- **Các bước**: Trong 10 giây liên tiếp (đo bằng đồng hồ), đếm số lần một dòng log liên quan tới `MSG_HEARTBEAT`/STATUS từ controller đó được ghi nhận phía `C1` (nếu không có log riêng cho từng heartbeat, dùng HMI `c_hmi_render` — vốn refresh mỗi 1 Hz theo cùng pulse — để quan sát `last_seen`/giá trị reset liên tục không "đứng hình").
-- **Kết quả mong đợi**: Tần suất heartbeat quan sát được là **9–11 lần trong 10 s** (1 Hz ± 10% do jitter lịch trình hệ điều hành), tương ứng chu kỳ trung bình **0.9–1.1 s**.
+- **Giới hạn quan sát thật (đọc code xác nhận)**: `c_main.c`'s `on_request()` xử lý `MSG_HEARTBEAT`/`MSG_STATUS` KHÔNG gọi `c_logger_log()` cho trường hợp bình thường (chỉ log khi có transition — reconnect/UNAVAILABLE/fault report/đổi mode) — nghĩa là **không có dòng log riêng cho từng heartbeat** trong `central_log.txt`. `c_hmi.c`'s `c_hmi_render()` cũng **không có cột `last_seen`/timestamp** nào (chỉ có `ID/ROLE/MODE/PHASE/CROSSING_STATE/SUPERVISORY/FAULTS/SENSOR/OVERRIDE/AVAILABILITY`). Do đó **không có cách nào đếm chính xác 9-11 lần/10s** bằng công cụ hiện có — mọi tuyên bố "đo được X lần/10s" trước đây là suy diễn, không phải quan sát thật.
+- **Các bước (phương pháp thực tế duy nhất khả thi)**: Theo dõi cột `AVAILABILITY` của controller đó trên bảng HMI liên tục trong ≥10 giây.
+- **Kết quả mong đợi**: Cột `AVAILABILITY` giữ nguyên `AVAILABLE` xuyên suốt (không rớt xuống `UNAVAILABLE`, vốn chỉ xảy ra sau 3 tick liên tiếp không nhận được heartbeat, ≈3s) — đây là bằng chứng gián tiếp rằng heartbeat vẫn đang tới đều đặn với khoảng cách <3s giữa 2 lần liên tiếp, **KHÔNG phải bằng chứng trực tiếp cho đúng tần suất 1 Hz** (không đo được, ghi **not measured** cho con số tần suất chính xác — chỉ có thể khẳng định bằng code review: `ipc_timer_arm(...,1000,1000,...)` đảm bảo chu kỳ 1000ms ở tầng lập lịch pulse).
 
 ### PA-TIME-02: Edge case — thời điểm đúng đắn khi bị đánh dấu UNAVAILABLE (2.0–3.0 s, không phải đúng 3.000 s)
 - **Loại**: Edge case
@@ -404,6 +405,7 @@ Log liên quan (không có timestamp, dùng stopwatch — mục 0.2):
 - **Chuẩn bị**: `L1` sẵn sàng nhận lệnh, không có điều kiện gây `ACK_PENDING`.
 - **Các bước**: Trên console `C1`, gõ lệnh `o` (REQUEST_OVERRIDE) và bấm Enter — bấm Start đồng hồ ngay khi gõ Enter. Bấm Stop ngay khi dòng `"C1: REQUEST_OVERRIDE to 1 -> ACK"` xuất hiện trên console.
 - **Kết quả mong đợi**: Độ trễ đo được **< 1.0 s** — trên thực tế với LAN nội bộ dự kiến chỉ **vài chục đến vài trăm mili giây**; vì `c_logger` chỉ in giây, quan sát bằng mắt cả hai sự kiện thường rơi vào **cùng một giây hiển thị** trên console, đủ để kết luận đạt yêu cầu PA-12 (không cần độ chính xác dưới giây cho test này — chỉ cần xác nhận không có độ trễ "nhìn thấy được" hàng giây).
+- **Lưu ý về sai số phép đo**: đây là đồng hồ bấm tay thật (không phải diff 2 dòng log — `c_operator.c` không in dòng "đang gửi" riêng để đối chiếu, chỉ có đúng 1 dòng kết quả `-> ACK`), nên bản thân thời gian phản xạ của người bấm Start/Stop (~150-300ms) đã là một phần sai số của phép đo — chỉ dùng phương pháp này để xác nhận "dưới 1s" (biên PA-12 lớn hơn nhiều so với sai số phản xạ), không dùng để khẳng định giá trị chính xác tới hàng chục mili giây.
 
 ### PA-TIME-07: Edge case — ACK_PENDING vẫn trả lời tức thời dù kích hoạt (activation) bị hoãn
 - **Loại**: Edge case
