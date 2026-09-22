@@ -40,7 +40,7 @@ The dashboard only needs read access to `status.log` — it doesn't need to
 run on the same machine as `c_main`. Two options:
 
 - Run `server.py` directly on Central's VM and reach it from your host
-  browser through a forwarded port (see `docs/QNX_DEPLOYMENT_RUN_GUIDE.md`
+  browser through a forwarded port (see `docs/QNX_BUILD_DEPLOY_RUN.md`
   for the VirtualBox port-forwarding steps already used for other
   purposes).
 - Or keep `status.log` synced to wherever you run `server.py` (e.g. a

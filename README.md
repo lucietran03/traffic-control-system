@@ -56,7 +56,7 @@ traffic-control-system/
 └── README.md             
 ```
 
-For a complete, file-by-file breakdown of the `.c` and `.h` dependencies, see the [QNX Project File Overview](`docs/QNX_PROJECT_FILE_OVERVIEW.md`).  
+For a complete, file-by-file breakdown of the `.c` and `.h` dependencies, see [`app/ARCHITECTURE.md`](app/ARCHITECTURE.md).  
 
 ## Development Environment
 
@@ -91,11 +91,11 @@ git push origin feature/intersection-controller
 The project relies on **QNX Momentics IDE 8.0.3** and **VirtualBox** for target deployment. Please follow our dedicated documentation guides in sequence to set up, build, and run the project:
 
 ### 1. IDE Setup & Compilation
-- **Guide**: [QNX Momentics 8.0.3 Integration](docs/QNX_MOMENTICS_INTEGRATION.md).
+- **Guide**: [QNX Build, Deploy, and Run](docs/QNX_BUILD_DEPLOY_RUN.md).
 - **Summary**: Instructions on setting up a clean workspace (ensuring no spaces in the directory path to prevent makefile errors), importing the `app/` folders into three distinct QNX Executable projects, linking shared headers, and building the `c_main`, `lx_main`, and `rlx_main` binaries.  
 
 ### 2. VM Network Configuration
-- **Guide**: [QNX Deployment Run Guide](docs/QNX_DEPLOYMENT_RUN_GUIDE.md).
+- **Guide**: [QNX Build, Deploy, and Run](docs/QNX_BUILD_DEPLOY_RUN.md).
 - **Summary**: Because QNET is not automatically loaded on new QNX x86 VM targets, this guide covers modifying the VirtualBox adapters (`qnet-lab` internal network or Bridged LAN) and editing the QNX `startup.sh` / `start_net.s`h scripts to enable transparent distributed processing.  
 
 ### 3. Execution Sequence

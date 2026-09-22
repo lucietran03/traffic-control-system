@@ -56,7 +56,7 @@ errors with:
 make check-syntax   # host gcc/clang -fsyntax-only, NOT a real QNX build
 ```
 
-See the root `Makefile`'s header comment and `docs/QNX_MOMENTICS_INTEGRATION.md`
+See the root `Makefile`'s header comment and `docs/QNX_BUILD_DEPLOY_RUN.md`
 if you'd rather build via the QNX Momentics IDE instead.
 
 ## Running
@@ -87,12 +87,12 @@ order:
   the keyboard — press `h`/`?` for its command list.
 - To run the nodes across separate QNX machines/VMs instead of one box,
   see `shared/README.md`'s "Cross-node resolution" section and
-  `docs/QNX_DEPLOYMENT_RUN_GUIDE.md` for the `TRAFFIC_NODE_MAP`
+  `docs/QNX_BUILD_DEPLOY_RUN.md` for the `TRAFFIC_NODE_MAP`
   environment variable and full deployment walkthrough.
 
 ## More detail
 
 - `shared/README.md` — IPC contract design rationale
-- `docs/QNX_PROJECT_FILE_OVERVIEW.md` — file-by-file status
-- `docs/QNX_DEPLOYMENT_RUN_GUIDE.md` — multi-VM/multi-PC deployment
-- `docs/QNX_MOMENTICS_INTEGRATION.md` — IDE-based build alternative
+- `ARCHITECTURE.md` — file-by-file breakdown of every module's purpose, public interface, and callers
+- `docs/QNX_BUILD_DEPLOY_RUN.md` — build, multi-VM/multi-PC deployment, and operator/sensor key reference
+- `TeamQNX_submission/TeamQNX_ImplementationNote.pdf` — original submitted design/architecture document

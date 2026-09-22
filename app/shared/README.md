@@ -2,9 +2,9 @@
 
 This directory holds the one header pair all three executables (`c_main`,
 `lx_main`, `rlx_main`) compile against. Before this change both files were
-empty stubs (see `docs/QNX_PROJECT_FILE_OVERVIEW.md`, which listed every
-file's status as `TODO`) — nothing here was implemented differently, it
-simply didn't exist yet. This README explains what was written and why,
+empty stubs (every file in the project was previously tracked as `TODO`) —
+nothing here was implemented differently, it simply didn't exist yet. This
+README explains what was written and why,
 so a reviewer doesn't have to reverse-engineer the reasoning from the code.
 
 ## What each file is for
@@ -217,7 +217,7 @@ the **node-local** namespace only (`/dev/name/local/...`). That's fine
 when every controller runs in one process/one node, but it silently
 breaks the moment `c_main`/`lx_main`/`rlx_main` run on separate Qnet
 nodes — exactly the multi-VM topologies
-`docs/QNX_DEPLOYMENT_RUN_GUIDE.md` documents — because a node-local name
+`docs/QNX_BUILD_DEPLOY_RUN.md` documents — because a node-local name
 is never visible to `name_open()` calls originating on a different node.
 `name_open()` just returns `-1` (handled gracefully by
 `ipc_client_thread_main()`'s `send_ok` path), so the failure mode was
@@ -269,12 +269,12 @@ rl1=VM_x86_Target03,rl2=VM_x86_Target03,rl3=VM_x86_Target03"
 ```
 
 Set this (with real Qnet node names — whatever `ls /net` on a target
-shows for its peers, per `docs/QNX_DEPLOYMENT_RUN_GUIDE.md`) in the shell
+shows for its peers, per `docs/QNX_BUILD_DEPLOY_RUN.md`) in the shell
 that launches each binary, before running it — every controller_id_t
 `ipc_client_post()` might target should be covered on every node's own
 copy of the variable, since it only affects that process's own outgoing
 `name_open()` calls, not what it attaches as. See
-`docs/QNX_DEPLOYMENT_RUN_GUIDE.md` for the full walkthrough.
+`docs/QNX_BUILD_DEPLOY_RUN.md` for the full walkthrough.
 
 **Judgment call / not verified on real hardware:** `NAME_FLAG_ATTACH_GLOBAL`'s
 exact numeric value is defined by the real QNX SDP `<sys/neutrino.h>`,
@@ -292,7 +292,7 @@ this environment — test it early on real multi-VM hardware.
 The header here uses `MSG_`-prefixed C enum identifiers (`MSG_SET_MODE`,
 `MSG_HEARTBEAT`) purely as normal C naming convention; they map 1:1 to the
 spec's `SET_MODE` / `HEARTBEAT` verbs, not to a separately-invented name.
-(`docs/QNX_PROJECT_FILE_OVERVIEW.md` previously described this contract
-using the older `SET_OPERATION_MODE`/`MSG_HEARTBEAT`-as-distinct-verb
-wording; that doc has since been reconciled to use `SET_MODE`/`HEARTBEAT`
-consistently with this header, so no discrepancy remains.)
+(An earlier draft of the project docs used the older
+`SET_OPERATION_MODE`/`MSG_HEARTBEAT`-as-distinct-verb wording; that has
+since been reconciled to use `SET_MODE`/`HEARTBEAT` consistently with
+this header, so no discrepancy remains.)
