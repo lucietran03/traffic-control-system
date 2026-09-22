@@ -1,6 +1,6 @@
 # System Diagrams (ASCII)
 
-Companion to `PROJECT_SPECIFICATION.md`. All diagrams use **plain ASCII characters** (`=`, `-`, `|`, `+`, `#`) rather than Unicode box-drawing/arrow characters (═, │, ▓, →...) — several Unicode box-drawing and arrow characters render *double-width* on some fonts/viewers, which silently breaks column alignment even when the source is correctly spaced. Plain ASCII renders single-width everywhere.
+Companion to `docs/specification/README.md`. All diagrams use **plain ASCII characters** (`=`, `-`, `|`, `+`, `#`) rather than Unicode box-drawing/arrow characters (═, │, ▓, →...) — several Unicode box-drawing and arrow characters render *double-width* on some fonts/viewers, which silently breaks column alignment even when the source is correctly spaced. Plain ASCII renders single-width everywhere.
 
 Naming reminder: `I1–I6` / `RC1–RC3` are **physical** locations; `L1–L6` / `RL1–RL3` are the **controllers** that own them; `C1` is the Central Controller.
 
@@ -36,7 +36,7 @@ LEGEND
 
 **Reading the diagram:** travelling North to South down the left column encounters `I1` then `I2` (linked by `R3`, crossing the railway at `RC1`) — the Pass-minimum slice. The middle column is `I3`/`I4` (linked by `R4`, crossing at `RC2`) — the committed HD extension. The right column is `I5`/`I6` (linked by `R5`, crossing at `RC3`) — optional/stretch scope. The two horizontal rows, `R1` (North) and `R2` (South), are the two arterials, each linking three intersections in a row — these are the roads used for green-wave coordination (Section 20 of the specification).
 
-**Reference site:** the physical layout is contextually referenced against the Mai Chí Thọ – Đồng Văn Cống intersection (part of the An Phu Intersection, Thu Duc City, Ho Chi Minh City) — used only as a Vietnamese urban-arterial reference, not reproduced quantitatively (NU-01, PROJECT_SPECIFICATION.vi.md Mục 5b). Inter-intersection arterial spacing (`I1-I3`, `I3-I5`, `I2-I4`, `I4-I6`) is an independently-set PoC parameter in the **320-400 m** range (TC-01) — not measured at the reference site.
+**Reference site:** the physical layout is contextually referenced against the Mai Chí Thọ – Đồng Văn Cống intersection (part of the An Phu Intersection, Thu Duc City, Ho Chi Minh City) — used only as a Vietnamese urban-arterial reference, not reproduced quantitatively (NU-01, `docs/specification/02-network-and-architecture.md`, Section 5b). Inter-intersection arterial spacing (`I1-I3`, `I3-I5`, `I2-I4`, `I4-I6`) is an independently-set PoC parameter in the **320-400 m** range (TC-01) — not measured at the reference site.
 
 ---
 

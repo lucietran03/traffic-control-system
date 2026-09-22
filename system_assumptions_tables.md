@@ -139,7 +139,7 @@ _Abnormal and Failure Operation_
 
 ---
 
-_Source: this table is derived from, and must be kept consistent with, the finalised Vietnamese-language project specification (`spec-vi/01`–`06`, `PROJECT_SPECIFICATION.vi.md`) and its companion diagrams (`SYSTEM_DIAGRAMS.vi.md`). If the specification changes, this table should be regenerated from it rather than edited independently, to avoid the two documents drifting apart again._
+_Source: this table is derived from, and must be kept consistent with, the finalised project specification (`docs/specification/01`–`06`) and its companion diagrams (`SYSTEM_DIAGRAMS.md`). If the specification changes, this table should be regenerated from it rather than edited independently, to avoid the two documents drifting apart again._
 
 ---
 

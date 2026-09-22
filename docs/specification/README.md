@@ -1,6 +1,6 @@
 # Traffic Light Control System — Project Specification (Table of Contents)
 
-**English translation of `PROJECT_SPECIFICATION.vi.md` / `spec-vi/`.** The Vietnamese version remains the team's primary working copy; this English version is the official submission copy, translated from the Vietnamese chapters as of 2026-09-22. If the two ever diverge again, the Vietnamese version is authoritative until the next translation pass.
+**This is the team's primary specification.** It was translated from the team's original Vietnamese working draft (`PROJECT_SPECIFICATION.vi.md` / `spec-vi/`) as of 2026-09-22; the Vietnamese draft has since been removed and this English version is now the single source of truth — edit it directly going forward.
 
 Component names, state labels, command names, and technical terms (`L1–L6`, `I1–I6`, `RC1–RC3`, `RLx`, `C1`, `PEAK_FIXED`, `GREEN`, etc.) are kept in English throughout, to match the code/diagrams/UML.
 

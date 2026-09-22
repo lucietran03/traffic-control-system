@@ -34,8 +34,8 @@ traffic-control-system/                    (workspace root)
 │
 └── *.md at repo root                       requirements/design documentation (not source code):
                                              usecase.md, SEQUENCE_DIAGRAMS.md, STATE_CHARTS.md,
-                                             SYSTEM_DIAGRAMS.md, system_assumptions_tables.md,
-                                             PROJECT_SPECIFICATION.vi.md
+                                             SYSTEM_DIAGRAMS.md, system_assumptions_tables.md
+                                             (project specification lives in docs/specification/)
 ```
 
 **Project → executable mapping** (each is a *generic* binary; which physical
