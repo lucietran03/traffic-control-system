@@ -295,20 +295,24 @@ static void lx_fsm_apply_offset_locked(lx_fsm_t *fsm)
 
     fsm->offset_extra_hold_ms = 0;
 
+    // #1 Only a Peak-Fixed arterial-green boundary is offset-corrected; skip otherwise.
     if (fsm->mode != MODE_PEAK_FIXED || fsm->phase != PHASE_ARTERIAL_GREEN) {
         return;
     }
+    // #2 Read the wall clock to locate this controller's position in the shared cycle.
     if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
-        return; 
+        return;
     }
 
+    // #3 Compute the target and actual arterial-green start position within one fixed cycle.
     now_ms = (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)(ts.tv_nsec / 1000000);
     target_phase_in_cycle = (uint32_t)(fsm->assigned_offset_ms % LX_CYCLE_LENGTH_MS);
-    
+
     actual_start_phase_in_cycle =
         (uint32_t)(((now_ms % LX_CYCLE_LENGTH_MS) + LX_CYCLE_LENGTH_MS -
                     (fsm->green_elapsed_ms % LX_CYCLE_LENGTH_MS)) % LX_CYCLE_LENGTH_MS);
 
+    // #4 Compute the signed error, wrapped so it stays within +/- half a cycle.
     error_ms = (int32_t)actual_start_phase_in_cycle - (int32_t)target_phase_in_cycle;
     if (error_ms > (int32_t)(LX_CYCLE_LENGTH_MS / 2)) {
         error_ms -= (int32_t)LX_CYCLE_LENGTH_MS;
@@ -316,13 +320,15 @@ static void lx_fsm_apply_offset_locked(lx_fsm_t *fsm)
         error_ms += (int32_t)LX_CYCLE_LENGTH_MS;
     }
 
+    // #5 Late start: fast-forward the elapsed timer. Early start: hold extra time instead.
     if (error_ms > 0) {
         fsm->green_elapsed_ms += (uint32_t)error_ms;
     } else if (error_ms < 0) {
         fsm->offset_extra_hold_ms = (uint32_t)(-error_ms);
-        return; 
+        return;
     }
 
+    // #6 Clamp the correction so it never eats into the mandatory minimum green.
     fixed_dur = lx_timer_peak_green_duration_ms(fsm->phase);
     if (fixed_dur > 0) {
         uint32_t max_elapsed_after_correction =
@@ -498,33 +504,40 @@ void lx_fsm_on_phase_timer(lx_fsm_t *fsm)
 {
     pthread_mutex_lock(&fsm->lock);
 
+    // #1 Re-check for a newly reported fault before advancing anything this tick.
     lx_fsm_check_fault_locked(fsm);
 
+    // #2 FAULT_SAFE holds all outputs at their safe state and skips normal phase timing.
     if (fsm->supervisory == SUPERVISORY_FAULT_SAFE) {
         lx_signal_apply_fault_safe(fsm->self_id);
         pthread_mutex_unlock(&fsm->lock);
         return;
     }
 
+    // #3 Count down an active or pending-clearance override toward its bounded expiry (PA-11).
     if (fsm->supervisory == SUPERVISORY_CENTRAL_OVERRIDE &&
         (fsm->override_substate == OVR_ACTIVE || fsm->override_substate == OVR_PENDING_CLEARANCE)) {
         if (fsm->override_remaining_ms <= LX_PHASE_TICK_MS) {
-            lx_fsm_terminate_override_locked(fsm); 
+            lx_fsm_terminate_override_locked(fsm);
         } else {
             fsm->override_remaining_ms -= LX_PHASE_TICK_MS;
         }
     }
 
+    // #4 Advance the phase timer by one tick.
     fsm->green_elapsed_ms += LX_PHASE_TICK_MS;
 
+    // #5 Service any in-progress or newly eligible pedestrian crossing.
     lx_fsm_ped_service_tick_locked(fsm);
 
+    // #6 Once the pedestrian clearance that deferred an override finishes, the override activates.
     if (fsm->supervisory == SUPERVISORY_CENTRAL_OVERRIDE && fsm->override_substate == OVR_PENDING_CLEARANCE) {
         if (!fsm->ped_clearance_active) {
             fsm->override_substate = OVR_ACTIVE;
         }
     }
 
+    // #7 Drive the fixed six-phase sequence according to the current phase's exit condition.
     switch (fsm->phase) {
     case PHASE_ARTERIAL_YELLOW:
     case PHASE_CONNECTOR_YELLOW:

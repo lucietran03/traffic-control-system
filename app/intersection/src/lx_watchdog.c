@@ -26,16 +26,19 @@ void *lx_watchdog_thread(void *arg)
     uint32_t             current;
 
     for (;;) {
+        // #1 Sleep for the check interval; this thread runs independently of the server thread.
         sleep(LX_WATCHDOG_CHECK_INTERVAL_S);
 
+        // #2 Counter unchanged since last check means the server thread is stalled.
         current = *args->phase_tick_counter;
         if (current == last_seen) {
             fprintf(stderr, "Lx: WATCHDOG - no phase-timer activity for %u s, reporting fault (PA-10)\n",
                     (unsigned)LX_WATCHDOG_CHECK_INTERVAL_S);
             lx_fsm_report_watchdog_trip(args->fsm);
         }
+        // #3 Record this tick count as the new baseline for the next interval.
         last_seen = current;
     }
 
-    return NULL; 
+    return NULL;
 }

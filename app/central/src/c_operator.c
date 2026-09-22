@@ -25,11 +25,14 @@ static int read_long(pthread_mutex_t *console_io_lock, const char *prompt, long 
 {
     int rc;
 
+    // #1 Print the prompt and flush immediately so it appears before the blocking read below.
     printf("%s", prompt);
     fflush(stdout);
 
+    // #2 Release the lock while blocked on stdin so a slow typist can't freeze the HMI render.
     pthread_mutex_unlock(console_io_lock);
     rc = scanf("%ld", out);
+    // #3 Re-acquire before touching any shared state again.
     pthread_mutex_lock(console_io_lock);
 
     if (rc == EOF) {

@@ -31,6 +31,7 @@ static const char *controller_name(controller_id_t id)
     }
 }
 
+// Maps a controller role to its display name.
 static const char *role_name(controller_role_t role)
 {
     switch (role) {
@@ -41,6 +42,7 @@ static const char *role_name(controller_role_t role)
     }
 }
 
+// Prints the 1 Hz network status table (one row per controller) to stdout.
 void c_hmi_render(const c_mode_eng_t *eng)
 {
     int i;

@@ -92,14 +92,18 @@ void c_comm_send_set_mode(ipc_client_queue_t *q, controller_id_t target, operati
 {
     ipc_request_t req;
 
+    // #1 Zero-initialise the request so unused payload bytes are never sent uninitialised.
     memset(&req, 0, sizeof(req));
+    // #2 Fill in the verb, addressing, and payload for this command.
     req.verb         = MSG_SET_MODE;
     req.sender_id    = (uint32_t)CTRL_C1;
     req.target_id    = (uint32_t)target;
     req.timestamp_ms = 0;
     req.payload.mode.mode = (uint32_t)mode;
 
+    // #3 Hand off to the client queue; on_command_reply logs the async ACK/NACK.
     if (ipc_client_post(q, target, &req, on_command_reply, NULL) != 0) {
+        // #4 Only failure mode here: the outgoing queue was full or stopping.
         c_logger_log("C1: SET_MODE to %d dropped - outgoing queue full or stopping", (int)target);
     }
 }

@@ -19,6 +19,7 @@
 // Module-private file handle; falls back to stdout if initialization fails.
 static FILE *g_log_file = NULL;
 
+// Opens central_log.txt for append; falls back to stdout-only logging if that fails.
 void c_logger_init(void)
 {
     g_log_file = fopen("central_log.txt", "a");
@@ -27,6 +28,7 @@ void c_logger_init(void)
     }
 }
 
+// Writes a timestamped log line to stdout, and to central_log.txt if it is open.
 void c_logger_log(const char *fmt, ...)
 {
     time_t     now = time(NULL);

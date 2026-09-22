@@ -112,6 +112,7 @@ int main(int argc, char *argv[])
     intersection_context_t ctx;
     lx_watchdog_args_t  watchdog_args;
 
+    // #1 Identify which Lx instance this process is (1-6) from its command-line argument.
     self_id = parse_self_id(argc, argv);
     if (self_id == CTRL_UNKNOWN) {
         fprintf(stderr, "usage: %s <1-6>   (selects L1..L6)\n", argv[0]);
@@ -120,34 +121,40 @@ int main(int argc, char *argv[])
 
     printf("%s (Intersection Controller) starting...\n", ipc_attach_name(self_id));
 
+    // #2 Attach to this controller's own IPC channel.
     chid = ipc_attach(self_id);
     if (chid == -1) {
         fprintf(stderr, "Lx: ipc_attach failed\n");
         return EXIT_FAILURE;
     }
 
+    // #3 Create the outgoing client queue used to send heartbeats and status reports.
     client_queue = ipc_client_queue_create();
     if (client_queue == NULL) {
         fprintf(stderr, "Lx: ipc_client_queue_create failed\n");
         return EXIT_FAILURE;
     }
 
+    // #4 Initialise the FSM and the shared context it lives in.
     ctx.self_id           = self_id;
     lx_fsm_init(&ctx.fsm, self_id);
     ctx.client_queue      = client_queue;
     ctx.phase_tick_counter = 0;
 
+    // #5 Start the outgoing client thread (heartbeats/status reports).
     if (pthread_create(&client_tid, NULL, ipc_client_thread_main, client_queue) != 0) {
         fprintf(stderr, "Lx: failed to start client thread\n");
         return EXIT_FAILURE;
     }
 
+    // #6 Start the sensor reader thread (keyboard-simulated vehicle/pedestrian input).
     pthread_t sensor_tid;
     if (pthread_create(&sensor_tid, NULL, lx_sensor_reader_thread, &ctx.fsm) != 0) {
         fprintf(stderr, "Lx: failed to start sensor reader thread\n");
         return EXIT_FAILURE;
     }
 
+    // #7 Start the watchdog thread (PA-10 dead-man's switch on phase_tick_counter).
     watchdog_args.fsm = &ctx.fsm;
     watchdog_args.phase_tick_counter = &ctx.phase_tick_counter;
     pthread_t watchdog_tid;
@@ -156,11 +163,12 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    // #8 Arm the 100 ms phase timer and the 1 s heartbeat timer.
     if (ipc_timer_arm(chid, IPC_PULSE_PHASE_TIMER, 100, 100, &phase_timer) == -1) {
         fprintf(stderr, "Lx: failed to arm phase timer\n");
         return EXIT_FAILURE;
     }
-    
+
     if (ipc_timer_arm(chid, IPC_PULSE_HEARTBEAT_TICK, 1000, 1000, &heartbeat_timer) == -1) {
         fprintf(stderr, "Lx: failed to arm heartbeat timer\n");
         return EXIT_FAILURE;
@@ -169,6 +177,7 @@ int main(int argc, char *argv[])
     printf("%s: attached on %s/%s, server loop starting.\n",
            ipc_attach_name(self_id), TRAFFIC_NAME_PREFIX, ipc_attach_name(self_id));
 
+    // #9 Run the IPC server loop; this call only returns when the loop itself exits.
     ipc_server_run(chid, on_request, on_pulse, &ctx);
 
     pthread_join(client_tid, NULL); // Wait for the client thread to finish

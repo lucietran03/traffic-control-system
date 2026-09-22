@@ -19,6 +19,7 @@
 
 // --- internal helpers --------------------------------------------------- //
 
+// Maps a signal phase to its display name.
 static const char *lx_signal_phase_name(signal_phase_t phase)
 {
     switch (phase) {
@@ -47,7 +48,7 @@ void lx_signal_show_phase(controller_id_t id, signal_phase_t phase)
     printf("Lx %d: signal phase now %s\n", (int)id, lx_signal_phase_name(phase));
 }
 
-// Displays the current pedestrian signal state for the specified controller ID and side.
+// Prints that this controller has entered FAULT_SAFE and is holding safe outputs.
 void lx_signal_apply_fault_safe(controller_id_t id)
 {
     printf("Lx %d: entering FAULT_SAFE mode - holding safe outputs (all-red/dark)\n", (int)id);
@@ -59,7 +60,7 @@ void lx_signal_show_override_clearance(controller_id_t id)
     printf("Lx %d: override cleared/expired - running safe clearance sequence\n", (int)id);
 }
 
-// Displays the current override active state for the specified controller ID.
+// Displays the WALK pedestrian signal for the specified controller ID and side.
 void lx_signal_show_walk(controller_id_t id, uint8_t side)
 {
     printf("Lx %d: PED SIGNAL side %u -> WALK\n", (int)id, (unsigned)side);

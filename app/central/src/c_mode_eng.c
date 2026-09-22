@@ -27,6 +27,7 @@ static const c_arterial_offset_t R2_CHAIN[] = {
     { CTRL_L6, R2_L6_OFFSET_MS }
 };
 
+// Initialises all 9 controller slots and the default schedule/profile state.
 void c_mode_eng_init(c_mode_eng_t *eng)
 {
     int i;
@@ -53,6 +54,7 @@ void c_mode_eng_init(c_mode_eng_t *eng)
     eng->last_auto_mode_valid      = 0;
 }
 
+// Maps a controller ID to its slot index (0-5 = Lx, 6-8 = RLx) in the status table.
 int c_mode_eng_controller_index(controller_id_t id)
 {
     if (id >= CTRL_L1 && id <= CTRL_L6) {
@@ -64,6 +66,7 @@ int c_mode_eng_controller_index(controller_id_t id)
     return -1;
 }
 
+// Selects PEAK_FIXED or OFF_PEAK_SENSOR for the given hour against the configured schedule.
 operating_mode_t c_mode_eng_select_mode(const c_mode_eng_t *eng, uint8_t current_hour)
 {
     if (current_hour >= eng->schedule.peak_start_hour && current_hour < eng->schedule.peak_end_hour) {
@@ -72,6 +75,7 @@ operating_mode_t c_mode_eng_select_mode(const c_mode_eng_t *eng, uint8_t current
     return MODE_OFF_PEAK_SENSOR;
 }
 
+// Checks whether the auto-selected mode for this hour differs from the last one applied.
 int c_mode_eng_auto_check(c_mode_eng_t *eng, uint8_t current_hour, operating_mode_t *out_mode)
 {
     operating_mode_t computed = c_mode_eng_select_mode(eng, current_hour);
@@ -93,6 +97,7 @@ int c_mode_eng_auto_check(c_mode_eng_t *eng, uint8_t current_hour, operating_mod
     return 1;
 }
 
+// Records the mode just broadcast to all six Lx controllers for status-table display.
 void c_mode_eng_mark_all_lx_commanded(c_mode_eng_t *eng, operating_mode_t mode)
 {
     int i;
@@ -102,6 +107,7 @@ void c_mode_eng_mark_all_lx_commanded(c_mode_eng_t *eng, operating_mode_t mode)
     }
 }
 
+// Builds one SET_TIMING_PROFILE request per controller in the given arterial chain.
 int c_mode_eng_build_timing_profile(uint32_t profile_id, const c_arterial_offset_t *chain, int chain_len, ipc_request_t *out_requests)
 {
     int i;
@@ -118,11 +124,13 @@ int c_mode_eng_build_timing_profile(uint32_t profile_id, const c_arterial_offset
     return chain_len;
 }
 
+// Returns the next unused timing-profile ID and advances the counter.
 uint32_t c_mode_eng_next_profile_id(c_mode_eng_t *eng)
 {
     return eng->next_profile_id++;
 }
 
+// Returns the pre-configured R1 or R2 arterial chain and its length.
 const c_arterial_offset_t *c_mode_eng_get_chain(c_arterial_chain_id_t chain_id, int *out_len)
 {
     switch (chain_id) {

@@ -19,6 +19,7 @@
 
 // Dedicated blocking thread mapping simulated keyboard input to real-time train approach events and demo testing operations.
 
+// Displays the keyboard-simulated sensor/demo key menu for this crossing.
 static void print_help(void)
 {
     printf("RLx sensor keys:\n");
@@ -29,6 +30,7 @@ static void print_help(void)
     printf("  h or ? = show this help                    q = stop keyboard input (this thread only)\n");
 }
 
+// Thread that reads keyboard input to simulate train/gate sensor events for this crossing.
 void *rlx_sensor_reader_thread(void *arg)
 {
     rlx_fsm_t *fsm = (rlx_fsm_t *)arg;

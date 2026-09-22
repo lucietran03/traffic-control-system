@@ -178,11 +178,13 @@ int ipc_timer_arm(int chid, int pulse_code, uint32_t initial_ms, uint32_t period
     struct sched_param th_param;
     int                coid;
 
+    // #1 Open a connection back to this channel for pulse delivery.
     coid = ConnectAttach(ND_LOCAL_NODE, 0, chid, _NTO_SIDE_CHANNEL, 0);
     if (coid == -1) {
         return -1;
     }
 
+    // #2 Build the SIGEV_PULSE event at this thread's priority.
     pthread_getschedparam(pthread_self(), NULL, &th_param);
 
     event.sigev_notify   = SIGEV_PULSE;
@@ -190,16 +192,19 @@ int ipc_timer_arm(int chid, int pulse_code, uint32_t initial_ms, uint32_t period
     event.sigev_priority = th_param.sched_curpriority;
     event.sigev_code     = pulse_code;
 
+    // #3 Create the POSIX timer bound to that pulse event.
     if (timer_create(CLOCK_REALTIME, &event, out_timer_id) == -1) {
         ConnectDetach(coid);
         return -1;
     }
 
+    // #4 Convert ms to seconds+nanoseconds for the initial delay and period.
     spec.it_value.tv_sec     = initial_ms / 1000;
     spec.it_value.tv_nsec    = (long)(initial_ms % 1000) * 1000000L;
     spec.it_interval.tv_sec  = period_ms / 1000;
     spec.it_interval.tv_nsec = (long)(period_ms % 1000) * 1000000L;
 
+    // #5 Arm the timer; roll back cleanly on failure.
     if (timer_settime(*out_timer_id, 0, &spec, NULL) == -1) {
         timer_delete(*out_timer_id);
         ConnectDetach(coid);
@@ -217,8 +222,10 @@ int ipc_server_run(int chid, ipc_request_handler_t on_request, ipc_pulse_handler
     int           rcvid;
 
     for (;;) {
+        // #1 Block until a message or pulse arrives on this channel.
         rcvid = MsgReceive(chid, &msg, sizeof(msg), NULL);
 
+        // #2 rcvid == -1 is an error; retry on EINTR, otherwise fail.
         if (rcvid == -1) { // Interrupted by a signal
             if (errno == EINTR) {
                 continue;
@@ -226,6 +233,7 @@ int ipc_server_run(int chid, ipc_request_handler_t on_request, ipc_pulse_handler
             return -1;
         }
 
+        // #3 rcvid == 0 means a pulse (e.g. a timer tick), not a client request.
         if (rcvid == 0) { // Pulse received
             if (on_pulse != NULL) {
                 on_pulse(msg.hdr.code, ctx);
@@ -233,15 +241,18 @@ int ipc_server_run(int chid, ipc_request_handler_t on_request, ipc_pulse_handler
             continue;
         }
 
+        // #4 A client is connecting via name_open(); accept with an empty reply.
         if (msg.hdr.type == _IO_CONNECT) { // Connection request
             MsgReply(rcvid, EOK, NULL, 0);
             continue;
         }
+        // #5 Reject any other reserved-range message this server doesn't handle.
         if (msg.hdr.type > _IO_BASE && msg.hdr.type <= _IO_MAX) {
             MsgError(rcvid, ENOSYS);
             continue;
         }
 
+        // #6 Dispatch to the caller's handler, then reply with its result.
         memset(&reply, 0, sizeof(reply));
         if (on_request != NULL) {
             on_request(&msg, &reply, ctx);

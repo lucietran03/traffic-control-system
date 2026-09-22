@@ -27,13 +27,16 @@ void *rlx_watchdog_thread(void *arg)
     uint32_t current;
 
     for (;;) {
+        // #1 Sleep for the check interval; this thread runs independently of the server thread.
         sleep(RLX_WATCHDOG_CHECK_INTERVAL_S);
+        // #2 Counter unchanged since last check means the server thread is stalled.
         current = *args->tick_counter;
         if (current == last_seen) {
             fprintf(stderr, "RLx: WATCHDOG - no tick activity for %u s, reporting fault (PA-10)\n",
                     (unsigned)RLX_WATCHDOG_CHECK_INTERVAL_S);
             rlx_fsm_report_watchdog_trip(args->fsm); // Directly triggers a fault via watchdog if the FSM loop stalls.
         }
+        // #3 Record this tick count as the new baseline for the next interval.
         last_seen = current;
     }
     return NULL;

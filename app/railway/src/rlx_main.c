@@ -104,6 +104,7 @@ int main(int argc, char *argv[])
     railway_context_t   ctx;
     rlx_watchdog_args_t watchdog_args;
 
+    // #1 Identify which RLx instance this process is (1-3) from its command-line argument.
     self_id = parse_self_id(argc, argv);
     if (self_id == CTRL_UNKNOWN) {
         fprintf(stderr, "usage: %s <1-3>   (selects RL1..RL3)\n", argv[0]);
@@ -112,34 +113,40 @@ int main(int argc, char *argv[])
 
     printf("%s (Railway Controller) starting...\n", ipc_attach_name(self_id));
 
+    // #2 Attach to this controller's own IPC channel.
     chid = ipc_attach(self_id);
     if (chid == -1) {
         fprintf(stderr, "RLx: ipc_attach failed\n");
         return EXIT_FAILURE;
     }
 
+    // #3 Create the outgoing client queue used to send heartbeats and status reports.
     client_queue = ipc_client_queue_create();
     if (client_queue == NULL) {
         fprintf(stderr, "RLx: ipc_client_queue_create failed\n");
         return EXIT_FAILURE;
     }
 
+    // #4 Initialise the FSM, shared context, and gate output state.
     ctx.self_id      = self_id;
     ctx.client_queue = client_queue;
     ctx.tick_counter = 0;
     rlx_fsm_init(&ctx.fsm, self_id);
     rlx_gate_init();
 
+    // #5 Start the outgoing client thread (heartbeats/status/fault reports).
     if (pthread_create(&client_tid, NULL, ipc_client_thread_main, client_queue) != 0) {
         fprintf(stderr, "RLx: failed to start client thread\n");
         return EXIT_FAILURE;
     }
 
+    // #6 Start the sensor reader thread (keyboard-simulated train/gate input).
     if (pthread_create(&sensor_tid, NULL, rlx_sensor_reader_thread, &ctx.fsm) != 0) {
         fprintf(stderr, "RLx: failed to start sensor reader thread\n");
         return EXIT_FAILURE;
     }
 
+    // #7 Start the watchdog thread (PA-10 dead-man's switch on tick_counter).
     watchdog_args.fsm = &ctx.fsm;
     watchdog_args.tick_counter = &ctx.tick_counter;
     if (pthread_create(&watchdog_tid, NULL, rlx_watchdog_thread, &watchdog_args) != 0) {
@@ -147,13 +154,13 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    // Arms the 1-second heartbeat timer mapped to Central.
+    // #8 Arm the 1-second heartbeat timer mapped to Central.
     if (ipc_timer_arm(chid, IPC_PULSE_HEARTBEAT_TICK, 1000, 1000, &heartbeat_timer) == -1) {
         fprintf(stderr, "RLx: failed to arm heartbeat timer\n");
         return EXIT_FAILURE;
     }
 
-    // Arms the single 1-second warning timer to advance all crossing FSM budgets.
+    // #9 Arm the single 1-second warning timer that advances all crossing FSM budgets.
     if (ipc_timer_arm(chid, IPC_PULSE_RAILWAY_WARNING, 1000, 1000, &railway_tick_timer) == -1) {
         fprintf(stderr, "RLx: failed to arm railway FSM tick timer\n");
         return EXIT_FAILURE;
@@ -162,7 +169,7 @@ int main(int argc, char *argv[])
     printf("%s: attached on %s/%s, server loop starting.\n",
            ipc_attach_name(self_id), TRAFFIC_NAME_PREFIX, ipc_attach_name(self_id));
 
-    // Prevents main thread return to guarantee the server loop handles incoming communications.
+    // #10 Run the IPC server loop; this call only returns when the loop itself exits.
     ipc_server_run(chid, on_request, on_pulse, &ctx);
 
     pthread_join(client_tid, NULL); // Waits for the client thread to finish.

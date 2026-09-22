@@ -20,6 +20,7 @@
 
 // Railway FSM implementation owning state transitions while relying on rlx_timer for durations and rlx_gate for hardware abstraction.
 
+// Maps the detailed internal FSM state to the coarse crossing_state_t reported externally.
 static crossing_state_t map_to_crossing_state(rlx_internal_state_t state)
 {
     switch (state) {
@@ -39,11 +40,13 @@ static crossing_state_t map_to_crossing_state(rlx_internal_state_t state)
     }
 }
 
+// Reports whether the gate hardware has confirmed CLOSED (RC-06 verification layer).
 static uint8_t gates_confirmed_closed(void)
 {
     return rlx_gate_poll_closed();
 }
 
+// Reports whether the gate hardware has confirmed OPEN.
 static uint8_t gates_confirmed_open(void)
 {
     return rlx_gate_poll_open();
@@ -184,6 +187,7 @@ void rlx_fsm_init(rlx_fsm_t *fsm, controller_id_t self_id)
     fsm->missed_heartbeat_acks = 0;
 }
 
+// Handles a simulated TRAIN_APPROACHING event for one direction, per the current state.
 void rlx_fsm_simulate_train_approaching(rlx_fsm_t *fsm, uint32_t direction)
 {
     pthread_mutex_lock(&fsm->lock);
@@ -361,6 +365,7 @@ uint8_t rlx_fsm_take_fault_report_pending(rlx_fsm_t *fsm)
     return pending;
 }
 
+// Fills a status report with this crossing's current state, thread-safely.
 void rlx_fsm_fill_status(const rlx_fsm_t *fsm, status_report_payload_t *status)
 {
     pthread_mutex_lock((pthread_mutex_t *)&fsm->lock);
