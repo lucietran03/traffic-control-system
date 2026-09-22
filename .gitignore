@@ -52,6 +52,11 @@ nto-*/
 .externalToolBuilders/
 .recommenders/
 
+# Python build artifacts
+__pycache__/
+*.pyc
+*.pyo
+
 # CMake-generated files
 CMakeFiles/
 CMakeCache.txt

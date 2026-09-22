@@ -1,6 +1,6 @@
 # Hệ Thống Điều Khiển Đèn Giao Thông — Đặc Tả Dự Án (Mục Lục)
 
-**Bản dịch tiếng Việt của `PROJECT_SPECIFICATION.md`.** Đây là **file làm việc chính** của team (theo thoả thuận: team đọc/sửa trực tiếp bản tiếng Việt; khi có thay đổi, bản tiếng Việt sẽ được dịch ngược lại và ghi đè lên `PROJECT_SPECIFICATION.md` tiếng Anh — bản tiếng Anh là bản chính thức để nộp, nhưng không cần chỉnh sửa song song).
+**Đây là file làm việc chính** của team — đọc/sửa trực tiếp bản tiếng Việt này. Bản dịch tiếng Anh (bản chính thức để nộp bài) nằm ở [`docs/specification/`](docs/specification/README.md), dịch lại từ các chương trong `spec-vi/` tính tới ngày 2026-09-22. Nếu tiếng Việt được sửa sau ngày đó, cần dịch lại `docs/specification/` cho khớp trước khi nộp — bản tiếng Việt luôn là nguồn đúng nhất, bản tiếng Anh chỉ là bản dịch tại một thời điểm.
 
 Tên component, ký hiệu trạng thái, tên lệnh và các thuật ngữ kỹ thuật (`L1–L6`, `I1–I6`, `RC1–RC3`, `RLx`, `C1`, `PEAK_FIXED`, `GREEN`, v.v.) được **giữ nguyên tiếng Anh** để khớp với code/diagram/UML sau này.
 
@@ -19,7 +19,7 @@ Vì file gốc quá dài, đặc tả được chia thành các chương nhỏ t
 | [`spec-vi/05-tinh-nang-va-demo.md`](spec-vi/05-tinh-nang-va-demo.md) | Phân loại tính năng, kịch bản demo, input mô phỏng | Mục 23–25 |
 | [`spec-vi/06-gia-dinh-va-tong-ket.md`](spec-vi/06-gia-dinh-va-tong-ket.md) | Giả định, quyết định còn mở (đã chốt), câu hỏi cho team/giảng viên, truy vết nguồn gốc, tóm tắt cuối cùng | Mục 26–30 |
 
-Sơ đồ minh hoạ (ASCII, tiếng Việt): [`SYSTEM_DIAGRAMS.vi.md`](SYSTEM_DIAGRAMS.vi.md).
+Sơ đồ minh hoạ (ASCII): [`SYSTEM_DIAGRAMS.md`](SYSTEM_DIAGRAMS.md) (bản tiếng Việt `SYSTEM_DIAGRAMS.vi.md` đã bị xoá trong commit `b8c1ac8`, không còn tồn tại).
 
 ---
 
