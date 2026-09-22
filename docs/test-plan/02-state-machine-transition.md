@@ -27,6 +27,13 @@ case được ghi rõ là "Known gap" thay vì bịa ra một cách kích hoạt
 | **(B) Nhiều node cùng máy QNX** | Nhiều tiến trình (`c_main`, `lx_main 1`, `rlx_main 1`, …) chạy trên **cùng một** target QNX (nhiều cửa sổ/console trên cùng máy). `TRAFFIC_NODE_MAP` không cần export (mặc định "same node"). | Test override (SC-03B) — bắt buộc phải có `c_main` vì chỉ `c_operator.c` mới gửi được `REQUEST_OVERRIDE`/`RENEW_OVERRIDE`/`CANCEL_OVERRIDE`. Test SC-03A phần tương tác Lx–RLx (RAILWAY_PREEMPTION), SC-05. |
 | **(C) Nhiều máy/VM QNX qua mạng thật** | Từng vai trò chạy trên VM/PC vật lý khác nhau, kết nối qua Qnet, có export `TRAFFIC_NODE_MAP` theo đúng `docs/QNX_DEPLOYMENT_RUN_GUIDE.md` (Case 1/2/3). | Lặp lại các test case (B) quan trọng nhất (đặc biệt SC-03A test regression #1, SC-05) trên topology mạng thật trước khi nghiệm thu cuối kỳ, vì độ trễ Qnet thật có thể bộc lộ race-condition không thấy được khi chạy same-node. |
 
+Lưu ý: bản demo thật triển khai trên **10 VM QNX riêng biệt, mỗi VM một
+controller** — không có hai controller nào thật sự chạy chung một máy.
+Do đó mọi test case đánh dấu (B) trong tài liệu này thực chất là bản
+thay thế giản lược (reduced-hardware) cho môi trường (C) thật với
+`TRAFFIC_NODE_MAP` được export, chứ không phản ánh đúng topology triển
+khai cuối cùng.
+
 Mọi test case bên dưới ghi rõ môi trường tối thiểu cần dùng ở dòng
 **Môi trường**. Một test được đánh dấu (B) có thể luôn được lặp lại ở (C)
 nếu nhóm có đủ máy — khuyến nghị làm vậy cho các test có nhãn "Critical
@@ -70,6 +77,7 @@ trước, rồi `rlx_main`, rồi `lx_main`. Với môi trường (C), export
 |---|---|
 | `0` / `1` | TRAIN_APPROACHING hướng 0 / hướng 1 |
 | `x` | Ép lần đóng/mở cổng chắn **kế tiếp** không bao giờ xác nhận (demo lỗi RC-06) |
+| `r` | Demo: gọi thẳng `rlx_gate_force_confirmed_open()` (`rlx_gate.c`) — mô phỏng cổng chắn "vừa được sửa xong và xác nhận mở" ngay lập tức, ép `g_confirmed_open=1`, `g_confirmed_closed=0` (và dọn mọi motion/fault-armed đang dang dở), bất kể trạng thái vật lý thật trước đó (RC-09/RC-10 fault-clear demo) |
 | `f` | Demo-only: gọi thẳng `rlx_fsm_on_fault_clear()` tại chỗ (bỏ qua đường IPC `MSG_REQUEST_FAULT_CLEAR` thật từ Central) |
 
 **`c_operator.c` (console của `c_main`, chỉ tồn tại khi Central chạy)**
@@ -82,11 +90,13 @@ trước, rồi `rlx_main`, rồi `lx_main`. Với môi trường (C), export
 | `r` | `RENEW_OVERRIDE` (nhập Lx, `extend_duration_ms`, 0 = giữ nguyên thời lượng cũ) |
 | `c` | `CANCEL_OVERRIDE` (nhập Lx) |
 | `f` | `REQUEST_FAULT_CLEAR` (chọn node type 0=Lx 1-6 hoặc 1=RLx 1-3 - nay nhắm được cả Lx, xem `lx_fsm_on_request_fault_clear()`/TC-SC03A-6 Phần 2) |
+| `d` | `handle_demo_hour()` — nhập một giờ mô phỏng (0-23) để ép `c_mode_eng` coi như "giờ hiện tại" thay vì đọc đồng hồ thật, cho phép demo theo yêu cầu chuyển đổi PEAK/OFF_PEAK dựa trên giờ cao điểm (DP-01/DP-02) mà không cần chờ tới đúng mốc giờ thật; broadcast `SET_MODE` ngay cho toàn bộ Lx theo mode mà giờ mô phỏng đó ngụ ý |
+| `a` | `handle_resume_automatic()` — huỷ override giờ mô phỏng của phím `d`, quay lại chế độ tự động đọc đồng hồ thật để xác định PEAK/OFF_PEAK (có hiệu lực trong vòng 1s ở lần tick kế tiếp, không tự broadcast ngay) |
 
 ### 0.4 Cách đọc log
 
 - Mỗi `lx_main`/`rlx_main` in trực tiếp ra stdout của chính nó (không có
-  timestamp) — ví dụ `Lx 1: SIGNAL -> ARTERIAL GREEN`,
+  timestamp) — ví dụ `Lx 1: signal phase now ARTERIAL GREEN`,
   `RLx: commanding gates DOWN (simulated motion, 3000 ms)`.
 - `c_main` in ra stdout **và** ghi vào `central_log.txt` (cùng thư mục chạy
   `c_main`) với định dạng `[YYYY-MM-DD HH:MM:SS] <nội dung>`
@@ -152,7 +162,7 @@ gian mô phỏng cổng di chuyển) và tick railway = 1000 ms/lần
 - **Môi trường**: (B) `c_main` + `lx_main 1`
 - **Chuẩn bị**: L1 ở `MODE_PEAK_FIXED` (mặc định lúc khởi động — `lx_fsm_init()`), đang ở `PHASE_ARTERIAL_GREEN`.
 - **Các bước**:
-  1. Trên console C1, bấm `m`, nhập Lx = `1`, mode = `1` (OFF_PEAK_SENSOR) ngay khi L1 vừa mới vào ARTERIAL_GREEN (quan sát log `Lx 1: SIGNAL -> ARTERIAL GREEN` trên terminal L1).
+  1. Trên console C1, bấm `m`, nhập Lx = `1`, mode = `1` (OFF_PEAK_SENSOR) ngay khi L1 vừa mới vào ARTERIAL_GREEN (quan sát log `Lx 1: signal phase now ARTERIAL GREEN` trên terminal L1).
   2. Quan sát reply trả về cho C1 (`c_comm.c` log `RESULT_ACK_PENDING`, vì mode mới khác mode hiện tại — `lx_fsm_on_set_mode()`).
   3. Chờ đúng đến khi L1 in `ARTERIAL YELLOW` (48s sau bước 1) rồi `ALL RED (A to B)` (thêm 4s), không được đổi mode ở hai bước này.
   4. Chờ thêm 2s (tổng ~54s từ bước 1) đến khi L1 chuyển tiếp ranh giới `ALL_RED_A_TO_B -> boundary_after_arterial`.
@@ -173,9 +183,10 @@ gian mô phỏng cổng di chuyển) và tick railway = 1000 ms/lần
 - **Chuẩn bị**: Đưa L1 vào FAULT_SAFE bằng watchdog thật: tạm dừng toàn bộ tiến trình `lx_main 1` bằng `kill -STOP <pid>` trong hơn 2 giây (ngưỡng `LX_WATCHDOG_CHECK_INTERVAL_S`=2s trong `lx_watchdog.c`) rồi `kill -CONT <pid>` — khi resume, `lx_watchdog_thread` phát hiện `phase_tick_counter` không đổi và gọi `lx_fsm_report_watchdog_trip()`.
 - **Các bước**:
   1. `kill -STOP <pid lx_main 1>`, đợi 3s, `kill -CONT <pid>`.
-  2. Quan sát log `Lx: WATCHDOG - no phase-timer activity for 2 s, reporting fault (PA-10)` và `Lx 1: FAULT_SAFE - holding safe outputs (all-red/dark)`.
+  2. Quan sát log `Lx: WATCHDOG - no phase-timer activity for 2 s, reporting fault (PA-10)` và `Lx 1: entering FAULT_SAFE mode - holding safe outputs (all-red/dark)`.
   3. Trên C1, bấm `m`, Lx=`1`, mode=`1`.
 - **Kết quả mong đợi**: `reply->result = RESULT_NACK`, `reply->reason = NACK_REASON_FAULT_ACTIVE`. Cột SUPERVISORY của L1 trên C1 = `0` (FAULT_SAFE) và không đổi.
+- **Lưu ý**: Kết luận ở trên rằng `kill -STOP`/`kill -CONT` trip được watchdog PA-10 (`lx_watchdog.c`) bị `docs/test-plan/05-fault-safety.md`'s TC-FAULT-16 phản bác cho **chính cơ chế này** — TC-FAULT-16 lập luận `SIGSTOP` đình chỉ toàn bộ tiến trình (mọi thread, kể cả thread watchdog tự kiểm tra), nên trên thực tế **không** trip được. Đây là mâu thuẫn thật giữa hai tài liệu, không thể phân xử chỉ bằng đọc code — phụ thuộc hành vi lập lịch `SIGSTOP`/`SIGCONT` thật của QNX. Chưa chạy trên phần cứng thật thì kết quả đúng vẫn **chưa xác định** — cần kiểm tra cả hai khả năng khi có máy QNX thật. (Điều này không áp dụng cho TC-SC05-1 — cơ chế PA-07/`c_watchdog_mon.c` phía Central là độc lập và kết luận của nó không bị ảnh hưởng.) **Do đó case này phải ghi Skip trong báo cáo tổng hợp (không phải Pass)** cho tới khi thực nghiệm `kill -STOP`/`kill -CONT` thật trên QNX xác nhận precondition (bước 1-2) thực sự tạo ra `FAULT_SAFE` — nếu chỉ đọc code mà gán Pass cho bước 3 thì đang giả định luôn precondition đã đúng, điều chưa được xác minh.
 
 ---
 
@@ -186,7 +197,7 @@ gian mô phỏng cổng di chuyển) và tick railway = 1000 ms/lần
 - **Liên quan**: SC-01B, toàn bộ chuỗi `ARTERIAL_GREEN -> ... -> ALL_RED_B_TO_A -> ARTERIAL_GREEN`
 - **Môi trường**: (A) `lx_main 1` đơn lẻ
 - **Chuẩn bị**: L1 mặc định `MODE_PEAK_FIXED`, không cần bấm phím sensor nào (TL-01/TL-02: sensor không ảnh hưởng PEAK_FIXED).
-- **Các bước**: Bấm giờ (stopwatch) từ dòng log `Lx 1: SIGNAL -> ARTERIAL GREEN` đầu tiên, ghi lại timestamp tương đối của từng dòng log tiếp theo cho đến dòng `ARTERIAL GREEN` kế tiếp.
+- **Các bước**: Bấm giờ (stopwatch) từ dòng log `Lx 1: signal phase now ARTERIAL GREEN` đầu tiên, ghi lại timestamp tương đối của từng dòng log tiếp theo cho đến dòng `ARTERIAL GREEN` kế tiếp.
 - **Kết quả mong đợi**: Thứ tự và độ trễ giữa các dòng log đúng:
   `ARTERIAL GREEN` (t=0) → `ARTERIAL YELLOW` (t≈48.0s) → `ALL RED (A to B)` (t≈52.0s) → `CONNECTOR GREEN` (t≈54.0s) → `CONNECTOR YELLOW` (t≈84.0s) → `ALL RED (B to A)` (t≈88.0s) → `ARTERIAL GREEN` (t≈90.0s). Sai số cho phép ±1 tick (100ms) do granularity của `LX_PHASE_TICK_MS`.
 
@@ -260,7 +271,7 @@ gian mô phỏng cổng di chuyển) và tick railway = 1000 ms/lần
 - **Các bước**:
   1. Trong lúc `CONNECTOR_GREEN`/`CONNECTOR_YELLOW`/`ALL_RED_B_TO_A`, bấm `1` (side 0).
   2. Quan sát: không có dòng `PED SIGNAL side 0 -> WALK` nào xuất hiện ngay.
-  3. Chờ tới khi L1 in `SIGNAL -> ARTERIAL GREEN`.
+  3. Chờ tới khi L1 in `signal phase now ARTERIAL GREEN`.
 - **Kết quả mong đợi**: Ngay trong cùng tick L1 vào `PHASE_ARTERIAL_GREEN` (thực chất trong tick kế tiếp của `lx_fsm_ped_service_tick_locked()`, vì hàm này đọc `fsm->phase` hiện tại), log in `Lx 1: PED SIGNAL side 0 -> WALK`. Yêu cầu không hề bị huỷ trong lúc chờ (đúng PA-02/ghi chú "not discarded").
 
 ### TC-SC02-2: Thời lượng WALK 6000ms và FLASHING_DONT_WALK 4000ms chính xác, latch được xoá đúng lúc
@@ -322,10 +333,10 @@ gian mô phỏng cổng di chuyển) và tick railway = 1000 ms/lần
   1. Trên console RL1, bấm `0` (TRAIN_APPROACHING hướng 0) → RL1 vào `RLX_WARNING`, gửi `MSG_CROSSING_STATUS(WARNING)` tới L1 và L2 gần như ngay lập tức (broadcast mỗi tick 1s nếu có thay đổi).
   2. Trên C1 (nếu chạy), quan sát cột SUPERVISORY của L1 chuyển từ `3` (NORMAL_OPERATION) sang `1` (RAILWAY_PREEMPTION) trong vòng ≤1s.
   3. **Theo dõi log của L1 liên tục trong ít nhất 3 phút** (đủ để RL1 tự nhiên đi qua WARNING(5s)→CLOSING(~3s)→CLOSED→chờ 20s→TRAIN_PRESENT→chờ 20s→OPENING(~3s), tức khoảng 51s tối thiểu nếu không có train thứ hai — nhưng vì ta **không** cho crossing mở lại ở bước này, chỉ cần theo dõi qua giai đoạn CLOSED kéo dài).
-  4. Đếm số lần `Lx 1: SIGNAL -> ARTERIAL GREEN` xuất hiện trong khoảng thời gian RAILWAY_PREEMPTION đang active (RL1 chưa OPEN lại).
+  4. Đếm số lần `Lx 1: signal phase now ARTERIAL GREEN` xuất hiện trong khoảng thời gian RAILWAY_PREEMPTION đang active (RL1 chưa OPEN lại).
 - **Kết quả mong đợi**:
   - L1 phải hiện **nhiều hơn một** chu kỳ đầy đủ `ARTERIAL_GREEN → ARTERIAL_YELLOW → ALL_RED_A_TO_B → ARTERIAL_GREEN` trong lúc RAILWAY_PREEMPTION còn active — nghĩa là arterial tiếp tục chạy đúng nhịp 48+4+2=54s/vòng (không có 90s connector xen giữa).
-  - **Không bao giờ** xuất hiện dòng `Lx 1: SIGNAL -> CONNECTOR GREEN` trong suốt thời gian RAILWAY_PREEMPTION active — mọi lần tới `PHASE_ALL_RED_A_TO_B` phải quay thẳng lại `PHASE_ARTERIAL_GREEN` (nhánh `if (fsm->supervisory == SUPERVISORY_RAILWAY_PREEMPTION) { fsm->phase = PHASE_ARTERIAL_GREEN; break; }` trong `lx_fsm_advance_phase_locked()`).
+  - **Không bao giờ** xuất hiện dòng `Lx 1: signal phase now CONNECTOR GREEN` trong suốt thời gian RAILWAY_PREEMPTION active — mọi lần tới `PHASE_ALL_RED_A_TO_B` phải quay thẳng lại `PHASE_ARTERIAL_GREEN` (nhánh `if (fsm->supervisory == SUPERVISORY_RAILWAY_PREEMPTION) { fsm->phase = PHASE_ARTERIAL_GREEN; break; }` trong `lx_fsm_advance_phase_locked()`).
   - Đặc biệt: L1 **không bao giờ đứng yên** ở `ALL RED (A to B)` lâu hơn 2s một lần nào — nếu log cho thấy L1 kẹt ở `ALL RED (A to B)` mãi không đổi trong khi RL1 vẫn ở WARNING/CLOSED, đây chính là bug cũ đã được fix tái xuất hiện (regression thật sự).
 
 ### TC-SC03A-2: NORMAL_OPERATION → CENTRAL_OVERRIDE (chấp nhận REQUEST_OVERRIDE)
@@ -369,8 +380,9 @@ gian mô phỏng cổng di chuyển) và tick railway = 1000 ms/lần
 - **Chuẩn bị/Các bước — Phần 1 (từ CENTRAL_OVERRIDE)**:
   1. Đưa L1 vào CENTRAL_OVERRIDE (như TC-SC03A-2).
   2. Tạm dừng tiến trình `lx_main 1` bằng `kill -STOP <pid>` trong >2s rồi `kill -CONT <pid>` để kích watchdog thật (`lx_watchdog_thread`).
-  3. Quan sát log `Lx: WATCHDOG - no phase-timer activity for 2 s, reporting fault (PA-10)`, sau đó `Lx 1: override cleared/expired - running safe clearance sequence` (override bị terminate **trước** khi vào FAULT_SAFE — đây là compliance-audit fix trong `lx_fsm_report_watchdog_trip()`/`lx_fsm_check_fault_locked()`), rồi `Lx 1: FAULT_SAFE - holding safe outputs (all-red/dark)`.
+  3. Quan sát log `Lx: WATCHDOG - no phase-timer activity for 2 s, reporting fault (PA-10)`, sau đó `Lx 1: override cleared/expired - running safe clearance sequence` (override bị terminate **trước** khi vào FAULT_SAFE — đây là compliance-audit fix trong `lx_fsm_report_watchdog_trip()`/`lx_fsm_check_fault_locked()`), rồi `Lx 1: entering FAULT_SAFE mode - holding safe outputs (all-red/dark)`.
 - **Kết quả mong đợi Phần 1**: SUPERVISORY L1: `2 → 0` trực tiếp (không qua `3`), OVERRIDE về `0`.
+- **Lưu ý**: Giống TC-SC01A-3, việc `kill -STOP`/`kill -CONT` trip được watchdog PA-10 ở bước chuẩn bị Phần 1 bị `docs/test-plan/05-fault-safety.md`'s TC-FAULT-16 phản bác cho cùng cơ chế (`lx_watchdog.c`) — TC-FAULT-16 cho rằng `SIGSTOP` đình chỉ đồng thời mọi thread (kể cả thread watchdog), nên không trip được. Kết luận đúng phụ thuộc hành vi `SIGSTOP`/`SIGCONT` thật của QNX, chưa được xác minh trên phần cứng thật — cần kiểm tra cả hai khả năng khi có máy QNX thật, không nên coi kết luận của case này là đã chốt. **Phần 1 phải ghi Skip (không phải Pass)** trong báo cáo tổng hợp cho tới khi thực nghiệm thật xác nhận precondition — **Phần 2 cũng phụ thuộc Phần 1** (cần L1 đã thực sự ở `FAULT_SAFE` trước khi test recovery), nên cũng Skip theo cho tới khi Phần 1 được xác nhận.
 - **Các bước — Phần 2 (khôi phục qua REQUEST_FAULT_CLEAR)**: **Cập nhật (đã sửa, không còn là known gap)** — `MSG_REQUEST_FAULT_CLEAR` nay được `lx_main.c`'s `on_request()` xử lý cho cả Lx (gọi `lx_fsm_on_request_fault_clear()`), và `c_operator.c`'s phím `f` hỏi `node type` (0=Lx, 1=RLx) trước khi hỏi số hiệu — nhập `f` → `0` → `1` để nhắm L1. Trên C1: `f` → node type `0` → Lx number `1`.
 - **Kết quả mong đợi Phần 2**: `central_log.txt`: `C1: REQUEST_FAULT_CLEAR to 1 -> ACK`. `lx_fsm_on_request_fault_clear()` là unconditional/idempotent (không có điều kiện vật lý nào phải re-verify, khác RLx's `gates_confirmed_open()`): luôn ACK, xóa `fsm->faults`, và SUPERVISORY L1 rời `FAULT_SAFE`. Re-audit fix an toàn liên quan (xem `last_crossing_state` trong `lx_fsm.h`): nếu `fsm->last_crossing_state != CROSSING_OPEN` tại thời điểm clear (crossing kề bên vẫn đang đóng/đang có tàu), SUPERVISORY phải resume `RAILWAY_PREEMPTION` (`1`), **không phải** `NORMAL_OPERATION` (`3`) — verify biến thể này bằng cách lặp lại Phần 1 trong khi RL1 đang WARNING/CLOSED (railway pre-emption active) trước khi trip watchdog, rồi clear fault trong khi crossing vẫn chưa OPEN: SUPERVISORY L1 sau ACK phải là `1`, không phải `3`, và CONNECTOR_GREEN vẫn bị suppress cho tới khi RL1 thật sự báo `OPEN`.
 
@@ -508,7 +520,7 @@ gian mô phỏng cổng di chuyển) và tick railway = 1000 ms/lần
   1. Bấm `x` (arm demo fault cho lần motion kế tiếp).
   2. Bấm `0` → vào WARNING → sau 5s vào CLOSING, `rlx_gate_command_close()` chạy (log `commanding gates DOWN`), nhưng do đã arm fault, `rlx_gate_on_tick()` sẽ không set `g_confirmed_closed=1` khi hết 3000ms — thay vào đó log `RLx: gate FAILED TO CONFIRM (simulated fault) ...`.
   3. Chờ tới đúng `RLX_CLOSING_DEADLINE_MS`=15000ms kể từ lúc vào CLOSING (t≈5+15=20.0s kể từ lúc bấm `0`).
-- **Kết quả mong đợi**: Đúng ở t≈20.0s, `check_closing_or_reclosing_complete()` thấy `state_elapsed_ms >= 15000` và `gates_confirmed_closed()==0` → gọi `enter_fault(fsm, FAULT_GATE_CONFIRM_MISSING)`. Log phải xuất hiện **thêm một lần nữa** `RLx: commanding gates DOWN (simulated motion, 3000 ms)` (do `enter_fault()` gọi lại `rlx_gate_command_close()` một cách vô điều kiện — đây chính là regression cần xác nhận: trước fix, fault không ép lệnh đóng cổng thật, có thể để cổng lơ lửng). Tiếp theo là `RLx: FAULT latched (fault bit 0x1) - holding STOP on all train signals, commanding gates DOWN`. CROSSING_STATE trên C1 (nếu chạy) = `3` (FAULT).
+- **Kết quả mong đợi**: Đúng ở t≈20.0s, `check_closing_or_reclosing_complete()` thấy `state_elapsed_ms >= 15000` và `gates_confirmed_closed()==0` → gọi `enter_fault(fsm, FAULT_GATE_CONFIRM_MISSING)`. Log phải xuất hiện **thêm một lần nữa** `RLx: commanding gates DOWN (simulated motion, 3000 ms)` (do `enter_fault()` gọi lại `rlx_gate_command_close()` một cách vô điều kiện — đây chính là regression cần xác nhận: trước fix, fault không ép lệnh đóng cổng thật, có thể để cổng lơ lửng). Tiếp theo là `RLx: FAULT latched (GATE_CONFIRM_MISSING, bit 0x1) - holding STOP on all train signals, commanding gates DOWN`. CROSSING_STATE trên C1 (nếu chạy) = `3` (FAULT).
 
 ---
 
@@ -543,22 +555,21 @@ gian mô phỏng cổng di chuyển) và tick railway = 1000 ms/lần
 - **Kết quả mong đợi**: Log `RLx: reclosing - aborting gate-open motion, flashers remain active` xuất hiện ngay lập tức; ngay sau đó `RLx: commanding gates DOWN (simulated motion, 3000 ms)` (gọi lại `rlx_gate_command_close()`, huỷ motion mở dở dang). Không có `RLx: flashers OFF` nào xuất hiện xen giữa (flashers phải giữ nguyên trạng thái active suốt, đúng "keep flashers active"). Khoảng 3s sau (t≈34s), `reclose_confirmation` → `RLx: train signal PROCEED for direction 0 ...` → state về CLOSED (map ra CROSSING_CLOSED, giống hệt sau CLOSING thường).
 
 ### TC-SC04B-4: OPENING → FAULT khi cổng không xác nhận mở đúng hạn, rồi hồi phục qua FAULT → OPEN
-- **Loại**: Negative (vào FAULT) + Positive (ra khỏi FAULT — đường hồi phục hoạt động, khác hẳn Lx)
+- **Loại**: Negative (vào FAULT) + Positive (ra khỏi FAULT — đường hồi phục thật, kiểm được hoàn toàn qua bàn phím, khác hẳn Lx)
 - **Liên quan**: SC-04B, `OPENING --> FAULT : gates fail to confirm OPEN / hold last confirmed safe outputs and report fault`; `FAULT --> OPEN : verified repair and accepted local fault-clear request [crossing safe]`
-- **Môi trường**: (A) là đủ (dùng phím demo `f`); lặp lại ở (B) để test đường IPC `MSG_REQUEST_FAULT_CLEAR` thật từ C1 nếu cần.
+- **Môi trường**: (A) đủ cho việc vào FAULT (dùng phím demo `x`); cần (B) (`c_main` + `rlx_main 1`) cho phần hồi phục thật ở bước 6 vì `MSG_REQUEST_FAULT_CLEAR` chỉ được gửi từ `c_operator.c`.
 - **Chuẩn bị**: Đưa RL1 tới ngay trước lúc vào OPENING (ví dụ dừng ở cuối TC-SC04B-2, ngay trước t≈30s).
 - **Các bước**:
   1. Trước khi cửa sổ occupancy cuối cùng hết hạn, bấm `x` (arm demo fault cho lần motion open sắp tới).
   2. Chờ cửa sổ hết hạn → `enter_opening()` chạy, `rlx_gate_command_open()` được gọi, nhưng do đã arm fault, không xác nhận open (`g_confirmed_open` giữ 0).
   3. Chờ đủ `RLX_OPENING_DEADLINE_MS`=15000ms kể từ lúc vào OPENING.
   4. Sau khi FAULT xuất hiện (`enter_fault()` gọi lại `rlx_gate_command_close()` — regression tương tự TC-SC04A-5), **thử** `f` (demo fault-clear) ngay lập tức mà **không** đợi gate xác nhận đóng xong.
-  5. Đợi đủ 3000ms để gate đóng hoàn tất (vì `enter_fault()` vừa ra lệnh đóng), rồi thử `f` lần nữa — nhưng lưu ý `rlx_fsm_on_fault_clear()` chỉ chấp nhận khi `gates_confirmed_open()==1`, tức cần một lệnh `rlx_gate_command_open()` thành công (không bị `x` chặn) trước đó.
-  6. Bấm `x` **không được** bấm lần này, sau đó cần một cách hợp lệ để đưa gate về trạng thái confirmed-open thật trước khi fault-clear được chấp nhận — thực tế thao tác đúng: gọi `f` sẽ tự kiểm tra `gates_confirmed_open()`; vì hiện tại gate đang ở trạng thái đóng (do fault ép đóng), fault-clear **phải bị từ chối** ở bước 4/5.
+  5. Đợi đủ 3000ms để gate đóng hoàn tất (vì `enter_fault()` vừa ra lệnh đóng), rồi thử `f` lần nữa — vẫn phải bị từ chối vì `gates_confirmed_open()` chưa bao giờ thật sự là 1 kể từ khi vào FAULT.
+  6. Trên console RL1 (đang ở `RLX_FAULT`, gate hiện `confirmed CLOSED`), bấm `r` để gọi `rlx_gate_force_confirmed_open()` (`rlx_gate.c`) — mô phỏng "gate mechanism đã được sửa xong và xác nhận mở lại", ép ngay `g_confirmed_open=1`/`g_confirmed_closed=0`. Sau đó, trên console C1 bấm `f` → node type `1` (RLx) → số hiệu `1` để gửi `MSG_REQUEST_FAULT_CLEAR` **thật qua IPC** tới RL1.
 - **Kết quả mong đợi**:
-  - Bước 3: log `RLx: FAULT latched (fault bit 0x1) ...` xuất hiện đúng ở t≈15s kể từ lúc vào OPENING.
+  - Bước 3: log `RLx: FAULT latched (GATE_CONFIRM_MISSING, bit 0x1) ...` xuất hiện đúng ở t≈15s kể từ lúc vào OPENING.
   - Bước 4/5 (gate hiện đang CLOSED do fault, chưa từng OPEN thật): `rlx_fsm_on_fault_clear()` trả `RESULT_NACK`, `NACK_REASON_FAULT_ACTIVE` (log `[rlx_sensor] fault-clear result=... reason=...`) — **đúng theo thiết kế**, vì RC-10 yêu cầu xác minh gate thật sự an toàn (confirmed open) trước khi chấp nhận fault-clear, và crossing đang FAULT với gate đóng thì hiển nhiên chưa "verified repair".
-  - Đây là điểm khác biệt quan trọng cần ghi chú so với TC-SC03A-6 Phần 2 của Lx: RLx **có** một đường hồi phục hoạt động thật (`MSG_REQUEST_FAULT_CLEAR`/phím `f`), chỉ là nó đòi hỏi điều kiện an toàn thật (gate confirmed open) — không phải là "không có cách nào" như trường hợp Lx. Để hoàn tất việc test nhánh ACK thành công của transition này, nhóm cần một kịch bản riêng mô phỏng "gate đã thực sự sửa xong và về vị trí mở" — vì `rlx_gate.c` không có API "force confirmed open" độc lập với `rlx_gate_command_open()`, cách khả thi duy nhất trong PoC hiện tại là: sau khi FAULT xuất hiện, **không** bấm `x` nữa, và chờ một chu trình OPENING mới được kích hoạt lại tự nhiên — nhưng vì state đang là `RLX_FAULT` (latched, bỏ qua mọi `TRAIN_APPROACHING` mới), **không có** cơ chế nào trong code hiện tại tự động thử lại `rlx_gate_command_open()` sau khi vào FAULT. => **Known gap bổ sung**: nhánh `FAULT --> OPEN` chỉ thực sự kiểm chứng được bằng test nếu FAULT được kích hoạt từ một nguyên nhân **không** liên quan tới gate-confirm-open (ví dụ watchdog trip trong lúc gate đang thực sự confirmed open sẵn) — xem biến thể dưới.
-- **Biến thể để có nhánh ACK thật (bổ sung)**: Từ `RLX_OPEN` (gate đã confirmed open sẵn, `g_confirmed_open=1` từ `rlx_gate_init()`), kích hoạt fault bằng watchdog thay vì gate: tạm dừng tiến trình `rlx_main 1` bằng `kill -STOP`/`kill -CONT` như cách làm với Lx (RLx cũng có `rlx_fsm_report_watchdog_trip()` gọi từ một watchdog thread tương tự — kiểm tra `app/railway/src/rlx_watchdog.c` nếu tồn tại). Vì `enter_fault()` luôn gọi `rlx_gate_command_close()` bất kể lý do fault, gate sẽ chuyển từ open sang đóng (3s) rồi confirmed closed — tức **cùng vướng vấn đề trên**: `gates_confirmed_open()` sẽ là 0 ngay sau đó. Do đó, thực tế **fault-clear ACK chỉ khả thi** nếu operator đợi đủ để... **không có đường nào** trong code hiện tại tự chuyển gate về lại `g_confirmed_open=1` khi đang ở FAULT (không có lệnh `rlx_gate_command_open()` nào được gọi cho tới khi rời FAULT). => Ghi nhận rõ trong báo cáo: **nhánh `FAULT --> OPEN` hiện tại KHÔNG THỂ đạt `RESULT_ACK` qua bất kỳ chuỗi thao tác nào bằng giao diện hiện có**, vì điều kiện tiên quyết `gates_confirmed_open()==1` không bao giờ tự nhiên đúng một khi đã vào FAULT (mọi đường vào FAULT đều ép gate đóng, và không gì tự mở lại gate trong khi FAULT). Đây là **known gap quan trọng cần báo cáo cho giảng viên/nhóm**, tương tự nhưng độc lập với gap của Lx ở TC-SC03A-6.
+  - Bước 6: ngay sau khi bấm `r`, log `[DEMO] Gate mechanism simulated as physically repaired - now confirmed OPEN (RC-09/RC-10 fault-clear demo path)` xuất hiện trên console RL1. Yêu cầu `MSG_REQUEST_FAULT_CLEAR` gửi từ C1 sau đó phải nhận `RESULT_ACK` (không còn NACK) — vì `gates_confirmed_open()` giờ là 1 — `central_log.txt` ghi `C1: REQUEST_FAULT_CLEAR to <RL1> -> ACK`; `fsm->faults` về `FAULT_NONE`, RL1 rời `RLX_FAULT`, CROSSING_STATE của RL1 trên bảng C1 trở lại `0` (OPEN). Đây là một transition `FAULT --> OPEN` **thật, dương tính, và kiểm chứng được hoàn toàn qua bàn phím** (phím `r` của `rlx_sensor.c` + phím `f` của `c_operator.c`) — **không còn là "known gap"** như đánh giá trước đây của tài liệu này (phím `r`/`rlx_gate_force_confirmed_open()` chính là API "force confirmed open" mà nhận định cũ cho là không tồn tại).
 
 ### TC-SC04B-5 (Known gap, ghi nhận ngắn gọn): CLOSED/TRAIN_PRESENT → FAULT do "gate state contradicts CLOSED" không thể kích hoạt qua công cụ demo hiện có
 - **Loại**: Negative / Known gap
@@ -590,15 +601,28 @@ gian mô phỏng cổng di chuyển) và tick railway = 1000 ms/lần
 - **Các bước**: Chạy `lx_main 1` một mình (không `c_main`), bấm các phím sensor bình thường (`a`, `1`, `w`, v.v.) và quan sát toàn bộ chu kỳ ARTERIAL/CONNECTOR, WALK/FDW, vẫn hoạt động đúng thời lượng như các test ở mục 1-4 của tài liệu này.
 - **Kết quả mong đợi**: Không có bất kỳ khác biệt hành vi nào so với khi có `c_main` chạy — xác nhận trực tiếp qua source: không có lệnh `if (fsm->link_state == ...)` nào xuất hiện trong toàn bộ `lx_fsm.c` chi phối phase/pedestrian/override/railway-preemption logic. Đây là behavior **đạt yêu cầu SC-05 note "by construction"**, không phải vì có cơ chế fallback chủ động nào được lập trình riêng.
 
-### TC-SC05-3: Resync tức thời khi heartbeat khôi phục — và lỗ hổng hiển thị RESYNCHRONISING
-- **Loại**: Positive + Known gap
+### TC-SC05-3: Resync tức thời khi heartbeat khôi phục — mô hình hoá RESYNCHRONISING qua chính heartbeat đầy đủ
+- **Loại**: Positive
 - **Liên quan**: SC-05, `DEGRADED_LOCAL --> RESYNCHRONISING --> CENTRAL_CONNECTED`
 - **Môi trường**: (B)
 - **Chuẩn bị**: Lặp lại TC-SC05-1 cho tới khi L1 = `UNAVAILABLE`.
 - **Các bước**:
   1. `kill -CONT <pid lx_main 1>` để L1 tiếp tục chạy và tự động gửi lại `MSG_HEARTBEAT` (1Hz, không cần thao tác gì thêm từ phía L1).
   2. Quan sát bảng C1 ở lần refresh 1Hz ngay sau khi heartbeat đầu tiên tới.
-- **Kết quả mong đợi**: `c_server_record_status()` (được gọi từ `MSG_HEARTBEAT` case trong `c_main.c`) reset `missed_heartbeat_ticks=0` và `marked_unavailable=0` **ngay trên heartbeat đầu tiên nhận được** — AVAILABILITY chuyển thẳng `UNAVAILABLE → AVAILABLE` trong đúng 1 tick, không có bước trung gian nào hiển thị "đang resync". *Known gap*: SC-05 vẽ một trạng thái `RESYNCHRONISING` tường minh ("send complete current state to C1" / "C1 accepts complete state exchange"), nhưng code hiện tại không có STATUS "trạng thái đầy đủ" riêng biệt nào được gửi khi vừa kết nối lại — mọi `MSG_HEARTBEAT`/`MSG_STATUS` đều có cùng nội dung `status_report_payload_t`, và trường `link_state` trong đó **luôn bị hard-code** `LINK_CENTRAL_CONNECTED` bởi cả `lx_comm.c` (`req.payload.heartbeat.summary.link_state = (uint32_t)LINK_CENTRAL_CONNECTED;`) lẫn `rlx_comm.c`, bất kể tình trạng kết nối thật — nghĩa là cột hiển thị (nếu HMI từng in `link_state`) sẽ không bao giờ phản ánh đúng DEGRADED_LOCAL/RESYNCHRONISING dù Central có đang coi controller là UNAVAILABLE. Ghi rõ đây là giới hạn PoC đã biết, không phải bug mới phát hiện, cần nêu trong báo cáo nghiệm thu.
+- **Kết quả mong đợi**: `c_server_record_status()` (được gọi từ `MSG_HEARTBEAT` case trong `c_main.c`) reset `missed_heartbeat_ticks=0` và `marked_unavailable=0` **ngay trên heartbeat đầu tiên nhận được** — AVAILABILITY chuyển thẳng `UNAVAILABLE → AVAILABLE` trong đúng 1 tick, không có bước trung gian nào hiển thị "đang resync". Đây là cách thiết kế mô hình hoá `RESYNCHRONISING` của SC-05: vì `heartbeat_payload_t` đã tái sử dụng đúng shape đầy đủ của `status_report_payload_t` (PA-08's "complete current state"), bản thân heartbeat được ACK đầu tiên sau khi mất kết nối ĐÃ LÀ bước "gửi state đầy đủ" — không cần một bước trung gian tách riêng. **(Đã sửa trong đợt audit gần nhất — trước đây `link_state` trong payload bị hard-code `LINK_CENTRAL_CONNECTED` ở cả `lx_comm.c` lẫn `rlx_comm.c` bất kể tình trạng kết nối thật; xem TC-SC05-4 cho test case xác nhận trực tiếp việc này đã được sửa.)**
+
+### TC-SC05-4 (Regression, PA-07/PA-08): `link_state` giờ phản ánh đúng thật, không còn hard-code — xác nhận trực tiếp qua payload gửi đi
+- **Loại**: Regression (đã sửa)
+- **Tại sao từng là bug**: Trước đợt audit/fix gần nhất, `lx_comm_send_heartbeat()`/`rlx_comm_send_heartbeat()` luôn ghi đè `req.payload.heartbeat.summary.link_state = (uint32_t)LINK_CENTRAL_CONNECTED;` bất kể `fsm->link_state` thật là gì — nghĩa là trường `link_state` trên wire **luôn nói dối** là đã kết nối, kể cả khi Lx/RLx đang thật sự ở `DEGRADED_LOCAL`. `fsm->link_state` cũng chỉ được set một lần lúc khởi tạo, không bao giờ cập nhật lại sau đó.
+- **Liên quan**: `lx_fsm_on_heartbeat_result()` (`lx_fsm.c`), `rlx_fsm_on_heartbeat_result()` (`rlx_fsm.c`) — hàm mới, được gọi từ callback trả lời heartbeat (`on_heartbeat_reply()` trong `lx_comm.c`/`rlx_comm.c`, chạy trên client thread); `lx_fsm_fill_status()`/`rlx_fsm_fill_status()` giờ copy `fsm->link_state` thật vào payload thay vì hard-code.
+- **Môi trường**: (B)
+- **Chuẩn bị**: `c_main` và `lx_main 1` đang chạy bình thường, đã kết nối (`AVAILABLE`).
+- **Các bước**:
+  1. `kill -STOP <pid c_main>` (dừng hẳn Central — L1 sẽ không nhận được `RESULT_ACK` cho các heartbeat gửi đi tiếp theo, vì `MsgSend()` sẽ thất bại/không có ai trả lời).
+  2. Quan sát log của `lx_main 1` (không phải log C1, vì C1 đang bị STOP): sau đúng 3 heartbeat liên tiếp không được ACK, phải thấy dòng `Lx: 3 consecutive HEARTBEATs unacknowledged - entering DEGRADED_LOCAL (PA-07)`.
+  3. `kill -CONT <pid c_main>` để Central chạy lại.
+  4. Quan sát tiếp log `lx_main 1`: ngay lần heartbeat kế tiếp được ACK, phải thấy dòng `Lx: HEARTBEAT acknowledged by C1 - reconnected, resuming CENTRAL_CONNECTED (PA-08)`.
+- **Kết quả mong đợi**: Cả 2 dòng log trên phải xuất hiện đúng như mô tả — đây là bằng chứng trực tiếp rằng `fsm->link_state` (và do đó trường `link_state` trong mọi `MSG_HEARTBEAT` gửi đi sau đó) giờ phản ánh đúng tình trạng kết nối thật, không còn là giá trị hard-code. Nếu không thấy 2 dòng log này xuất hiện đúng lúc, đây là regression của chính bug đã sửa.
 
 ---
 
@@ -607,10 +631,10 @@ gian mô phỏng cổng di chuyển) và tick railway = 1000 ms/lần
 | Gap | Chart | Vị trí trong code | Ảnh hưởng |
 |---|---|---|---|
 | ~~Không có đường phục hồi `FAULT_SAFE -> NORMAL_OPERATION` cho Lx qua bàn phím/IPC~~ (ĐÃ SỬA) | SC-03A | `MSG_REQUEST_FAULT_CLEAR` nay được `lx_main.c`'s `on_request()` xử lý, gọi `lx_fsm_on_request_fault_clear()`; `c_operator.c`'s phím `f` hỏi node type (0=Lx/1=RLx) | Không còn là gap — xem TC-SC03A-6 Phần 2. Re-audit fix bổ sung: resume đúng `RAILWAY_PREEMPTION` thay vì luôn `NORMAL_OPERATION` nếu crossing kề bên vẫn chưa `OPEN` tại thời điểm clear (`fsm->last_crossing_state`) |
-| Nhánh `FAULT --> OPEN` của RLx không đạt được `RESULT_ACK` bằng bất kỳ chuỗi thao tác nào | SC-04B | `rlx_fsm_on_fault_clear()` yêu cầu `gates_confirmed_open()==1`, nhưng mọi đường vào FAULT (`enter_fault()`) đều ép gate đóng và không gì tự mở lại gate khi đang FAULT | Xem TC-SC04B-4 biến thể |
+| ~~Nhánh `FAULT --> OPEN` của RLx không đạt được `RESULT_ACK` bằng bất kỳ chuỗi thao tác nào~~ (ĐÃ SỬA/NHẬN ĐỊNH LẠI) | SC-04B | `rlx_sensor.c`'s phím `r` gọi `rlx_gate_force_confirmed_open()` (`rlx_gate.c`) — chính API "force confirmed open" mà nhận định trước đây cho là không tồn tại | Không còn là gap — xem TC-SC04B-4, bước 6: `r` trên RL1 rồi `f` trên C1 (chọn RLx) cho `RESULT_ACK` thật, kiểm chứng hoàn toàn qua bàn phím |
 | `WARNING --> FAULT` (diagnostic timeout 60s) không thể kích hoạt | SC-04A | `RLX_WARNING_TO_CLOSING_MS` (5s) luôn bắn trước, reset `state_elapsed_ms`; sự kiện mô phỏng rời rạc không thể hiện sensor "kẹt active liên tục" | Dead code theo chính comment trong `rlx_fsm.c` |
 | `CLOSED/TRAIN_PRESENT --> FAULT` do gate mâu thuẫn không thể kích hoạt qua demo hiện có | SC-04B | `rlx_gate.c` chỉ đổi trạng thái confirm qua lệnh do chính `rlx_fsm.c` phát ra | Cần thêm API demo nếu muốn test thật |
 | `REQUEST_LATCHED` "stuck-active beyond diagnostic timeout" (PA-03) không được phát hiện | SC-02 | `lx_fsm_latch_pedestrian_request()` có comment "KNOWN LIMITATION" xác nhận `FAULT_PED_BUTTON_STUCK` không bao giờ được set | Không viết test dương cho nhánh này trong tài liệu này |
-| `link_state` luôn hard-code `LINK_CENTRAL_CONNECTED` trong mọi heartbeat gửi đi | SC-05 | `lx_comm.c`, `rlx_comm.c` | RESYNCHRONISING không thể quan sát trực tiếp qua trường này; chỉ suy luận gián tiếp qua AVAILABILITY trên C1 |
+| ~~`link_state` luôn hard-code `LINK_CENTRAL_CONNECTED` trong mọi heartbeat gửi đi~~ (ĐÃ SỬA) | SC-05 | `lx_fsm_on_heartbeat_result()`/`rlx_fsm_on_heartbeat_result()` giờ theo dõi ACK/miss thật; `lx_comm.c`/`rlx_comm.c`'s `on_heartbeat_reply()` gọi vào đó thay vì ghi đè giá trị cứng | Không còn là gap — xem TC-SC05-4 |
 
-Tổng số test case trong tài liệu này: **42** (đếm cả các biến thể/edge case lồng trong một số TC).
+Tổng số test case trong tài liệu này: **43** (đếm cả các biến thể/edge case lồng trong một số TC — tăng 1 sau khi thêm TC-SC05-4 quy hồi cho fix `link_state`).

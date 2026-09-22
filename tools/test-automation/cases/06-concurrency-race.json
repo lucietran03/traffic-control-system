@@ -342,7 +342,7 @@
       "checks": [
         {"node_id": "C1", "pattern": "SET_MODE to 1 -> (ACK|ACK_PENDING)", "within_ms": 1000,
          "description": "All 5 SET_MODE commands are accepted immediately at the IPC layer (lx_fsm_on_set_mode always ACK/ACK_PENDING outside FAULT_SAFE) - this just confirms the burst was actually delivered and processed, not silently dropped."},
-        {"node_id": "L1", "pattern": "SIGNAL -> ALL RED \\(A to B\\)", "within_ms": 51000,
+        {"node_id": "L1", "pattern": "signal phase now ALL RED \\(A to B\\)", "within_ms": 51000,
          "description": "L1 starts in PHASE_ARTERIAL_GREEN with the full LX_PEAK_ARTERIAL_GREEN_MS=48000ms + LX_YELLOW_MS=4000ms ahead of it at t=0 - waits out the ordinary cycle to reach the first ALL_RED_A_TO_B boundary where lx_fsm_advance_phase_locked() applies fsm->pending_mode (lx_fsm.c lines 236-242)."},
         {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+1\\s", "within_ms": 3000,
          "description": "The final SET_MODE sent (mode=1/OFF_PEAK_SENSOR at t=4000ms) must be the one that wins - c_hmi_render()'s MODE column for L1 must read 1, not 0 or any intermediate value, proving mode_change_pending's last-write-wins semantics (lx_fsm_on_set_mode, lx_fsm.c lines 689-729) survived the flip-flop burst."}
@@ -371,17 +371,17 @@
         {"after_ms": 54520, "node_id": "C1", "send": "0\n"}
       ],
       "checks": [
-        {"node_id": "L1", "pattern": "SIGNAL -> ALL RED \\(A to B\\)", "within_ms": 52000,
+        {"node_id": "L1", "pattern": "signal phase now ALL RED \\(A to B\\)", "within_ms": 52000,
          "description": "48000(arterial green)+4000(yellow) after t=0 - first boundary, where lx_fsm_advance_phase_locked()'s A_TO_B branch (lx_fsm.c lines 236-242) applies mode=1 (OFF_PEAK_SENSOR)."},
         {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+1\\s", "within_ms": 3000,
          "description": "Confirms mode actually flipped to 1 at the A_TO_B boundary before the 2nd SET_MODE is even sent (2nd send is scheduled for t=54500ms, i.e. after this boundary at ~52000ms plus the following 2000ms all-red)."},
-        {"node_id": "L1", "pattern": "SIGNAL -> CONNECTOR GREEN", "within_ms": 2500,
+        {"node_id": "L1", "pattern": "signal phase now CONNECTOR GREEN", "within_ms": 2500,
          "description": "Confirms the sequencer actually crossed ALL_RED_A_TO_B (2000ms) into connector green, so the 2nd SET_MODE (sent at t=54500ms, i.e. shortly after connector green begins) targets the SAME B_TO_A boundary this test wants to exercise, not a stale phase."},
-        {"node_id": "L1", "pattern": "SIGNAL -> ALL RED \\(B to A\\)", "within_ms": 32000,
+        {"node_id": "L1", "pattern": "signal phase now ALL RED \\(B to A\\)", "within_ms": 32000,
          "description": "30000(connector green, mode is OFF_PEAK_SENSOR by now so this uses the demand-driven exit guard and could in principle exit earlier with no demand pressure applied here so it runs the full duration)+buffer - reaches the SECOND boundary where the B_TO_A branch (lx_fsm.c lines 301-309, the one the regression comment at lines 302-305 flags as previously dropped) must ALSO apply the pending mode."},
         {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+0\\s", "within_ms": 3000,
          "description": "Confirms mode flipped back to 0 (PEAK_FIXED) at the B_TO_A boundary too - if only the A_TO_B branch worked (the historical bug), this column would still read 1 here."},
-        {"node_id": "L1", "pattern": "SIGNAL -> ARTERIAL GREEN", "within_ms": 2500,
+        {"node_id": "L1", "pattern": "signal phase now ARTERIAL GREEN", "within_ms": 2500,
          "description": "Confirms the sequencer completed the B_TO_A boundary and resumed arterial green, proving the 2nd mode change did not stall the phase machine."}
       ],
       "cleanup_wait_ms": 500
@@ -411,11 +411,11 @@
          "description": "setup_wait_ms=54500ms lets L1 (starts in PHASE_ARTERIAL_GREEN) run past its first ALL_RED_A_TO_B boundary into PHASE_CONNECTOR_GREEN before either command is sent, matching the test plan's prep step. offset_apply_pending is only set here (lx_fsm_on_set_timing_profile, lx_fsm.c lines 654-687), not yet consumed (that only happens at the next fresh PHASE_ARTERIAL_GREEN entry)."},
         {"node_id": "C1", "pattern": "SET_MODE to 1 -> ACK_PENDING", "within_ms": 500,
          "description": "mode_change_pending set to switch to OFF_PEAK_SENSOR, deferred to the upcoming ALL_RED_B_TO_A boundary - sent ~200ms after the timing profile, well within the same PHASE_CONNECTOR_GREEN."},
-        {"node_id": "L1", "pattern": "SIGNAL -> ALL RED \\(B to A\\)", "within_ms": 32000,
+        {"node_id": "L1", "pattern": "signal phase now ALL RED \\(B to A\\)", "within_ms": 32000,
          "description": "Remaining PHASE_CONNECTOR_GREEN (up to 30000ms, still PEAK_FIXED mode at exit-check time since mode_change_pending is only consumed AT this boundary) + buffer."},
         {"node_id": "C1", "pattern": "^L1\\s+INTERSECTION\\s+1\\s", "within_ms": 3000,
          "description": "Confirms mode_change_pending was consumed exactly at this boundary (not stuck forever, not applied early)."},
-        {"node_id": "L1", "pattern": "SIGNAL -> ARTERIAL GREEN", "within_ms": 2500,
+        {"node_id": "L1", "pattern": "signal phase now ARTERIAL GREEN", "within_ms": 2500,
          "description": "By the design documented in lx_fsm_apply_offset_locked()'s doc comment (lx_fsm.c lines 486-652), because mode is now OFF_PEAK_SENSOR (not MODE_PEAK_FIXED) at this fresh ARTERIAL_GREEN entry, the guard at line 586 returns early WITHOUT applying the offset - but per line 343 offset_apply_pending is still cleared unconditionally right before the call, so it can never re-fire on a later cycle once mode returns to PEAK_FIXED. This line's mere appearance (the sequencer keeps advancing normally) is the observable proof that neither pending flag deadlocked the phase machine; the offset's silent no-op is not independently visible via any printf and is accepted here as a code-reading-verified invariant rather than a log-checkable one."}
       ],
       "cleanup_wait_ms": 500
@@ -557,7 +557,7 @@
          "description": "rlx_gate_arm_demo_fault() armed - the upcoming close motion (triggered by '0' at t=100ms) will never set g_confirmed_closed."},
         {"node_id": "RL1", "pattern": "gate FAILED TO CONFIRM \\(simulated fault\\)", "within_ms": 4000,
          "description": "3rd tick after CLOSING entry (t~=4100-8100ms depending on WARNING->CLOSING jitter): rlx_gate_on_tick() reports the simulated failure."},
-        {"node_id": "RL1", "pattern": "FAULT latched \\(fault bit", "within_ms": 16000,
+        {"node_id": "RL1", "pattern": "FAULT latched \\(GATE_CONFIRM_MISSING, bit", "within_ms": 16000,
          "description": "check_closing_or_reclosing_complete() escalates to enter_fault(FAULT_GATE_CONFIRM_MISSING) once state_elapsed_ms>=RLX_CLOSING_DEADLINE_MS=15000ms in CLOSING without confirmation - total from the '0' press this lands at roughly [100+4000, 100+5000)+15000 = [19100,20100)ms, comfortably before the 'r'/'f0' steps scheduled at t>=21000ms."},
         {"node_id": "RL1", "pattern": "fault-clear result=1 reason=0", "within_ms": 500,
          "description": "'r' (rlx_gate_force_confirmed_open) is sent first at t=21000ms, forcing g_confirmed_open=1 and clearing the demo-fault arm - so the 'f0' combined send at t=21050ms hits rlx_fsm_on_fault_clear() with gates_confirmed_open() now genuinely true, giving RESULT_ACK(1)/NACK_REASON_NONE(0)."},

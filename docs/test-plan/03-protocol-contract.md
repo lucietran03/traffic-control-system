@@ -106,8 +106,8 @@ nào >= 90000, nên case biên phải dùng test_client.
 - **Loại**: Negative
 - **Verb**: MSG_SET_TIMING_PROFILE
 - **Liên quan**: NACK_REASON_FAULT_ACTIVE
-- **Môi trường**: (D) cần công cụ hỗ trợ ép fault. `lx_sensor.c` hiện KHÔNG có phím lỗi thủ công (khác `rlx_sensor.c`'s `x`/`f`), và PA-10 chỉ thật sự trip khi luồng server-thread của Lx ngừng tick >= 2s liên tục (`lx_watchdog.c`, `LX_WATCHDOG_CHECK_INTERVAL_S=2`) - không có cách kích hoạt xác định bằng thao tác bàn phím/CLI thông thường. Đề xuất: bổ sung tạm 1 phím DEMO-ONLY vào `lx_sensor.c` gọi thẳng `lx_fsm_report_watchdog_trip(&fsm)`, đúng khuôn mẫu đã có ở `rlx_sensor.c`'s phím `f`, để nhóm test có thể ép `SUPERVISORY_FAULT_SAFE` mà không cần chờ watchdog thật.
-- **Chuẩn bị**: Sau khi có phím demo (hoặc gắn debugger tạm dừng thread server của `lx_main 1` bằng breakpoint > 2s), xác nhận qua log "Lx: WATCHDOG - no phase-timer activity ... reporting fault" xuất hiện.
+- **Môi trường**: (B) — bước gửi `SET_TIMING_PROFILE` bản thân nó KHÔNG cần test_client (dùng đúng phím `t` thật của `c_operator.c`). Vấn đề thật là **precondition**: `lx_sensor.c` hiện KHÔNG có phím lỗi thủ công (khác `rlx_sensor.c`'s `x`/`f`), và PA-10 chỉ thật sự trip khi luồng server-thread của Lx ngừng tick >= 2s liên tục (`lx_watchdog.c`, `LX_WATCHDOG_CHECK_INTERVAL_S=2`) — con đường duy nhất là `lx_fsm_report_watchdog_trip()` gọi từ `lx_watchdog_thread()` (`05-fault-safety.md:402`), không có cách kích hoạt xác định bằng thao tác bàn phím/CLI thông thường. **Case này Skip không phải vì thiếu test_client, mà vì thiếu cách ép Lx vào `SUPERVISORY_FAULT_SAFE`** — 2 đường khả dĩ đều chưa dùng được: debugger giữ riêng server thread (chưa có, xem TC-FAULT-17/18) hoặc `kill -STOP`/`kill -CONT` (kết quả CHƯA XÁC ĐỊNH, xem mâu thuẫn TC-SC01A-3 vs TC-FAULT-16). Đề xuất lâu dài: bổ sung 1 phím DEMO-ONLY vào `lx_sensor.c` gọi thẳng `lx_fsm_report_watchdog_trip(&fsm)`, đúng khuôn mẫu đã có ở `rlx_sensor.c`'s phím `f`.
+- **Chuẩn bị**: L1 ở `SUPERVISORY_FAULT_SAFE` — **hiện chưa có cách thiết lập đáng tin cậy** (xem giải thích ở trên).
 - **Các bước**: Từ C1: `t` -> `1` (broadcast R1) trong khi L1 đang FAULT_SAFE.
 - **Kết quả mong đợi**: `central_log.txt`: `C1: SET_TIMING_PROFILE to 1 -> NACK reason=FAULT_ACTIVE`.
 
@@ -173,8 +173,8 @@ kế tiếp - SC-01A).
 - **Loại**: Negative
 - **Verb**: MSG_SET_MODE
 - **Liên quan**: NACK_REASON_FAULT_ACTIVE
-- **Môi trường**: (D) - cùng lý do/đề xuất như TC-MSG-2 (cần phím demo ép fault trên `lx_sensor.c`, hiện chưa có).
-- **Chuẩn bị**: L1 ở `SUPERVISORY_FAULT_SAFE`.
+- **Môi trường**: (B) — cùng lý do như TC-MSG-2: gửi `SET_MODE` không cần test_client, nhưng **thiếu cách ép Lx vào `SUPERVISORY_FAULT_SAFE`** (chưa có phím demo trên `lx_sensor.c`, debugger chưa dùng, `kill -STOP` chưa xác định — xem giải thích đầy đủ ở TC-MSG-2).
+- **Chuẩn bị**: L1 ở `SUPERVISORY_FAULT_SAFE` — hiện chưa có cách thiết lập đáng tin cậy.
 - **Các bước**: Tại C1: `m` -> `1` -> `1`.
 - **Kết quả mong đợi**: `central_log.txt`: `C1: SET_MODE to 1 -> NACK reason=FAULT_ACTIVE`.
 
@@ -293,8 +293,8 @@ bỏ qua Central.
 - **Loại**: Negative
 - **Verb**: MSG_REQUEST_OVERRIDE
 - **Liên quan**: NACK_REASON_FAULT_ACTIVE
-- **Môi trường**: (D) - cùng lý do TC-MSG-2 (cần phím demo ép fault, chưa có trong `lx_sensor.c`).
-- **Chuẩn bị**: L1 ở `SUPERVISORY_FAULT_SAFE`.
+- **Môi trường**: (B) — cùng lý do TC-MSG-2: gửi `REQUEST_OVERRIDE` không cần test_client, nhưng **thiếu cách ép Lx vào `SUPERVISORY_FAULT_SAFE`** (xem giải thích đầy đủ ở TC-MSG-2).
+- **Chuẩn bị**: L1 ở `SUPERVISORY_FAULT_SAFE` — hiện chưa có cách thiết lập đáng tin cậy.
 - **Các bước**: C1: `o` -> `1` -> `0` -> `duration_ms: 10000`.
 - **Kết quả mong đợi**: `central_log.txt`: `C1: REQUEST_OVERRIDE to 1 -> NACK reason=FAULT_ACTIVE`.
 
@@ -315,6 +315,16 @@ bỏ qua Central.
 - **Chuẩn bị**: Giống TC-MSG-17.
 - **Các bước**: C1: `o` -> `1` -> `0` -> `duration_ms: 300000`.
 - **Kết quả mong đợi**: `central_log.txt`: `C1: REQUEST_OVERRIDE to 1 -> ACK` (300000 chấp nhận được, 300001 đã bị NACK ở TC-MSG-13/tương đương tầng Lx). `override_duration_ms=300000` tại L1.
+
+### TC-MSG-18b (Regression, đã sửa): REQUEST_OVERRIDE với target_movement ngoài phạm vi enum hợp lệ - NACK OUT_OF_RANGE
+- **Loại**: Regression (đã sửa) — defense-in-depth, không unreachable từ `c_operator.c` (chỉ cho chọn 0/1) nhưng bắt buộc phải chặn ở tầng FSM vì đây mới là "authoritative validator" theo tài liệu, wire contract không đảm bảo sender luôn well-behaved.
+- **Verb**: MSG_REQUEST_OVERRIDE
+- **Tại sao từng là bug**: `lx_fsm_on_request_override()` trước đây không kiểm tra `payload->target_movement` có phải là `OVERRIDE_MOVEMENT_ARTERIAL`(0) hoặc `OVERRIDE_MOVEMENT_CONNECTOR`(1) hay không — một giá trị ngoài phạm vi (vd. 2, 255) sẽ bị mọi call site âm thầm hiểu nhầm thành ARTERIAL (vì mọi nơi chỉ kiểm tra `== OVERRIDE_MOVEMENT_CONNECTOR`) thay vì bị từ chối. Đã sửa bằng cách mirror đúng check đã có sẵn ở `lx_fsm_on_set_mode()`.
+- **Liên quan**: `app/intersection/src/lx_fsm.c : lx_fsm_on_request_override()` (nhánh `target_movement != OVERRIDE_MOVEMENT_ARTERIAL && != OVERRIDE_MOVEMENT_CONNECTOR` -> `NACK_REASON_OUT_OF_RANGE`).
+- **Môi trường**: (D) cần test_client để gửi giá trị `target_movement` mà `c_operator.c` không bao giờ tự tạo ra (console chỉ hỏi 0/1).
+- **Chuẩn bị**: L1 bình thường, không override/fault/preemption.
+- **Các bước**: test_client gửi trực tiếp tới L1 (hoặc qua C1 nếu C1 không tự chặn trước): `ipc_request_t{verb=MSG_REQUEST_OVERRIDE, sender_id=CTRL_C1, target_id=CTRL_L1, payload.override_request={override_type=OVERRIDE_CLEAR_ROUTE, target_movement=2, duration_ms=5000}}`.
+- **Kết quả mong đợi**: `RESULT_NACK`, `reason=NACK_REASON_OUT_OF_RANGE`. `fsm->supervisory` giữ nguyên `NORMAL_OPERATION`, `override_target_movement` không bị ghi đè.
 
 ---
 
@@ -453,14 +463,20 @@ trả về `RESULT_ERROR` (xem TC-MSG-33 cũ). Việc này đã được nối d
 hiệu, nên phím `f` tại C1 nay nhắm được cả hai loại node. TC-MSG-33 dưới đây
 phản ánh hành vi hiện tại thay vì `RESULT_ERROR` cũ.
 
-**Phát hiện quan trọng**: đọc kỹ `enter_fault()` (`rlx_fsm.c`) cho thấy
-mọi đường vào `RLX_FAULT` đều gọi `rlx_gate_command_close()` (không
-bao giờ gọi `rlx_gate_command_open()`), và không có bất kỳ code nào
-khác gọi lệnh mở cổng trong khi `state == RLX_FAULT`. Do đó
-`rlx_gate_poll_open()` **không thể** trở thành 1 khi đang `RLX_FAULT`
-với code hiện tại -> nhánh `RESULT_ACK` của verb này dường như
-**không thể tái hiện được** bằng bất kỳ chuỗi thao tác nào trên bản
-build hiện tại (xem TC-MSG-32).
+**Phát hiện quan trọng (đã có lối thoát bằng phím có sẵn)**: đọc kỹ
+`enter_fault()` (`rlx_fsm.c`) cho thấy mọi đường vào `RLX_FAULT` **do
+chính FSM tự lái** đều gọi `rlx_gate_command_close()` (không bao giờ
+`rlx_gate_command_open()`), và `rlx_fsm_on_tick()`'s case `RLX_FAULT`
+là no-op - nên **nếu chỉ tính các đường do FSM tự điều khiển**,
+`rlx_gate_poll_open()` không thể tự trở thành 1 khi đang `RLX_FAULT`.
+Tuy nhiên `rlx_sensor.c` (bàn phím tại RLx) đã có sẵn phím `r`
+(`case 'r'`, dòng 43-45) gọi thẳng `rlx_gate_force_confirmed_open()`
+(`rlx_gate.c`) - hàm này set trực tiếp `g_confirmed_open=1`/
+`g_confirmed_closed=0` ngay lập tức, hoàn toàn độc lập với
+`fsm->state` (không đi qua `rlx_gate_command_open()`/motion timer).
+Đây là 1 escape hatch demo đã tồn tại sẵn trong repo, nên nhánh
+`RESULT_ACK` của verb này **tái hiện được** bằng thao tác bàn phím
+thông thường, không cần công cụ hay bản vá bổ sung (xem TC-MSG-32).
 
 ### TC-MSG-30: REQUEST_FAULT_CLEAR khi RLx không ở trạng thái FAULT - NACK UNKNOWN_TARGET
 - **Loại**: Negative
@@ -480,21 +496,20 @@ build hiện tại (xem TC-MSG-32).
 - **Các bước**: C1: `f` -> `1`.
 - **Kết quả mong đợi**: `central_log.txt`: `C1: REQUEST_FAULT_CLEAR to 7 -> NACK reason=FAULT_ACTIVE` (vì `enter_fault()` đã tự phát lệnh đóng cổng LẦN NỮA - lần này không bị armed fail nữa nên 3s sau sẽ xác nhận ĐÓNG, không phải MỞ - `gates_confirmed_open()` vẫn = 0).
 
-### TC-MSG-32: REQUEST_FAULT_CLEAR -> ACK (trường hợp tích cực) - HIỆN KHÔNG THỂ TÁI HIỆN, cần sửa code hoặc công cụ bổ sung
-- **Loại**: Positive (BLOCKED - phát hiện khoảng trống trong thiết kế/hiện thực)
+### TC-MSG-32: REQUEST_FAULT_CLEAR -> ACK (trường hợp tích cực) - tái hiện được qua phím `r` có sẵn tại RLx console
+- **Loại**: Positive
 - **Verb**: MSG_REQUEST_FAULT_CLEAR
-- **Liên quan**: đường "ACK" của `rlx_fsm_on_fault_clear()` (điều kiện: `state==RLX_FAULT` và `rlx_gate_poll_open()==1`)
-- **Môi trường**: (D) - cần công cụ HOẶC một bản vá tạm thời, không chỉ là test_client thông thường (xem giải thích).
-- **Chuẩn bị/Giải thích**: Theo code hiện tại, **không có bất kỳ đường thực thi nào** đặt `g_confirmed_open=1` trong khi `fsm->state == RLX_FAULT`: `enter_fault()` (được gọi từ mọi nơi dẫn tới FAULT - deadline miss khi CLOSING/RECLOSING/OPENING, hay watchdog trip) luôn gọi `rlx_gate_command_close()`, không bao giờ `rlx_gate_command_open()`; và `rlx_fsm_on_tick()`'s case `RLX_FAULT` là no-op (không lệnh gì thêm). Vì test_client vẫn gọi cùng 1 `rlx_fsm_on_fault_clear()` với cùng state nội bộ đó, việc gửi request qua đường dây không giúp ích - đây là giới hạn ở tầng FSM/gate simulator, không phải ở tầng giao thức IPC.
-- **Đề xuất khắc phục để test case này khả thi**: bổ sung 1 phím DEMO-ONLY vào `rlx_sensor.c` (cùng khuôn mẫu với `x`/`f` đã có) mô phỏng "kỹ thuật viên đã sửa xong và xác nhận cổng mở tay", gọi thẳng `rlx_gate_command_open()` (hoặc set thẳng cờ nội bộ) trong khi đang FAULT, rồi đợi `RLX_GATE_MOTION_MS=3000ms` để `rlx_gate_poll_open()` trả 1.
-- **Các bước (sau khi có bản vá)**: Vào FAULT như TC-MSG-31 -> bấm phím DEMO-ONLY mới để mở cổng -> đợi 3s -> C1: `f` -> `1`.
-- **Kết quả mong đợi (sau khi có bản vá)**: `central_log.txt`: `C1: REQUEST_FAULT_CLEAR to 7 -> ACK`; RL1 trở lại `RLX_OPEN`, `faults=FAULT_NONE`, các cửa sổ occupancy được xóa.
+- **Liên quan**: đường "ACK" của `rlx_fsm_on_fault_clear()` (điều kiện: `state==RLX_FAULT` và `rlx_gate_poll_open()==1`); phím `r` tại `rlx_sensor.c` (`case 'r'`, dòng 43-45, gọi `rlx_gate_force_confirmed_open()` trong `rlx_gate.c`).
+- **Môi trường**: (B)/(C) C1 + RL1 - không cần test_client hay bản vá bổ sung, phím `r` đã có sẵn trong repo.
+- **Chuẩn bị/Giải thích**: Theo code hiện tại, **không có đường nào do chính `rlx_fsm.c` tự lái** đặt `g_confirmed_open=1` trong khi `fsm->state == RLX_FAULT`: `enter_fault()` (được gọi từ mọi nơi dẫn tới FAULT - deadline miss khi CLOSING/RECLOSING/OPENING, hay watchdog trip) luôn gọi `rlx_gate_command_close()`, không bao giờ `rlx_gate_command_open()`; và `rlx_fsm_on_tick()`'s case `RLX_FAULT` là no-op. Tuy nhiên `rlx_sensor.c` có sẵn phím demo `r`, độc lập với FSM: nó gọi thẳng `rlx_gate_force_confirmed_open()` (`rlx_gate.c` dòng 123-134), hàm này khoá `g_gate_lock`, đặt `g_motion=GATE_IDLE`, `g_confirmed_closed=0`, `g_confirmed_open=1` **ngay lập tức** (không cần đợi `RLX_GATE_MOTION_MS`), rồi in log `"[DEMO] Gate mechanism simulated as physically repaired - now confirmed OPEN"`. Vì hàm này không kiểm tra `fsm->state`, nó set được `g_confirmed_open=1` bất kể RLx đang ở `RLX_FAULT` hay không - tạo đúng điều kiện để `rlx_gate_poll_open()==1` khi `rlx_fsm_on_fault_clear()` được gọi.
+- **Các bước**: Vào FAULT như TC-MSG-31 (RL1's sensor console: `x` -> `0`, đợi ~20s tới khi RL1 log chuyển sang FAULT) -> tại RL1's sensor console bấm phím `r` (gate được xác nhận OPEN ngay lập tức, không cần đợi thêm) -> tại C1: `f` -> `1`.
+- **Kết quả mong đợi**: `central_log.txt`: `C1: REQUEST_FAULT_CLEAR to 7 -> ACK`; RL1 trở lại `RLX_OPEN`, `faults=FAULT_NONE`, các cửa sổ occupancy được xóa. Đây là outcome `RESULT_ACK` thật, xác nhận được hoàn toàn bằng thao tác bàn phím trên `rlx_sensor.c`/`c_operator.c` - không cần debugger, không cần test_client.
 
 ### TC-MSG-33: REQUEST_FAULT_CLEAR gửi tới một Lx đang FAULT_SAFE - ACK (đã sửa, không còn RESULT_ERROR)
 - **Loại**: Positive (trước đây là Edge case/Negative "RESULT_ERROR" - hành vi đó đã lỗi thời, xem mục 6's "Cập nhật")
 - **Verb**: MSG_REQUEST_FAULT_CLEAR
 - **Liên quan**: `lx_fsm_on_request_fault_clear()` (`lx_fsm.c`) - nay có case riêng trong `lx_main.c`'s `on_request()`, không còn rơi vào `default:`. `c_operator.c`'s phím `f` hỏi node type (0=Lx, 1=RLx) qua `handle_request_fault_clear()`, nên có thể nhắm L1 trực tiếp từ console mà không cần test_client.
-- **Môi trường**: (B) C1 + L1 là đủ (không còn bắt buộc (D)/test_client cho case cơ bản này).
+- **Môi trường**: (B) C1 + L1 là đủ về mặt gửi lệnh (không còn bắt buộc (D)/test_client cho case cơ bản này). **Nhưng precondition (đưa L1 vào `SUPERVISORY_FAULT_SAFE`) hiện chưa có cách thiết lập đáng tin cậy** — xem giải thích ở TC-MSG-2 (không có demo key, debugger chưa dùng, `kill -STOP` chưa xác định) — nên case này **Skip**, không phải Pass, cho tới khi có 1 trong các đường đó.
 - **Chuẩn bị**: Đưa L1 vào `SUPERVISORY_FAULT_SAFE` (ví dụ qua watchdog trip, xem TC-SC03A-6 Phần 1 của `02-state-machine-transition.md`), và đảm bảo `last_crossing_state==CROSSING_OPEN` (không có RLx kề nào đang pre-empt) để kỳ vọng resume đúng `NORMAL_OPERATION`.
 - **Các bước**: Tại C1: `f` -> node type `0` (Lx) -> Lx number `1`.
 - **Kết quả mong đợi**: `central_log.txt`: `C1: REQUEST_FAULT_CLEAR to 1 -> ACK`. `fsm->faults` về `FAULT_NONE`, SUPERVISORY L1 rời `FAULT_SAFE` về `NORMAL_OPERATION` (`3`). Hàm này không có nhánh NACK (unconditional/idempotent, khác `rlx_fsm_on_fault_clear()` - không có trạng thái vật lý nào phải re-verify ở Lx).
@@ -503,7 +518,7 @@ build hiện tại (xem TC-MSG-32).
 - **Loại**: Positive (safety-relevant regression case)
 - **Verb**: MSG_REQUEST_FAULT_CLEAR
 - **Liên quan**: `last_crossing_state` (`lx_fsm.h`) - re-audit fix: một fault-clear xảy ra trong lúc crossing kề bên vẫn chưa `OPEN` không được phép âm thầm quên mất việc suppress đang có, kẻo cho phép green hướng về một crossing vẫn còn đóng.
-- **Môi trường**: (B) C1 + L1 + RL1.
+- **Môi trường**: (B) C1 + L1 + RL1 về mặt gửi lệnh. **Cùng vấn đề precondition như TC-MSG-33** — cần trip watchdog để vào `SUPERVISORY_FAULT_SAFE`, hiện chưa có cách thiết lập đáng tin cậy — case này **Skip**, không phải Pass.
 - **Chuẩn bị**: Đưa L1 vào `RAILWAY_PREEMPTION` thật (RL1 ở WARNING/CLOSED, gửi `CROSSING_STATUS` khác `CROSSING_OPEN` tới L1), sau đó trip watchdog để L1 vào `FAULT_SAFE` trong khi vẫn đang pre-empt (SUPERVISORY chuyển thẳng `1 -> 0`, `fsm->last_crossing_state` vẫn giữ giá trị non-OPEN gần nhất vì `lx_fsm_on_crossing_status()` cập nhật trường này vô điều kiện, kể cả khi đang FAULT_SAFE).
 - **Các bước**: Tại C1: `f` -> `0` (Lx) -> `1`, **trước khi** RL1 kịp báo `OPEN` trở lại.
 - **Kết quả mong đợi**: `C1: REQUEST_FAULT_CLEAR to 1 -> ACK`, nhưng SUPERVISORY L1 sau đó phải là `RAILWAY_PREEMPTION` (`1`), **không phải** `NORMAL_OPERATION` (`3`) - CONNECTOR_GREEN (hướng crossing) vẫn bị suppress cho tới khi L1 thực sự nhận `CROSSING_STATUS(OPEN)` từ RL1. Đây là hành vi ĐÚNG theo thiết kế mới (trước bản vá, code cũ luôn resume `NORMAL_OPERATION` vô điều kiện, có thể cho phép green hướng về crossing đang đóng).
@@ -699,16 +714,21 @@ proof-of-life nào (STATUS/HEARTBEAT/CROSSING_STATUS) từ 1 controller ->
    creep còn sót (`MSG_STATUS` dự trù cho 1 luồng riêng UC-09 chưa được
    nối dây) hay handler tại C1 là dự phòng không cần thiết.
 
-4. **`RESULT_ACK` của `MSG_REQUEST_FAULT_CLEAR` dường như không thể đạt
-   được với code hiện tại** (xem giải thích chi tiết ở TC-MSG-32) - mọi
-   đường vào `RLX_FAULT` đều tự động lệnh đóng cổng lại
-   (`rlx_gate_command_close()`), không có đường nào mở cổng trong khi
-   đang FAULT. Đây là phát hiện quan trọng nhất của tài liệu này: nếu
-   đúng như phân tích, RC-09/RC-10's "operator request fault clearance
-   after repair" flow **chưa bao giờ có thể ACK** trên bản build hiện
-   tại, kể cả trên máy QNX thật với thao tác đúng quy trình - cần Core-
-   Engineer xác nhận và vá trước khi coi Phase liên quan tới RC-09 là
-   "PASS" ở bước 6 (QA-Test).
+4. **`RESULT_ACK` của `MSG_REQUEST_FAULT_CLEAR` đã được xác nhận đạt
+   được trên bản build hiện tại, qua phím `r` có sẵn tại `rlx_sensor.c`**
+   (xem TC-MSG-32). Đúng là mọi đường vào `RLX_FAULT` **do chính
+   `rlx_fsm.c` tự lái** đều tự động lệnh đóng cổng lại
+   (`rlx_gate_command_close()`), không có đường nào trong FSM tự mở
+   cổng khi đang FAULT - nhưng `rlx_sensor.c`'s `case 'r'` gọi thẳng
+   `rlx_gate_force_confirmed_open()` (`rlx_gate.c`), một escape hatch
+   demo độc lập với FSM, set trực tiếp `g_confirmed_open=1` bất kể
+   `fsm->state` hiện tại. Vì vậy RC-09/RC-10's "operator request fault
+   clearance after repair" flow **tái hiện được đầy đủ bằng bàn phím**
+   (RL1's sensor console: `x` -> `0` -> đợi vào FAULT -> `r`; C1: `f` ->
+   `1`), không cần debugger, không cần test_client, và không cần
+   Core-Engineer vá thêm gì cho mục đích test giao thức này. Case liên
+   quan RC-09 có thể coi là kiểm thử được (không còn BLOCKED) ở bước 6
+   (QA-Test).
 
 5. **`c_server_record_fault_report()` là no-op hoàn toàn** (chỉ
    `c_logger_log()` gọi trực tiếp từ `c_main.c` mới in thông tin fault

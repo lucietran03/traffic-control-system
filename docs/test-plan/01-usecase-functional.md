@@ -28,6 +28,12 @@ thật (ví dụ chu kỳ đèn 48s/30s, hay chu trình đường sắt ~50s).
 | **(B)** | Nhiều node trên **cùng 1 máy** QNX — chạy nhiều binary cùng lúc trên cùng target, Qnet same-node (`name_open()` mặc định resolve nội bộ). **Không cần set** `TRAFFIC_NODE_MAP`. | mở nhiều shell trên cùng 1 target: `/tmp/c_main`, `/tmp/lx_main 1`, `/tmp/rlx_main 1` |
 | **(C)** | Nhiều node trên **nhiều máy/VM** QNX thật qua mạng Qnet — bắt buộc export `TRAFFIC_NODE_MAP` trên mỗi shell trước khi chạy binary tương ứng. Xem `app/shared/README.md` mục "Cross-node resolution" và `docs/QNX_DEPLOYMENT_RUN_GUIDE.md` mục 2.2. | `export TRAFFIC_NODE_MAP="c1=VM_x86_Target01,l1=VM_x86_Target02,...,rl1=VM_x86_Target03,..."` rồi chạy binary trên VM tương ứng |
 
+Lưu ý về (B): triển khai demo thật dùng 10 VM QNX riêng biệt, mỗi
+controller một VM — không có 2 controller nào thật sự chạy chung 1 máy.
+Vì vậy mọi test case gắn nhãn (B) trong tài liệu này thực chất là bản
+thay thế rút gọn phần cứng cho một môi trường (C) đúng nghĩa (có
+`TRAFFIC_NODE_MAP`) — nói rõ điều này ở đây thay vì để ngầm định.
+
 Mọi test case dưới đây ghi rõ môi trường (A)/(B)/(C) cần dùng. Phần lớn
 dùng (A)/(B) vì đã đủ để quan sát hành vi cần kiểm; (C) chỉ dùng khi bản
 chất test là về mất kết nối Qnet giữa các máy vật lý khác nhau — với (B)
@@ -44,7 +50,7 @@ Thứ tự khởi động khuyến nghị theo `docs/QNX_DEPLOYMENT_RUN_GUIDE.md
 ## 2. Cách đọc một test case
 
 ```
-### TC-UCxx-y: <tên ngắn>
+### TC-EXAMPLE-N: <tên ngắn> (mẫu minh hoạ, KHÔNG phải case thật — không tính vào tổng số case)
 - **Loại**: Positive / Negative / Edge case
 - **Liên quan**: UC-xx <tên>, bước nào trong main/alt flow (theo usecase.md)
 - **Môi trường**: (A)/(B)/(C) — xem mục 1
@@ -63,7 +69,11 @@ code — không tự bịa thêm phím):
   luồng đọc bàn phím (không dừng tiến trình).
 - **RLx sensor** (`rlx_sensor.c`, chạy trong tiến trình `rlx_main`): `0`/`1`
   = tàu đang đến hướng 0/1 (`TRAIN_APPROACHING`), `x` = arm lỗi xác nhận
-  chắn cho lần đóng/mở kế tiếp (demo RC-06), `f` = trigger fault-clear cục
+  chắn cho lần đóng/mở kế tiếp (demo RC-06), `r` = mô phỏng cơ cấu chắn vừa
+  được sửa xong, ép xác nhận về `CONFIRMED OPEN` ngay lập tức
+  (`rlx_gate_force_confirmed_open()` trong `rlx_gate.c`: đặt
+  `g_confirmed_open=1`, `g_confirmed_closed=0`, huỷ mọi lỗi demo đang armed
+  — demo cho nhánh fault-clear RC-09/RC-10), `f` = trigger fault-clear cục
   bộ (demo only, không đi qua đường dây `MSG_REQUEST_FAULT_CLEAR` thật),
   `h`/`?` = help, `q` = dừng luồng đọc bàn phím.
 - **C1 operator console** (`c_operator.c`, chạy trong tiến trình `c_main`):
@@ -71,7 +81,15 @@ code — không tự bịa thêm phím):
   `REQUEST_OVERRIDE`, `r` = `RENEW_OVERRIDE`, `c` = `CANCEL_OVERRIDE`, `f` =
   `REQUEST_FAULT_CLEAR` (nhắm được cả Lx lẫn RLx - `handle_request_fault_clear()`
   hỏi `node type` trước: 0=Lx 1-6, 1=RLx 1-3; wired tới
-  `lx_fsm_on_request_fault_clear()` ở phía Lx), `h`/`?` = help, `q` = dừng console.
+  `lx_fsm_on_request_fault_clear()` ở phía Lx), `d` = ép một giờ giả lập
+  làm mốc "hiện tại" (`handle_demo_hour()`, prompt "  simulated hour to
+  force (0-23): ") — set `demo_hour_override_active=1` rồi broadcast
+  `SET_MODE` cho toàn bộ Lx theo mode mà giờ đó ngụ ý, dùng để test biên
+  peak/off-peak (DP-01/DP-02) theo yêu cầu thay vì phải chờ đồng hồ thật,
+  `a` = quay lại chế độ tự động theo đồng hồ thật (`handle_resume_automatic()`)
+  — chỉ xoá cờ `demo_hour_override_active`, không tự broadcast gì; tick 1Hz
+  kế tiếp của `c_main` sẽ tự đối chiếu và đồng bộ lại nếu mode ngụ ý bởi
+  giờ thật khác với mode đã gửi gần nhất, `h`/`?` = help, `q` = dừng console.
   Mỗi lệnh chữ cái sẽ in ra 1-2 prompt nhập số theo đúng thứ tự đã cài
   trong `handle_*()` tương ứng — được ghi chính xác trong từng test case.
 
@@ -127,7 +145,7 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
   2. Không bấm phím nào, chỉ quan sát log trong ít nhất 90 giây (đúng 1 chu
      kỳ `LX_CYCLE_LENGTH_MS`).
 - **Kết quả mong đợi**: log in đúng thứ tự và đúng mốc thời gian tương đối
-  kể từ lúc start: `t=0` "Lx 1: SIGNAL -> ARTERIAL GREEN" (in ngay lúc
+  kể từ lúc start: `t=0` "Lx 1: signal phase now ARTERIAL GREEN" (in ngay lúc
   `lx_fsm_init()`), `t=48s` "... -> ARTERIAL YELLOW", `t=52s` "... -> ALL
   RED (A to B)", `t=54s` "... -> CONNECTOR GREEN", `t=84s` "... ->
   CONNECTOR YELLOW", `t=88s` "... -> ALL RED (B to A)", `t=90s` quay lại
@@ -149,7 +167,7 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
 - **Kết quả mong đợi**: bước 1 in "C1: SET_MODE to 1 -> ACK_PENDING" (khác
   mode hiện tại nên `lx_fsm_on_set_mode()` trả `RESULT_ACK_PENDING`, xem
   `lx_fsm.c` dòng 660-676). Sau khi mode đổi, L1 **không bao giờ** tự thoát
-  `ARTERIAL_GREEN` (không có dòng "SIGNAL -> ARTERIAL YELLOW" nào xuất hiện
+  `ARTERIAL_GREEN` (không có dòng "signal phase now ARTERIAL YELLOW" nào xuất hiện
   trong 60 giây quan sát) — vì `lx_fsm_on_phase_timer()` chỉ kiểm tra thoát
   pha ở đúng mốc 4s (`green_elapsed_ms % 4000 == 0`) và điều kiện thoát cần
   `own_demand` hoặc `maxed`; không có demand nào thì không thoát (nghỉ vô
@@ -161,17 +179,23 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
 - **Môi trường**: (B) `c_main` + `lx_main 1`
 - **Chuẩn bị**: L1 đã ở `MODE_OFF_PEAK_SENSOR` (làm như TC-UC01-2 bước 1-2),
   đang nghỉ ở `PHASE_ARTERIAL_GREEN` với `green_elapsed_ms` vừa reset về 0
-  (ngay sau dòng "SIGNAL -> ARTERIAL GREEN" mới nhất).
+  (ngay sau dòng "signal phase now ARTERIAL GREEN" mới nhất).
 - **Các bước**:
-  1. Ngay khi vừa thấy dòng "SIGNAL -> ARTERIAL GREEN", bấm `c` trên `lx_sensor`
+  1. Ngay khi vừa thấy dòng "signal phase now ARTERIAL GREEN", bấm `c` trên `lx_sensor`
      của L1 (connector demand = 1). **Không** bấm `a` (arterial demand giữ
      nguyên 0).
-  2. Bấm giờ, chờ đúng đến giây thứ 8 kể từ dòng ARTERIAL GREEN đó.
-- **Kết quả mong đợi**: tại `t=8000ms` (đúng `LX_MIN_GREEN_MS`, mốc kiểm
-  tra 4000ms-đầu-tiên-đủ-điều-kiện), L1 in "Lx 1: SIGNAL -> ARTERIAL
-  YELLOW" ngay lập tức — không sớm hơn (mốc `t=4000ms` chưa đủ
-  `LX_MIN_GREEN_MS` nên bị giữ lại) và không trễ hơn (vì
-  `own_demand=arterial_vehicle_demand(0)||ped(0)=0` nên
+  2. Bấm giờ, theo dõi liên tục quanh mốc 7.9s-8.5s kể từ dòng ARTERIAL
+     GREEN đó (không chờ "đúng đến giây thứ 8" — log này không có
+     timestamp nên không thể xác nhận một mốc tuyệt đối bằng đồng hồ tay;
+     xem TL-TIME-02 trong `04-timing-assumptions.md` để biết lý do dùng
+     dung sai này thay vì mốc tuyệt đối).
+- **Kết quả mong đợi**: tại mốc 7.9s, pha vẫn phải còn là `ARTERIAL GREEN`
+  (chưa đủ `LX_MIN_GREEN_MS`=8000ms nên bị giữ lại — mốc `t=4000ms` trước
+  đó chắc chắn cũng chưa đủ nên không cần kiểm riêng). Trong cửa sổ
+  8.0s-8.5s (dung sai ±300-500ms cho tick hệ thống 100ms cộng độ trễ
+  bấm giờ/đọc log bằng tay), L1 phải in "Lx 1: signal phase now ARTERIAL
+  YELLOW" — không được xuất hiện sớm hơn 7.9s và không được trễ hơn 8.5s
+  (vì `own_demand=arterial_vehicle_demand(0)||ped(0)=0` nên
   `lx_timer_should_exit_green()` trả về true ngay khi vừa qua min-green,
   không cần đợi tới 40000ms).
 
@@ -181,16 +205,22 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
 - **Môi trường**: (B) `c_main` + `lx_main 1`
 - **Chuẩn bị**: giống TC-UC01-3 nhưng lần này giữ demand arterial luôn bật.
 - **Các bước**:
-  1. Ngay khi thấy "SIGNAL -> ARTERIAL GREEN" (dưới `MODE_OFF_PEAK_SENSOR`),
+  1. Ngay khi thấy "signal phase now ARTERIAL GREEN" (dưới `MODE_OFF_PEAK_SENSOR`),
      bấm `a` (arterial demand = 1) rồi bấm `c` (connector demand = 1).
      Không bấm `A`/`C` để clear trong suốt phase này.
-  2. Chờ đến đúng giây thứ 40 kể từ dòng ARTERIAL GREEN đó.
+  2. Theo dõi liên tục quanh mốc 39.9s-40.5s kể từ dòng ARTERIAL GREEN đó
+     (không chờ "đúng đến giây thứ 40" — log này không có timestamp nên
+     không thể xác nhận một mốc tuyệt đối bằng đồng hồ tay; xem TL-TIME-02
+     trong `04-timing-assumptions.md` để biết lý do dùng dung sai này thay
+     vì mốc tuyệt đối).
 - **Kết quả mong đợi**: mỗi mốc 4s (t=8000, 12000, ..., 36000) L1 **không**
-  thoát pha (vì `own_demand=1` và chưa `maxed`), chỉ đến đúng
-  `t=40000ms` (`LX_MAX_GREEN_MS`) mới in "Lx 1: SIGNAL -> ARTERIAL YELLOW"
-  — vì `maxed = (elapsed >= 40000)` ép `!own_demand||maxed` thành true bất
-  kể `arterial_vehicle_demand` vẫn còn 1, đúng theo BR-2/DP-06 (connector
-  đã chờ sẵn không được bỏ đói).
+  thoát pha (vì `own_demand=1` và chưa `maxed`). Tại mốc 39.9s, pha vẫn
+  phải còn là `ARTERIAL GREEN` (chưa đủ `LX_MAX_GREEN_MS`=40000ms). Trong
+  cửa sổ 40.0s-40.5s (dung sai ±300-500ms cho tick hệ thống 100ms cộng độ
+  trễ bấm giờ/đọc log bằng tay), L1 phải in "Lx 1: signal phase now
+  ARTERIAL YELLOW" — vì `maxed = (elapsed >= 40000)` ép `!own_demand||maxed`
+  thành true bất kể `arterial_vehicle_demand` vẫn còn 1, đúng theo BR-2/DP-06
+  (connector đã chờ sẵn không được bỏ đói).
 
 ### TC-UC01-5: Negative — connector demand bị treo an toàn khi railway pre-emption chiếm quyền (alt 3.1)
 - **Loại**: Negative
@@ -208,8 +238,8 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
   `MSG_CROSSING_STATUS(WARNING)` từ RL1 và chuyển
   `supervisory=SUPERVISORY_RAILWAY_PREEMPTION`; từ thời điểm đó cho đến khi
   RL1 báo lại `OPEN` (~52 giây sau, xem UC-04), log của L1 **chỉ** lặp lại
-  "SIGNAL -> ARTERIAL GREEN" → "ARTERIAL YELLOW" → "ALL RED (A to B)" →
-  "ARTERIAL GREEN" — **không bao giờ** xuất hiện "SIGNAL -> CONNECTOR
+  "signal phase now ARTERIAL GREEN" → "ARTERIAL YELLOW" → "ALL RED (A to B)" →
+  "ARTERIAL GREEN" — **không bao giờ** xuất hiện "signal phase now CONNECTOR
   GREEN" trong suốt cửa sổ này (vì tại ranh giới `PHASE_ALL_RED_A_TO_B`,
   nhánh `SUPERVISORY_RAILWAY_PREEMPTION` ép quay lại
   `PHASE_ARTERIAL_GREEN` — `lx_fsm.c` dòng 262-277). Demand connector vẫn
@@ -227,7 +257,7 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
 - **Chuẩn bị**: L1 vừa khởi động, đang ở `PHASE_ARTERIAL_GREEN` (side 0/1
   tương thích với arterial green theo `lx_fsm.c` dòng 136-138).
 - **Các bước**:
-  1. Ngay sau dòng "SIGNAL -> ARTERIAL GREEN" đầu tiên, bấm `1` (nút người
+  1. Ngay sau dòng "signal phase now ARTERIAL GREEN" đầu tiên, bấm `1` (nút người
      đi bộ phía 0).
   2. Quan sát log trong 11 giây tiếp theo.
 - **Kết quả mong đợi**: trong vòng 100ms sau khi bấm, in "Lx 1: PED SIGNAL
@@ -235,6 +265,15 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
   FLASHING_DONT_WALK"; đúng `t=10000ms` (6000+4000) in "... side 0 ->
   DONT_WALK". Sau dòng DONT_WALK, `ped_latched[0]` được xoá — không có
   WALK nào lặp lại nếu không bấm `1` thêm lần nữa.
+- **Lưu ý**: cận "trong vòng 100ms" cụ thể này **không** thể kiểm chứng
+  chặt chẽ chỉ bằng quan sát console/mắt thường thủ công — dòng log của
+  `lx_signal.c` không mang timestamp, và bản thân thời gian phản ứng của
+  con người khi bấm phím rồi đọc log (~150-300ms) đã lớn hơn cả cận cần
+  đo. Cận 100ms này chỉ có thể xác nhận chính xác qua bộ chạy tự động có
+  script trong `tools/test-automation/` (dùng `time.monotonic()` để đóng
+  dấu thời gian mỗi dòng output bắt được). Bằng phương pháp thủ công, chỉ
+  nên xác nhận yêu cầu định tính — WALK xuất hiện nhanh chóng, rõ ràng
+  dưới 1 giây sau khi bấm — chứ không khẳng định được đúng ngưỡng 100ms.
 
 ### TC-UC02-2: Negative/alt 2.1 — bấm nút lặp lại trước khi được phục vụ chỉ tạo đúng 1 yêu cầu
 - **Loại**: Negative
@@ -278,7 +317,7 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
 - **Môi trường**: (A) chỉ `lx_main 1`
 - **Chuẩn bị**: L1 vừa khởi động, ở `PHASE_ARTERIAL_GREEN`.
 - **Các bước**:
-  1. Ngay sau "SIGNAL -> ARTERIAL GREEN", bấm `1` (side 0) → WALK bắt đầu.
+  1. Ngay sau "signal phase now ARTERIAL GREEN", bấm `1` (side 0) → WALK bắt đầu.
   2. Đợi đúng 8 giây kể từ lúc bấm (tức đang ở giữa cửa sổ
      FLASHING_DONT_WALK, vì WALK kéo dài 6000ms rồi FDW bắt đầu, 8s là
      2s sau khi FDW bắt đầu, còn 2s nữa mới hết FDW).
@@ -415,8 +454,8 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
     raise FAULT_GATE_CONFIRM_MISSING". **Không** có dòng "train signal
     PROCEED" nào xuất hiện.
   - `t=20s` (5000+`RLX_CLOSING_DEADLINE_MS`=5000+15000): RL1 in "RLx: FAULT
-    latched (fault bit 0x1) - holding STOP on all train signals,
-    commanding gates DOWN".
+    latched (GATE_CONFIRM_MISSING, bit 0x1) - holding STOP on all train
+    signals, commanding gates DOWN".
   - Trong suốt và sau `t=20s`, tín hiệu tàu không bao giờ hiển thị
     PROCEED; L1/L2 vẫn giữ `RAILWAY_PREEMPTION` (vì crossing state báo
     `FAULT` ≠ `OPEN`), tức connector vẫn bị suy suppressed vô thời hạn cho
@@ -507,7 +546,7 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
 - **Kết quả mong đợi**: vì `queue_warning_active=0` tại thời điểm
   `RAILWAY_PREEMPTION → NORMAL_OPERATION`, `drain_pending` không bao giờ
   được set. `CONNECTOR_GREEN` kết thúc đúng tại mốc 30000ms như một chu kỳ
-  PEAK_FIXED bình thường — in "SIGNAL -> CONNECTOR YELLOW" ngay tại
+  PEAK_FIXED bình thường — in "signal phase now CONNECTOR YELLOW" ngay tại
   `t=30s` kể từ lúc vào connector green, không có bất kỳ gia hạn nào.
 
 ### TC-UC05-3: Edge — cảnh báo hàng chờ không bao giờ hết, drain bị cắt cứng đúng tại cap 60000 ms
@@ -525,7 +564,7 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
   (`drain_extension_total_ms` cộng dồn) bất kể `queue_warning_active` vẫn
   là 1, cho đến khi `drain_extension_total_ms >= LX_DRAIN_MAX_EXTENSION_MS`
   (60000ms) — đúng tại mốc 30000+60000=90000ms kể từ lúc vào connector
-  green, L1 in "SIGNAL -> CONNECTOR YELLOW" ngay lập tức dù `queue_warning_active`
+  green, L1 in "signal phase now CONNECTOR YELLOW" ngay lập tức dù `queue_warning_active`
   vẫn đang bật (`lx_fsm.c` dòng 1022 `drain_extension_total_ms >=
   LX_DRAIN_MAX_EXTENSION_MS` thắng thế so với điều kiện warning), đúng
   theo cap cứng 60 giây.
@@ -541,12 +580,25 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
   2. Tiếp tục quan sát log L1 thêm 60 giây nữa (không thao tác gì thêm).
 - **Kết quả mong đợi**: vì crossing report state = `FAULT` (≠ `OPEN`), L1
   giữ nguyên `supervisory=RAILWAY_PREEMPTION` vô thời hạn — không có dòng
-  "SIGNAL -> CONNECTOR GREEN" nào xuất hiện trong toàn bộ 60 giây quan sát
-  thêm, trong khi "SIGNAL -> ARTERIAL GREEN/YELLOW/ALL RED..." vẫn tiếp
+  "signal phase now CONNECTOR GREEN" nào xuất hiện trong toàn bộ 60 giây quan sát
+  thêm, trong khi "signal phase now ARTERIAL GREEN/YELLOW/ALL RED..." vẫn tiếp
   tục lặp lại bình thường (cross-traffic không bị ảnh hưởng, đúng CC-02
   "compatible cross-traffic ... continue"). Việc phục hồi chỉ có thể xảy
   ra sau khi fault được xử lý ở phía RLx (xem UC-06) và crossing báo
   `OPEN` trở lại.
+
+### TC-UC05-5 (Regression, CC-01/CC-02): tàu tới đúng lúc connector đang xanh giữa chừng — phải cắt về xanh tối thiểu ngay, không chạy hết chu kỳ
+- **Loại**: Regression (đã sửa) + Edge case (đúng biên `LX_MIN_GREEN_MS`)
+- **Tại sao từng là bug**: Trước đợt audit/fix gần nhất, `lx_fsm_on_phase_timer()`'s `PHASE_CONNECTOR_GREEN` case và `lx_fsm_advance_phase_locked()`'s boundary check chỉ ngăn một chu kỳ connector-green **MỚI** bắt đầu trong lúc `RAILWAY_PREEMPTION`, nhưng không hề cắt ngắn một chu kỳ **đang chạy sẵn** — nếu tàu tới đúng lúc L1 vừa mới vào `CONNECTOR_GREEN`, đèn xanh đó có thể chạy hết trọn 30s (`PEAK_FIXED`) hoặc tới 40s (`OFF_PEAK_SENSOR`/đang drain), ăn hết vào khoảng dự phòng ~25s dành cho giao lộ kề bên clear xe (RC-03/Appendix B4). Đây là lỗ hổng an toàn thật, không phải cosmetic.
+- **Liên quan**: `lx_fsm_on_phase_timer()`'s `PHASE_CONNECTOR_GREEN` case (`lx_fsm.c`) — check mới, chạy mỗi tick 100ms (không đợi mốc 4s như check thông thường): `supervisory == SUPERVISORY_RAILWAY_PREEMPTION && green_elapsed_ms >= LX_MIN_GREEN_MS` thì gọi `lx_fsm_advance_phase_locked()` ngay, cắt về `YELLOW`.
+- **Môi trường**: (B) `rlx_main 1` + `lx_main 1` + `lx_main 2`
+- **Chuẩn bị**: Bắt L1 vào đúng `PHASE_CONNECTOR_GREEN` — cách dễ nhất: đợi chu kỳ tự nhiên tới `CONNECTOR GREEN` (log `signal phase now CONNECTOR GREEN`), thao tác ngay khi vừa thấy dòng log đó (trong vòng 1-2 giây).
+- **Các bước**:
+  1. Ngay khi L1 vừa vào `CONNECTOR GREEN` (còn cách xa mốc kết thúc bình thường 30s/40s), trên RL1 bấm `0` để mô phỏng tàu tới.
+  2. Đợi đủ 5s cảnh báo (`RLX_WARNING_TO_CLOSING_MS`) để RL1 chuyển sang `CLOSING` rồi gửi `CROSSING_STATUS(WARNING)` cho L1 — L1 sẽ vào `RAILWAY_PREEMPTION` ngay khi nhận được (không cần đợi gate đóng xong).
+  3. Từ thời điểm L1 vào `RAILWAY_PREEMPTION` (bước 2), tính đúng 8 giây (`LX_MIN_GREEN_MS`) kể từ lúc `CONNECTOR GREEN` bắt đầu ở bước 1 — theo dõi sát log L1 quanh mốc này.
+- **Kết quả mong đợi**: Log L1 phải in `signal phase now CONNECTOR YELLOW` **đúng tại/ngay sau mốc 8 giây kể từ lúc bắt đầu CONNECTOR GREEN** (không phải mốc 30s/40s bình thường) — tức đèn bị cắt về xanh tối thiểu ngay khi an toàn cho phép, không chạy hết chu kỳ. Nếu log vẫn cho thấy `CONNECTOR GREEN` kéo dài quá 8-9 giây sau khi đã xác nhận `RAILWAY_PREEMPTION`, đây là regression của chính bug đã sửa.
+- **Lưu ý**: Nếu tàu tới khi `green_elapsed_ms < LX_MIN_GREEN_MS` (mới vào xanh chưa tới 8s), TL-01's sàn xanh tối thiểu vẫn phải được tôn trọng — đèn chỉ cắt tại đúng mốc 8s, không cắt sớm hơn (xem code check: `green_elapsed_ms >= LX_MIN_GREEN_MS`, không phải `> 0`).
 
 ---
 
@@ -560,9 +612,9 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
 - **Các bước**:
   1. Trên `rlx_sensor` của RL1, bấm `x` rồi `0` tại `t=0`.
   2. Quan sát log RL1 và log C1 đến `t=21s`.
-- **Kết quả mong đợi**: tại `t=20s`, RL1 in "RLx: FAULT latched (fault bit
-  0x1) - holding STOP on all train signals, commanding gates DOWN" (như
-  TC-UC04-2). Trong vòng 1 giây sau đó (tick `IPC_PULSE_RAILWAY_WARNING`
+- **Kết quả mong đợi**: tại `t=20s`, RL1 in "RLx: FAULT latched
+  (GATE_CONFIRM_MISSING, bit 0x1) - holding STOP on all train signals,
+  commanding gates DOWN" (như TC-UC04-2). Trong vòng 1 giây sau đó (tick `IPC_PULSE_RAILWAY_WARNING`
   kế tiếp gọi `rlx_comm_send_fault_report()`), C1 in dòng log:
   `FAULT_REPORT from 7: fault_code=0x00000001 severity=1 detail="RLx fault - see fault_code bitmask"`
   (7 = `CTRL_RL1`). Nếu chạy thêm `c_hmi` (tick 1Hz sẵn có), bảng trạng
@@ -699,7 +751,7 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
 - **Liên quan**: UC-08 main flow bước 1-8, BR-1, BR-5
 - **Môi trường**: (B) `c_main` + `lx_main 1`
 - **Chuẩn bị**: L1 vừa khởi động, đang ở `PHASE_ARTERIAL_GREEN` với
-  `green_elapsed_ms` gần 0 (bấm lệnh càng sớm sau dòng "SIGNAL -> ARTERIAL
+  `green_elapsed_ms` gần 0 (bấm lệnh càng sớm sau dòng "signal phase now ARTERIAL
   GREEN" càng tốt).
 - **Các bước**:
   1. Bấm `o` → prompt "  Lx number (1-6): " nhập `1` → prompt "  target
@@ -710,12 +762,12 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
   movement=0, duration_ms=60000) submitted" rồi "C1: REQUEST_OVERRIDE to 1
   -> ACK" (không có ped clearance nào đang chạy, không railway, không
   fault → nhánh ACK trực tiếp, `lx_fsm.c` dòng 729-736). **Không** có dòng
-  "SIGNAL -> ARTERIAL YELLOW" nào xuất hiện tại mốc 48 giây bình thường —
+  "signal phase now ARTERIAL YELLOW" nào xuất hiện tại mốc 48 giây bình thường —
   vì guard tại `lx_fsm.c` dòng 956-965 giữ nguyên `ARTERIAL_GREEN` suốt
   khi `override_substate==OVR_ACTIVE` và `target_movement==ARTERIAL`.
   Đúng tại giây thứ 60 (hết `override_remaining_ms`), L1 in "Lx 1:
   override cleared/expired - running safe clearance sequence" rồi ngay
-  sau đó mới "SIGNAL -> ARTERIAL YELLOW" như bình thường.
+  sau đó mới "signal phase now ARTERIAL YELLOW" như bình thường.
 
 ### TC-UC08-2: Positive — override connector thật sự ép đổi hướng đèn xanh (đúng yêu cầu review gần nhất)
 - **Loại**: Positive
@@ -727,7 +779,7 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
   1. Bấm `o` → Lx `1` → target movement `1` (connector) → duration_ms
      `300000` (dùng trần tối đa để chắc chắn còn hiệu lực đến khi tới được
      pha connector).
-  2. Quan sát log L1 đến khi thấy "SIGNAL -> CONNECTOR GREEN" (dự kiến tại
+  2. Quan sát log L1 đến khi thấy "signal phase now CONNECTOR GREEN" (dự kiến tại
      `t≈54s`: 48s arterial green bình thường + 4s yellow + 2s all-red,
      override không rút ngắn các bước này).
   3. Sau khi thấy "CONNECTOR GREEN" được giữ quá mốc 30 giây bình thường
@@ -736,7 +788,7 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
 - **Kết quả mong đợi**: tại `t≈54s`, ranh giới `PHASE_ALL_RED_A_TO_B` áp
   dụng nhánh override (`lx_fsm.c` dòng 243-260): vì
   `override_target_movement==OVERRIDE_MOVEMENT_CONNECTOR`, pha kế tiếp bị
-  ép thành `PHASE_CONNECTOR_GREEN` — log in "Lx 1: SIGNAL -> CONNECTOR
+  ép thành `PHASE_CONNECTOR_GREEN` — log in "Lx 1: signal phase now CONNECTOR
   GREEN" đúng lúc này (không phải theo lịch PEAK_FIXED thông thường, vì
   PEAK_FIXED bình thường **cũng** đi tới CONNECTOR_GREEN tại đây — điểm
   khác biệt thật sự quan sát được là bước tiếp theo: pha này **không**
@@ -744,7 +796,7 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
   997-1006 giữ nó lại). Tại bước 3, C1 log "Operator: CANCEL_OVERRIDE(target=1)
   submitted" rồi "C1: CANCEL_OVERRIDE to 1 -> ACK"; L1 ngay lập tức in "Lx
   1: override cleared/expired - running safe clearance sequence" rồi mới
-  "SIGNAL -> CONNECTOR YELLOW" — chứng minh đèn xanh connector thật sự chỉ
+  "signal phase now CONNECTOR YELLOW" — chứng minh đèn xanh connector thật sự chỉ
   do override giữ, không phải trùng hợp với lịch PEAK_FIXED.
 
 ### TC-UC08-3: Negative/alt 3.3 — duration bằng 0 bị Central từ chối trước khi tới controller
@@ -897,6 +949,14 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
   RL1 (đúng BR-1 "Central chỉ giám sát 9 controller, không điều khiển trực
   tiếp thiết bị").
 
+### TC-UC09-5 (Regression, cosmetic): 2 cột SENSOR/OVERRIDE trong bảng HMI thẳng hàng giữa header và dữ liệu
+- **Loại**: Regression (đã sửa) — thuần cosmetic, không ảnh hưởng logic
+- **Tại sao từng là bug**: `c_hmi_render()`'s dòng header (`printf` khai báo độ rộng cột) và dòng dữ liệu (`printf` in giá trị) từng dùng độ rộng khác nhau cho 2 cột `SENSOR`/`OVERRIDE` (`%-9s`/`%-8u` ở data row nhưng header khai `%-8s`/`%-9s`) — khiến 2 cột này bị lệch, khó đọc khi demo dù dữ liệu vẫn đúng.
+- **Liên quan**: `c_hmi.c`'s `c_hmi_render()` — 2 chuỗi `printf` format (header và data row), độ rộng cột đã khớp lại.
+- **Môi trường**: (B) bất kỳ, chỉ cần `c_main` + ít nhất 1 Lx/RLx đang chạy.
+- **Các bước**: Khởi động `c_main` + `lx_main 1`, đợi bảng HMI in ra ít nhất 1 lần.
+- **Kết quả mong đợi**: Nhìn bằng mắt (hoặc đo vị trí ký tự): tiêu đề `SENSOR` và `OVERRIDE` ở dòng header phải thẳng cột với giá trị tương ứng ở dòng dữ liệu L1 — không bị lệch trái/phải như trước khi sửa.
+
 ---
 
 ## UC-10 — Continue Local Operation During Central Link Loss
@@ -909,7 +969,7 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
 - **Các bước**:
   1. Chạy `/tmp/lx_main 1`.
   2. Quan sát log liên tục trong 90 giây (đúng 1 `LX_CYCLE_LENGTH_MS`).
-- **Kết quả mong đợi**: chuỗi "SIGNAL -> ..." xuất hiện đúng y hệt
+- **Kết quả mong đợi**: chuỗi "signal phase now ..." xuất hiện đúng y hệt
   TC-UC01-1 (48s/4s/2s/30s/4s/2s), không có bất kỳ khoảng dừng/treo nào dù
   mỗi giây `lx_comm_send_heartbeat()` gọi `ipc_client_post()` gửi tới C1
   và thất bại (`name_open("traffic/c1")` không tìm thấy tiến trình nào) —
@@ -933,7 +993,7 @@ FAULT_SAFE=0, RAILWAY_PREEMPTION=1, CENTRAL_OVERRIDE=2, NORMAL_OPERATION=3.
   5s/8s/28s/48s/51s), và L1 vẫn nhận được `MSG_CROSSING_STATUS` trực tiếp
   từ RL1 (gửi thẳng qua Qnet, không đi qua C1 — `rlx_comm.c`'s
   `send_crossing_status()` gọi trực tiếp tới `adjacent_lx[]`), thể hiện
-  qua việc log L1 **không** có "SIGNAL -> CONNECTOR GREEN" nào trong suốt
+  qua việc log L1 **không** có "signal phase now CONNECTOR GREEN" nào trong suốt
   cửa sổ pre-emption, giống hệt TC-UC01-5 — chứng minh bảo vệ đường sắt
   hoàn toàn không phụ thuộc Central (RC-05/RC-10 áp dụng xuyên UC-04 lẫn
   UC-10).

@@ -5,10 +5,10 @@ This document provides a clear, step-by-step guide for integrating the distribut
 > *ALTERNATIVE: COMMAND-LINE BUILD*
 >> This repo also ships a versioned `Makefile` at the repo root, which builds all three binaries with a single `make` command from a QNX SDP shell/terminal (no IDE project setup required) - see section 4 below and `docs/QNX_DEPLOYMENT_RUN_GUIDE.md`. The manual IDE setup described in this document still works and is not being replaced; use whichever workflow your team prefers.
 
-The system consists of three independent executable applications:
-- Central Controller (`Central_Controller`)
-- Intersection Controller (`Intersection_Controller`)
-- Railway Controller (`Railway_Controller`)
+The system consists of three independent executable applications, built via this IDE workflow as Momentics projects named `Central_Controller`, `Intersection_Controller`, `Railway_Controller` (an executable's default output filename matches its Momentics project name):
+- Central Controller (`Central_Controller`, source entry point `c_main.c`/`main()`)
+- Intersection Controller (`Intersection_Controller`, source entry point `lx_main.c`/`main()`)
+- Railway Controller (`Railway_Controller`, source entry point `rlx_main.c`/`main()`)
 
 > *WORKSPACE WARNING*
 >> Ensure your workspace directory path contains no spaces (e.g., use `C:\Users\v12010\ide-8.0.3-workspace`) to prevent unintelligent compiler and makefile errors.
@@ -66,13 +66,13 @@ The system consists of three independent executable applications:
 |------|--------|-------------|
 | 4.1 | Build Project | Right-click the project name (`Central_Controller`, etc.) in the Project Explorer and select **Build Project**. |
 | 4.2 | Monitor Output | Watch the `Console` view for compiler output. If issues arise, clear build artifacts via **Clean Project**, rebuild index via **Index -> Rebuild**, and build again. |
-| 4.3 | Locate Binaries | Upon success, executable binaries (`Central_Controller`, `Intersection_Controller`, `Railway_Controller`) are generated under the `Binaries` virtual folder, or physically in `build/x86_64-debug/`. |
+| 4.3 | Locate Binaries | Upon success, executable binaries (`Central_Controller`, `Intersection_Controller`, `Railway_Controller`) are generated under the `Binaries` virtual folder, or physically in your workspace's configured build output directory (confirm the exact path in your own Momentics workspace). |
 
 ### 4.4 Command-line Alternative (`make`)
 Instead of building through the IDE GUI, you can open a terminal with the QNX SDP environment sourced (`qcc` on `PATH`) and compile from the repository root:
 
 ```bash
-make            # builds build/bin/Central_Controller, Intersection_Controller, Railway_Controller
+make            # builds build/bin/c_main, lx_main, rlx_main
 make central    # or build just the Central Controller component
 make clean      # remove build outputs
 ```

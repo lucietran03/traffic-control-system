@@ -1,6 +1,12 @@
 # QNX Deployment Run Guide
 
-This document outlines the execution sequence and networking configurations required to deploy the Traffic Control System binaries across QNX targets. It covers standalone, dual-host, and tri-host topologies using the native IDE output naming.
+This document outlines the execution sequence and networking configurations required to deploy the Traffic Control System binaries across QNX targets. It covers standalone, dual-host, and tri-host topologies.
+
+**Binary naming — two valid build paths, confirm which one your deployment actually uses**:
+- **QNX Momentics IDE build**: the team's real Momentics projects are named `Central_Controller`, `Intersection_Controller`, `Railway_Controller` — confirmed directly on the team's QNX Momentics setup. A Momentics C/C++ executable project's output filename matches its project name by default, so building via the IDE produces executables of these same names (path depends on the configured build output directory, typically under the project's own `Debug`/`x86_64-debug` folder — confirm the exact path in your own Momentics workspace rather than assuming `build/x86_64-debug/`).
+- **Command-line `make` build**: the root `Makefile` (confirmed in-repo) produces `build/bin/{c_main,lx_main,rlx_main}` instead — a separate, independently valid path with different output names.
+
+Use whichever name matches how **your** binaries were actually built — this guide defaults to the Momentics names (`Central_Controller`/`Intersection_Controller`/`Railway_Controller`) since that is the path confirmed in use for the real 10-VM deployment; swap in `c_main`/`lx_main`/`rlx_main` throughout if you built via `make` instead.
 
 > *CRITICAL QNET REQUIREMENT*
 >> **QNET** is not automatically loaded on new QNX x86 VM Targets. You must configure the network adapters and startup scripts to enable transparent distributed processing before executing the binaries.
@@ -25,7 +31,7 @@ To verify that all nodes have discovered each other across the network, execute:
 ```sh
 ls /net
 ```
-**Success Criteria**: The terminal must output your current node hostname (and all other active VM hostnames if running on multiple VMs).
+**Success Criteria**: the terminal must output your current node hostname (and all other active VM hostnames if running on multiple VMs). `VM_x86_Target01` through `VM_x86_Target10` (used throughout this guide, including in every `TRAFFIC_NODE_MAP` example) is an **illustrative naming convention, not a guaranteed literal `ls /net` output** — confirm your VMs' actual Qnet hostnames with this command first and substitute your real names into every `TRAFFIC_NODE_MAP` string below if they differ.
 
 ### 1.3 Execution Directory Constraint
 **Do not execute binaries from the root (`/`) directory**. The root file system is often Read-Only, which causes the logger initialization to throw `could not open central_log.txt`. 
@@ -40,10 +46,10 @@ cd /tmp
 **Goal**: Move compiled binaries to the targets and execute them in the correct dependency order.
 
 ### 2.0 Build
-Build the three binaries either via the QNX Momentics IDE (producing outputs in `build/x86_64-debug/`), or from the command line using `make` at the repo root (producing outputs in `build/bin/`):
+Build via the QNX Momentics IDE — the team's confirmed real projects are `Central_Controller`, `Intersection_Controller`, `Railway_Controller` (see `docs/QNX_MOMENTICS_INTEGRATION.md`). Alternatively, `make` at the repo root produces `build/bin/{c_main,lx_main,rlx_main}` instead — a separate, independently valid path; if you used this path, substitute those names for every binary filename below (the numeric `argv[1]` argument and all `TRAFFIC_NODE_MAP` suffixes stay identical either way, since those are unrelated to the executable's filename).
 
-*   **IDE Outputs**: `Central_Controller`, `Intersection_Controller`, `Railway_Controller`
-*   **Command Line Outputs**: `build/bin/Central_Controller`, `build/bin/Intersection_Controller`, `build/bin/Railway_Controller`
+*   **Momentics IDE Outputs**: `Central_Controller`, `Intersection_Controller`, `Railway_Controller`
+*   **Command Line (`make`) Outputs**: `build/bin/c_main`, `build/bin/lx_main`, `build/bin/rlx_main`
 
 ### 2.1 File Transfer Mapping
 Using the QNX Target File System Navigator inside Momentics, transfer the compiled binaries from your host machine into the target `/tmp` directories according to this exact node deployment matrix:
