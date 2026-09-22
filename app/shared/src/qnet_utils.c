@@ -338,32 +338,40 @@ void *ipc_client_thread_main(void *arg)
     int                  coid;
     int                  send_ok;
 
+    // Loop indefinitely, processing jobs from the queue.
     for (;;) {
+
+        // #1 Wait for a job to be available in the queue.
         pthread_mutex_lock(&q->lock);
         while (q->count == 0 && !q->stopping) {
             pthread_cond_wait(&q->not_empty, &q->lock);
         }
+
+        // #2 If the queue is stopping and empty, exit the thread.
         if (q->count == 0 && q->stopping) {
             pthread_mutex_unlock(&q->lock);
             break;
         }
+
+        // #3 Dequeue the job from the head of the buffer.
         job = q->jobs[q->head];
         q->head = (q->head + 1) % IPC_CLIENT_QUEUE_CAPACITY;
         q->count--;
         pthread_mutex_unlock(&q->lock);
 
-        // Attempt to open the target node and send the request.
+        // #4 Attempt to open the target node and send the request.
         send_ok = 0;
         if (build_open_path(job.target_id, path, sizeof(path)) == 0) {
-            coid = name_open(path, 0);
+            coid = name_open(path, 0); // Attempt to open the target node
             if (coid == -1 && strstr(path, "/dev/name/global/") != NULL) {
-                char alt_path[IPC_OPEN_PATH_MAX];
-                char *g = strstr(path, "/dev/name/global/");
+                char alt_path[IPC_OPEN_PATH_MAX]; // Fallback to local namespace if global open fails
+                char *g = strstr(path, "/dev/name/global/"); // Find the global path segment
                 snprintf(alt_path, sizeof(alt_path), "%.*s/dev/name/local/%s",
                          (int)(g - path), path, g + strlen("/dev/name/global/"));
-                coid = name_open(alt_path, 0);
+                coid = name_open(alt_path, 0);  // Attempt to open the local fallback path
             }
             if (coid != -1) {
+                // Send the request and wait for a reply, capturing the success status.
                 send_ok = (MsgSend(coid, &job.req, sizeof(job.req), &reply, sizeof(reply)) != -1);
                 name_close(coid);
             }

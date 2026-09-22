@@ -386,30 +386,31 @@ void lx_fsm_on_request_override(lx_fsm_t *fsm, const request_override_payload_t 
     lx_fsm_check_fault_locked(fsm);
     reply->reason = NACK_REASON_NONE;
 
+    // Check for conflicts with existing supervisory states or invalid parameters.
     if (fsm->supervisory == SUPERVISORY_CENTRAL_OVERRIDE) {
         reply->result = RESULT_NACK;
         reply->reason = NACK_REASON_OUT_OF_RANGE; 
-    } else if (payload->duration_ms == 0 || payload->duration_ms > LX_OVERRIDE_DURATION_CAP_MS) {
+    } else if (payload->duration_ms == 0 || payload->duration_ms > LX_OVERRIDE_DURATION_CAP_MS) { // Check for valid duration
         reply->result = RESULT_NACK;
         reply->reason = NACK_REASON_INVALID_DURATION;
     } else if (payload->target_movement != (uint32_t)OVERRIDE_MOVEMENT_ARTERIAL &&
-               payload->target_movement != (uint32_t)OVERRIDE_MOVEMENT_CONNECTOR) {
+               payload->target_movement != (uint32_t)OVERRIDE_MOVEMENT_CONNECTOR) { // Check for valid target movement
         reply->result = RESULT_NACK;
         reply->reason = NACK_REASON_OUT_OF_RANGE;
-    } else if (fsm->supervisory == SUPERVISORY_RAILWAY_PREEMPTION) {
+    } else if (fsm->supervisory == SUPERVISORY_RAILWAY_PREEMPTION) { // Check for conflicts with railway preemption
         reply->result = RESULT_NACK;
         reply->reason = NACK_REASON_RAILWAY_CONFLICT;
-    } else if (fsm->supervisory == SUPERVISORY_FAULT_SAFE) {
+    } else if (fsm->supervisory == SUPERVISORY_FAULT_SAFE) { // Check for conflicts with fault-safe state
         reply->result = RESULT_NACK;
         reply->reason = NACK_REASON_FAULT_ACTIVE;
-    } else if (fsm->ped_clearance_active) {
+    } else if (fsm->ped_clearance_active) { // Check for conflicts with active pedestrian clearance
         fsm->override_substate = OVR_PENDING_CLEARANCE;
         fsm->override_target_movement = payload->target_movement;
         fsm->override_duration_ms = payload->duration_ms;
         fsm->override_remaining_ms = payload->duration_ms;
         fsm->supervisory = SUPERVISORY_CENTRAL_OVERRIDE;
         reply->result = RESULT_ACK_PENDING;
-    } else {
+    } else { // No conflicts, apply the override immediately
         fsm->override_substate = OVR_ACTIVE;
         fsm->override_target_movement = payload->target_movement;
         fsm->override_duration_ms = payload->duration_ms;

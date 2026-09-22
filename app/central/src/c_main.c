@@ -55,6 +55,7 @@ static void on_request(const ipc_request_t *req, ipc_reply_t *reply, void *ctx_p
     int reconnected;
 
     switch ((msg_type_t)req->verb) {
+    // Handles the STATUS operator command, recording the status and logging any reconnection events.
     case MSG_STATUS:
         pthread_mutex_lock(&ctx->mode_eng_lock);
         reconnected = c_server_record_status(&ctx->mode_eng, (controller_id_t)req->sender_id, &req->payload.status, req->timestamp_ms);
@@ -63,6 +64,8 @@ static void on_request(const ipc_request_t *req, ipc_reply_t *reply, void *ctx_p
         log_reconnect_if_needed(ctx, (controller_id_t)req->sender_id, reconnected);
         reply->result = RESULT_ACK;
         break;
+
+    // Handles the HEARTBEAT operator command, recording the heartbeat and logging any reconnection events.
     case MSG_HEARTBEAT:
         pthread_mutex_lock(&ctx->mode_eng_lock);
         reconnected = c_server_record_status(&ctx->mode_eng, (controller_id_t)req->sender_id, &req->payload.heartbeat.summary, req->timestamp_ms);
@@ -71,6 +74,8 @@ static void on_request(const ipc_request_t *req, ipc_reply_t *reply, void *ctx_p
         log_reconnect_if_needed(ctx, (controller_id_t)req->sender_id, reconnected);
         reply->result = RESULT_ACK;
         break;
+
+    // Handles the FAULT_REPORT operator command, recording the fault report and logging the details.
     case MSG_FAULT_REPORT:
 
         pthread_mutex_lock(&ctx->mode_eng_lock);
@@ -85,6 +90,8 @@ static void on_request(const ipc_request_t *req, ipc_reply_t *reply, void *ctx_p
 
         reply->result = RESULT_ACK;
         break;
+
+    // Handles the CROSSING_STATUS operator command, recording the crossing status and logging any reconnection events.
     case MSG_CROSSING_STATUS:
         pthread_mutex_lock(&ctx->mode_eng_lock);
         reconnected = c_server_record_crossing_status(&ctx->mode_eng, (controller_id_t)req->sender_id, &req->payload.crossing_status);
@@ -93,6 +100,8 @@ static void on_request(const ipc_request_t *req, ipc_reply_t *reply, void *ctx_p
         log_reconnect_if_needed(ctx, (controller_id_t)req->sender_id, reconnected);
         reply->result = RESULT_ACK;
         break;
+
+    // Default case for unrecognized message types, returning an error result.
     default:
         reply->result = RESULT_ERROR;
         break;
@@ -106,6 +115,8 @@ static void on_pulse(int code, void *ctx_ptr)
     central_context_t *ctx = (central_context_t *)ctx_ptr;
 
     switch (code) {
+
+    // Handles the IPC_PULSE_HEARTBEAT_TICK pulse, performing heartbeat checks, auto mode switching, and HMI rendering.
     case IPC_PULSE_HEARTBEAT_TICK: {
         uint8_t current_hour;
         operating_mode_t auto_mode = MODE_PEAK_FIXED;
@@ -114,10 +125,12 @@ static void on_pulse(int code, void *ctx_ptr)
         int n_unavailable;
         int i;
 
+        // #1 Tick the watchdog monitor to check for missed heartbeats and mark controllers as unavailable if needed.
         pthread_mutex_lock(&ctx->mode_eng_lock);
         n_unavailable = c_watchdog_mon_tick(&ctx->mode_eng, newly_unavailable);
         pthread_mutex_unlock(&ctx->mode_eng_lock);
 
+        // #2 Log any newly unavailable controllers using the console IO lock to prevent interleaved output.
         if (n_unavailable > 0) {
             pthread_mutex_lock(&ctx->console_io_lock);
             for (i = 0; i < n_unavailable; i++) {
@@ -128,6 +141,8 @@ static void on_pulse(int code, void *ctx_ptr)
         }
 
         pthread_mutex_lock(&ctx->mode_eng_lock);
+
+        // #3 Determine the current hour, either from the demo override
         if (ctx->mode_eng.demo_hour_override_active) {
             current_hour = ctx->mode_eng.demo_hour;
         } else {
@@ -137,6 +152,8 @@ static void on_pulse(int code, void *ctx_ptr)
             localtime_r(&now, &tm_now);
             current_hour = (uint8_t)tm_now.tm_hour;
         }
+
+        // #4 Check for automatic mode changes based on the current hour
         mode_changed = c_mode_eng_auto_check(&ctx->mode_eng, current_hour, &auto_mode);
         if (mode_changed) {
             c_mode_eng_mark_all_lx_commanded(&ctx->mode_eng, auto_mode);
@@ -148,13 +165,15 @@ static void on_pulse(int code, void *ctx_ptr)
             c_logger_log("Auto peak-hour switch: hour=%u -> mode=%s, broadcasting to all Lx",
                          (unsigned)current_hour,
                          (auto_mode == MODE_PEAK_FIXED) ? "PEAK_FIXED" : "OFF_PEAK_SENSOR");
-            c_comm_broadcast_set_mode(ctx->client_queue, auto_mode);
+            
+            // #5 Broadcast the new mode to all Lx controllers
+            c_comm_broadcast_set_mode(ctx->client_queue, auto_mode); 
             pthread_mutex_unlock(&ctx->console_io_lock);
         }
 
         pthread_mutex_lock(&ctx->console_io_lock);
         pthread_mutex_lock(&ctx->mode_eng_lock);
-        c_hmi_render(&ctx->mode_eng);
+        c_hmi_render(&ctx->mode_eng); 
         pthread_mutex_unlock(&ctx->mode_eng_lock);
         pthread_mutex_unlock(&ctx->console_io_lock);
         break;
@@ -174,33 +193,40 @@ int main(void)
     central_context_t ctx;
     c_operator_args_t operator_args;
 
+    // #1 Init log and print startup message
     printf("C1 (Central Controller) starting...\n");
     c_logger_init();
 
+    // #2 Attach to the IPC channel for C1 and create the client queue
     chid = ipc_attach(CTRL_C1);
     if (chid == -1) {
         fprintf(stderr, "C1: ipc_attach failed\n");
         return EXIT_FAILURE;
     }
 
+    // #3 Create outgoing client queue
     client_queue = ipc_client_queue_create();
     if (client_queue == NULL) {
         fprintf(stderr, "C1: ipc_client_queue_create failed\n");
         return EXIT_FAILURE;
     }
     ctx.client_queue = client_queue;
+
+    // #4 Create Central status state and mutex
     c_mode_eng_init(&ctx.mode_eng);
     pthread_mutex_init(&ctx.mode_eng_lock, NULL);
     pthread_mutex_init(&ctx.console_io_lock, NULL);
     
     c_comm_set_console_io_lock(&ctx.console_io_lock);
 
+    // #5 Create the IPC client thread
     if (pthread_create(&client_tid, NULL, ipc_client_thread_main, client_queue) != 0) {
         fprintf(stderr, "C1: failed to start client thread\n");
         return EXIT_FAILURE;
     }
 
-    operator_args.client_queue = client_queue;
+    // #6 Prepare thread arguments and start the thread
+    operator_args.client_queue = client_queue;  
     operator_args.mode_eng     = &ctx.mode_eng;
     operator_args.mode_eng_lock = &ctx.mode_eng_lock;
     operator_args.console_io_lock = &ctx.console_io_lock;
@@ -209,6 +235,7 @@ int main(void)
         return EXIT_FAILURE;
     }
 
+    // #7 Arm the heartbeat-check timer to trigger every 1 second
     if (ipc_timer_arm(chid, IPC_PULSE_HEARTBEAT_TICK, 1000, 1000, &heartbeat_check_timer) == -1) {
         fprintf(stderr, "C1: failed to arm heartbeat-check timer\n");
         return EXIT_FAILURE;
@@ -216,6 +243,7 @@ int main(void)
 
     printf("C1: attached on %s/%s, server loop starting.\n", TRAFFIC_NAME_PREFIX, ipc_attach_name(CTRL_C1));
 
+    // #8 Run the IPC server loop
     ipc_server_run(chid, on_request, on_pulse, &ctx);
 
     pthread_join(client_tid, NULL); // Wait for the client thread to finish 
