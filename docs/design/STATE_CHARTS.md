@@ -342,6 +342,12 @@ stateDiagram-v2
         the reserved exit sensor, which does not participate in
         this decision (RC-05).
     end note
+
+    note left of OPEN
+        This OPEN is the same state as SC-04A's OPEN — reaching it
+        here hands control back to SC-04A, exactly as SC-04A's own
+        note on OPEN already describes from the other side.
+    end note
 ```
 
 ## 4.1.9 SC-05 — Central Connectivity and Local Autonomy

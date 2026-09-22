@@ -19,7 +19,7 @@ Because the original document is long, the specification is split into chapters 
 | [`05-features-and-demo.md`](05-features-and-demo.md) | Feature classification, demo scenarios, simulated inputs | Sections 23–25 |
 | [`06-assumptions-and-summary.md`](06-assumptions-and-summary.md) | Assumptions, resolved open decisions, questions for the team/instructor, requirement traceability, final summary | Sections 26–30 |
 
-Illustrative diagrams (ASCII, English): [`SYSTEM_DIAGRAMS.md`](../../SYSTEM_DIAGRAMS.md).
+Illustrative diagrams (ASCII, English): [`SYSTEM_DIAGRAMS.md`](../design/SYSTEM_DIAGRAMS.md).
 
 ---
 
